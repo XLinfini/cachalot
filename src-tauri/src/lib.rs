@@ -50,6 +50,7 @@ pub fn run() {
             ai::list_models,
             ai::test_provider,
             ai::stream_completion,
+            ai::glm_ocr,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Cachalot");

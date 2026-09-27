@@ -33,6 +33,17 @@ export interface ProviderInput extends Omit<Provider, "hasKey"> {
 export interface ModelInfo {
   id: string;
   ownedBy?: string;
+  /** Transport/task adapter, independent of the provider's credentials.
+   * Dedicated OCR models are excluded from chat and translation choices. */
+  formulaOcr?: FormulaOcrProtocol;
+}
+export type FormulaOcrProtocol = "glm-layout" | "formula-chat" | "vision-llm";
+export interface ModelSelection {
+  providerId: string;
+  modelId: string;
+}
+export interface GlmOcrInput extends ModelSelection {
+  imageDataUrl: string;
 }
 export interface ChatThread {
   id: string;

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronRight, ChevronUp, Eye, Search, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Provider } from "../domain/records";
-import { addedModels } from "../domain/provider-models";
+import { chatModels, ocrModels } from "../domain/provider-models";
 import { cx, ui } from "./ui/styles";
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   selected: Provider | null;
   vision: boolean;
   disabled?: boolean;
+  purpose?: "chat" | "ocr";
   onSelect: (providerId: string, modelId: string) => void;
   onOpenSettings: () => void;
 }
@@ -22,6 +23,7 @@ export default function ModelPicker({
   selected,
   vision,
   disabled,
+  purpose = "chat",
   onSelect,
   onOpenSettings,
 }: Props) {
@@ -33,6 +35,8 @@ export default function ModelPicker({
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const modelsFor = purpose === "ocr" ? ocrModels : chatModels;
+  const chooseLabel = t(purpose === "ocr" ? "ocr.chooseModel" : "chat.chooseModel");
   useEffect(() => {
     if (!open) return;
     search.current?.focus();
@@ -67,12 +71,12 @@ export default function ModelPicker({
         ref={trigger}
         type="button"
         data-ui="model-picker-trigger"
-        aria-label={t("chat.chooseModel")}
+        aria-label={chooseLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={id}
         disabled={disabled}
-        title={selected ? `${selected.name} · ${selected.modelId}` : t("chat.chooseModel")}
+        title={selected ? `${selected.name} · ${selected.modelId}` : chooseLabel}
         className="flex w-full min-w-0 items-center gap-1 rounded-[6px] border-0 bg-[#f3f7fc] px-2 py-[6px] text-[10px] text-[#52749c] hover:bg-brand-soft disabled:opacity-50"
         onClick={() => {
           setOpen((value) => !value);
@@ -81,7 +85,7 @@ export default function ModelPicker({
       >
         {vision && <Eye size={13} className="flex-none" aria-label={t("chat.visionModel")} />}
         <span className="min-w-0 flex-1 truncate text-right">
-          {selected?.modelId || t("chat.chooseModel")}
+          {selected?.modelId || chooseLabel}
         </span>
         <ChevronUp size={13} className="flex-none" />
       </button>
@@ -95,7 +99,12 @@ export default function ModelPicker({
         >
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {providers
-              .filter((provider) => provider.enabled)
+              .filter(
+                (provider) =>
+                  provider.enabled &&
+                  (modelsFor(provider).length > 0 ||
+                    (purpose === "chat" && !ocrModels(provider).length)),
+              )
               .map((provider) => (
                 <div key={provider.id}>
                   <button
@@ -115,7 +124,7 @@ export default function ModelPicker({
                   </button>
                   {expanded === provider.id && (
                     <div className="mb-1 ml-4 border-l border-[#e6edf5] pl-1">
-                      {addedModels(provider)
+                      {modelsFor(provider)
                         .filter(
                           (model) =>
                             model.id && model.id.toLowerCase().includes(query.toLowerCase()),
@@ -140,7 +149,7 @@ export default function ModelPicker({
                             )}
                           </button>
                         ))}
-                      {!addedModels(provider).length && (
+                      {!modelsFor(provider).length && (
                         <p className="px-2 py-1 text-[10px] text-subtle">{t("chat.noModels")}</p>
                       )}
                     </div>

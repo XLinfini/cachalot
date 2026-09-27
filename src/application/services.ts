@@ -12,6 +12,7 @@ import {
 import { documentPreview, removePreview } from "../infrastructure/pdf/document-preview";
 import { formulaRepository } from "../infrastructure/formula-repository";
 import { exportFormulaPdf } from "../infrastructure/pdf/formula-source";
+import { getOcrSelection, saveOcrSelection, testOcrProvider } from "./ocr-settings";
 
 /**
  * Public facade for presentation code. UI replacements depend on these methods
@@ -39,6 +40,7 @@ export const services = {
     remove: platform.deleteCategory,
   },
   settings: { get: platform.getSetting, set: platform.setSetting },
+  ocr: { getSelection: getOcrSelection, select: saveOcrSelection, test: testOcrProvider },
   providers: {
     list: listConfiguredProviders,
     save: saveConfiguredProvider,

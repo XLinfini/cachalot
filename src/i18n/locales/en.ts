@@ -272,7 +272,47 @@ export const en = {
     selectedModels_other: "{{count}} models added",
     manualModelHint: "You can still enter a model ID manually.",
   },
+  ocr: {
+    eyebrow: "Formula recognition",
+    title: "Formula OCR",
+    description:
+      "Choose a separate recognition service for complex formulas. Translation and Q&A keep using the model selected in chat.",
+    mode: "Recognition method",
+    current: "Use current translation model (vision required)",
+    separate: "Use a separate OCR model",
+    off: "Skip remote recognition; retain formula images",
+    flowHint:
+      "Complex formulas are recognized after selection and before translation. Results pass LaTeX syntax and native PDFium character checks. Failed or partial formulas retain their source images.",
+    modelsHint:
+      "This menu reads enabled providers and added models marked for OCR directly from provider settings.",
+    selectionRequired:
+      "Choose an OCR model to save. Until then, the previously saved recognition method still applies.",
+    manageProviders: "Manage providers and models",
+    chooseModel: "Choose OCR model",
+    savedAutomatically:
+      "Successful choices are saved automatically. Changing OCR models does not change the translation model.",
+    addGlm: "Add GLM-OCR preset",
+    profile: "OCR interface for this model",
+    modelProfile: "OCR interface for {{model}}",
+    profileNone: "Not used for OCR",
+    profileGlm: "GLM layout API",
+    profileChat: "Dedicated formula OCR · Chat compatible",
+    profileVision: "Vision LLM · character evidence",
+    glmHint:
+      "The official layout API currently supports glm-ocr only. Its preset supplies the model list without calling /models. You can use a Z.AI or compatible gateway address.",
+    testHint:
+      "Checking the connection sends a locally generated test formula and may incur provider charges.",
+  },
   messages: {
+    ocrHttp: "Formula OCR request failed (HTTP {{status}}).",
+    ocrHttpDetails: "Formula OCR request failed (HTTP {{status}}).\n{{details}}",
+    ocrResponseError: "The OCR service returned an error or invalid response.\n{{details}}",
+    ocrImageInvalid: "Formula OCR requires a PNG or JPEG image up to 10 MB.",
+    configureOcr:
+      "The selected OCR model is missing, disabled or has an incompatible interface. Check formula OCR and provider settings.",
+    ocrTestFailed:
+      "The OCR test did not return a renderable formula. Check the model and interface.",
+
     formulaSourceFailed: "Could not preserve the original equation region.",
     formulaReferencesChanged:
       "The translation changed or omitted equation positions. Retry to preserve every original equation.",

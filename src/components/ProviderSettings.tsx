@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { services } from "../application/services";
-import type { ModelInfo, Provider, ProviderInput } from "../domain/records";
+import type { FormulaOcrProtocol, ModelInfo, Provider, ProviderInput } from "../domain/records";
 import { DEFAULT_TRANSLATION_PROMPT } from "../application/prompts";
 import { cx, ui } from "./ui/styles";
 import { useTranslation } from "react-i18next";
@@ -23,7 +23,9 @@ import { message } from "../domain/messages";
 import { visionKey } from "../application/model-catalog";
 import ApiKeyField from "./ApiKeyField";
 import { apiEndpoint } from "../domain/api-endpoint";
-import { addedModels } from "../domain/provider-models";
+import { addedModels, chatModels } from "../domain/provider-models";
+import { GLM_OCR_BASE_URL, GLM_OCR_MODEL, glmOcrEndpoint } from "../domain/ocr";
+import OcrSettings from "./OcrSettings";
 
 interface Props {
   providers: Provider[];
@@ -51,17 +53,21 @@ export default function ProviderSettings({
   const [modelQuery, setModelQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [section, setSection] = useState<"general" | "providers" | "translation">("providers");
+  const [section, setSection] = useState<"general" | "providers" | "translation" | "ocr">(
+    "providers",
+  );
   const [prompt, setPrompt] = useState(DEFAULT_TRANSLATION_PROMPT);
   const [vision, setVision] = useState(false);
   const [visionModel, setVisionModel] = useState("");
   const draftModels = draft ? addedModels(draft) : [];
+  const draftProtocol = draftModels.find((m) => m.id === draft?.modelId)?.formulaOcr;
   const requestUrls = (() => {
     if (!draft) return null;
     try {
       return {
         models: apiEndpoint(draft.baseUrl, "models"),
         chat: apiEndpoint(draft.baseUrl, "chat/completions"),
+        ocr: glmOcrEndpoint(draft.baseUrl),
       };
     } catch {
       return null;
@@ -118,6 +124,40 @@ export default function ProviderSettings({
     setNotice(message("providerDraft"));
   };
 
+  const createGlmProvider = () => {
+    const id = crypto.randomUUID();
+    setSelectedId(id);
+    setDraft({
+      id,
+      name: "GLM-OCR",
+      baseUrl: GLM_OCR_BASE_URL,
+      modelId: GLM_OCR_MODEL.id,
+      enabled: true,
+      apiKey: "",
+      addedModels: [{ ...GLM_OCR_MODEL }],
+    });
+    setNotice(message("providerDraft"));
+  };
+  const setOcrProfile = (modelId: string, protocol: string) => {
+    if (!draft || !modelId.trim()) return;
+    const current = draftModels.find((m) => m.id === modelId) || { id: modelId.trim() };
+    const { formulaOcr: _old, ...base } = current;
+    const model: ModelInfo = {
+      ...base,
+      ...(protocol ? { formulaOcr: protocol as FormulaOcrProtocol } : {}),
+    };
+    setDraft({ ...draft, addedModels: [...draftModels.filter((m) => m.id !== model.id), model] });
+    if (model.id === draft.modelId && protocol === "vision-llm") setVision(true);
+  };
+  const profileOptions = (
+    <>
+      <option value="">{t("ocr.profileNone")}</option>
+      <option value="glm-layout">{t("ocr.profileGlm")}</option>
+      <option value="formula-chat">{t("ocr.profileChat")}</option>
+      <option value="vision-llm">{t("ocr.profileVision")}</option>
+    </>
+  );
+
   const toggleAddedModel = (model: ModelInfo) => {
     setDraft((current) => {
       if (!current) return current;
@@ -143,7 +183,7 @@ export default function ProviderSettings({
       if (visionModel === visionKey(saved.id, saved.modelId))
         await services.settings.set(visionModel, String(vision));
       onProvidersChange([saved, ...providers.filter((item) => item.id !== saved.id)]);
-      if (!activeProviderId) onActiveProviderChange(saved.id);
+      if (!activeProviderId && chatModels(saved).length) onActiveProviderChange(saved.id);
       setDraft({ ...saved, apiKey: "" });
       setNotice(message("providerSaved"));
       return saved;
@@ -161,7 +201,7 @@ export default function ProviderSettings({
     if (!saved) return;
     setBusy(true);
     try {
-      setModels(await services.providers.listModels(saved.id));
+      setModels(await services.providers.listModels(saved.id, draftProtocol));
       setNotice("");
     } catch (cause) {
       setModels([]);
@@ -177,7 +217,7 @@ export default function ProviderSettings({
     if (!saved) return;
     setBusy(true);
     try {
-      setNotice(await services.providers.test(saved.id));
+      setNotice(await services.ocr.test(saved));
     } catch (cause) {
       setNotice(String(cause));
     } finally {
@@ -244,6 +284,14 @@ export default function ProviderSettings({
           >
             <Layers3 size={18} />
             {t("settings.providers")}
+          </button>
+          <button
+            className={ui.settingsNavButton}
+            aria-pressed={section === "ocr"}
+            onClick={() => setSection("ocr")}
+          >
+            <Database size={18} />
+            {t("ocr.title")}
           </button>
         </div>
       </aside>
@@ -324,6 +372,12 @@ export default function ProviderSettings({
           </div>
           {notice && <p className={ui.settingsNotice}>{localizeMessage(notice)}</p>}
         </main>
+      ) : section === "ocr" ? (
+        <OcrSettings
+          providers={providers}
+          onOpenProviders={() => setSection("providers")}
+          onError={onError}
+        />
       ) : (
         <main
           data-ui="settings-main"
@@ -386,6 +440,13 @@ export default function ProviderSettings({
                 <Plus size={17} />
                 {t("settings.addProvider")}
               </button>
+              <button
+                data-ui="add-glm-ocr"
+                className="mt-2 w-full rounded-lg border border-[#c9d9ec] bg-white p-[9px] text-[11px] text-brand"
+                onClick={createGlmProvider}
+              >
+                {t("ocr.addGlm")}
+              </button>
             </section>
             <section className={cx(ui.surface, "overflow-hidden")}>
               {draft ? (
@@ -401,7 +462,13 @@ export default function ProviderSettings({
                     </span>
                     <div>
                       <h2>{draft.name}</h2>
-                      <p>{t("settings.compatibleApi")}</p>
+                      <p>
+                        {t(
+                          draftProtocol === "glm-layout"
+                            ? "ocr.profileGlm"
+                            : "settings.compatibleApi",
+                        )}
+                      </p>
                     </div>
                     <label className="relative inline-flex cursor-pointer">
                       <input
@@ -448,7 +515,14 @@ export default function ProviderSettings({
                       <p className="mb-1 font-semibold text-[#607590]">
                         {t("settings.requestUrls")}
                       </p>
-                      {requestUrls ? (
+                      {requestUrls && draftProtocol === "glm-layout" ? (
+                        <>
+                          <p data-ui="ocr-endpoint" className="font-mono break-all">
+                            {requestUrls.ocr}
+                          </p>
+                          <p>{t("ocr.glmHint")}</p>
+                        </>
+                      ) : requestUrls ? (
                         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
                           <dt>{t("settings.modelsEndpoint")}</dt>
                           <dd
@@ -490,13 +564,30 @@ export default function ProviderSettings({
                         <input
                           className="accent-brand"
                           type="checkbox"
-                          checked={vision}
-                          disabled={visionModel !== visionKey(draft.id, draft.modelId)}
+                          checked={draftProtocol === "vision-llm" || (!draftProtocol && vision)}
+                          disabled={
+                            !!draftProtocol || visionModel !== visionKey(draft.id, draft.modelId)
+                          }
                           onChange={(event) => setVision(event.target.checked)}
                         />
                         {t("settings.vision")}
                       </label>
                     </div>
+                    <label className={ui.fieldLabel} htmlFor="default-ocr-profile">
+                      {t("ocr.profile")}
+                    </label>
+                    <select
+                      id="default-ocr-profile"
+                      className={cx(ui.fieldInput, "mb-3")}
+                      value={draftProtocol || ""}
+                      disabled={!draft.modelId.trim()}
+                      onChange={(e) => setOcrProfile(draft.modelId, e.target.value)}
+                    >
+                      {profileOptions}
+                    </select>
+                    {draftProtocol && draftProtocol !== "vision-llm" && (
+                      <p className="text-[10px] leading-5 text-muted">{t("ocr.testHint")}</p>
+                    )}
                     <div className={ui.settingsActions}>
                       <button
                         className="mr-auto border-0 bg-transparent text-[#b3a2a9] hover:text-[#bd4654]"
@@ -549,6 +640,15 @@ export default function ProviderSettings({
                       >
                         <Database size={17} className="flex-none" />
                         <span className="min-w-0 flex-1 break-all">{model.id}</span>
+                        <select
+                          data-ui="model-ocr-profile"
+                          aria-label={t("ocr.modelProfile", { model: model.id })}
+                          className="max-w-[170px] rounded border border-border bg-white p-1 text-[10px]"
+                          value={model.formulaOcr || ""}
+                          onChange={(e) => setOcrProfile(model.id, e.target.value)}
+                        >
+                          {profileOptions}
+                        </select>
                         {draft.modelId === model.id ? (
                           <span className="flex-none rounded-[4px] bg-[#e5f0ff] px-[5px] py-[3px] text-[10px] text-[#3d7ac8]">
                             {t("settings.default")}
@@ -576,7 +676,7 @@ export default function ProviderSettings({
                     {!draftModels.length && (
                       <p className="text-[11px] text-subtle">{t("settings.manualModel")}</p>
                     )}
-                    {activeProviderId !== draft.id && (
+                    {activeProviderId !== draft.id && chatModels(draft).length > 0 && (
                       <button
                         className="border-0 bg-transparent text-[10px] text-[#3477c8]"
                         onClick={() => onActiveProviderChange(draft.id)}

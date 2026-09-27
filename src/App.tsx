@@ -37,7 +37,7 @@ import { cx, ui } from "./components/ui/styles";
 import { useTranslation } from "react-i18next";
 import { localizeMessage } from "./i18n/messages";
 import { dateLocale } from "./i18n";
-import { hasAddedModel } from "./domain/provider-models";
+import { chatModels, hasChatModel } from "./domain/provider-models";
 
 type View = "library" | "reader" | "settings";
 
@@ -72,16 +72,19 @@ export default function App() {
   const activeDocument = documents.find((document) => document.id === activeId) || null;
   const configuredProvider =
     providers.find((provider) => provider.id === activeProviderId && provider.enabled) || null;
-  const activeProvider = configuredProvider
-    ? {
-        ...configuredProvider,
-        modelId:
-          activeModel?.providerId === configuredProvider.id &&
-          hasAddedModel(configuredProvider, activeModel.modelId)
-            ? activeModel.modelId
-            : configuredProvider.modelId,
-      }
-    : null;
+  const activeProvider =
+    configuredProvider && chatModels(configuredProvider).length
+      ? {
+          ...configuredProvider,
+          modelId:
+            activeModel?.providerId === configuredProvider.id &&
+            hasChatModel(configuredProvider, activeModel.modelId)
+              ? activeModel.modelId
+              : hasChatModel(configuredProvider, configuredProvider.modelId)
+                ? configuredProvider.modelId
+                : chatModels(configuredProvider)[0].id,
+        }
+      : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,7 +125,7 @@ export default function App() {
               (provider) =>
                 provider.enabled &&
                 provider.id === value.providerId &&
-                hasAddedModel(provider, value.modelId),
+                hasChatModel(provider, value.modelId),
             )
           )
             restored = value;
@@ -136,8 +139,10 @@ export default function App() {
         setProviders(modelProviders);
         setActiveProviderId(
           restored?.providerId ||
-            providerId ||
-            modelProviders.find((item) => item.enabled)?.id ||
+            (modelProviders.some((p) => p.id === providerId && p.enabled && chatModels(p).length)
+              ? providerId
+              : null) ||
+            modelProviders.find((item) => item.enabled && chatModels(item).length)?.id ||
             null,
         );
       })
@@ -151,7 +156,7 @@ export default function App() {
         (provider) =>
           provider.enabled &&
           provider.id === activeModel.providerId &&
-          hasAddedModel(provider, activeModel.modelId),
+          hasChatModel(provider, activeModel.modelId),
       )
     )
       return;
@@ -170,6 +175,8 @@ export default function App() {
   };
 
   const chooseModel = (providerId: string, modelId: string) => {
+    if (!providers.some((p) => p.id === providerId && p.enabled && hasChatModel(p, modelId)))
+      return;
     const selected = { providerId, modelId };
     setActiveProviderId(providerId);
     setActiveModel(selected);

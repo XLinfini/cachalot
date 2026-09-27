@@ -23,6 +23,7 @@
     "test:key-storage": "node --import tsx tests/browser-provider-keys.test.ts",
     "test:api-endpoint": "node --import tsx tests/api-endpoint.test.ts",
     "test:provider-models": "node --import tsx tests/provider-models.test.ts",
+    "test:ocr": "node --import tsx tests/ocr.test.ts",
     "test:added-model-ui": "node --import tsx scripts/verify-added-models.ts",
     "test:provider-errors": "node --import tsx tests/provider-error.test.ts",
     "test:provider-error-ui": "node --import tsx scripts/verify-provider-errors.ts",

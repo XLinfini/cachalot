@@ -1,0 +1,18 @@
+[
+  {
+    "baseUrl": "https://open.bigmodel.cn",
+    "endpoint": "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
+  },
+  {
+    "baseUrl": "https://api.z.ai/api/paas/v4/",
+    "endpoint": "https://api.z.ai/api/paas/v4/layout_parsing"
+  },
+  {
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4/layout_parsing",
+    "endpoint": "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
+  },
+  {
+    "baseUrl": "http://localhost:8000/gateway/v4/chat/completions?tenant=demo#preview",
+    "endpoint": "http://localhost:8000/gateway/v4/layout_parsing?tenant=demo"
+  }
+]

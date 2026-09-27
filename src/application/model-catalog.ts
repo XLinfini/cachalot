@@ -1,6 +1,7 @@
 import type { ModelInfo, Provider, ProviderInput } from "../domain/records";
 import { addedModels, normalizeModels } from "../domain/provider-models";
 import { platform } from "../infrastructure/platform";
+import { GLM_OCR_MODEL } from "../domain/ocr";
 
 export const visionKey = (providerId: string, modelId: string) =>
   `vision:model:${providerId}:${encodeURIComponent(modelId)}`;
@@ -11,6 +12,8 @@ export async function supportsImages(
   provider: Provider,
   modelId = provider.modelId,
 ): Promise<boolean> {
+  if (addedModels(provider).some((m) => m.id === modelId && m.formulaOcr === "vision-llm"))
+    return true;
   const explicit = await platform.getSetting(visionKey(provider.id, modelId));
   if (explicit !== null && explicit !== "") return explicit === "true";
   const configured =
@@ -51,7 +54,15 @@ export async function saveConfiguredProvider(input: ProviderInput): Promise<Prov
   return { ...saved, addedModels: models };
 }
 
-export async function listModels(providerId: string): Promise<ModelInfo[]> {
+export async function listModels(
+  providerId: string,
+  protocol?: ModelInfo["formulaOcr"],
+): Promise<ModelInfo[]> {
   // Available models exist only in the settings drawer's temporary UI state.
+  if (protocol === undefined) {
+    const provider = (await listConfiguredProviders()).find((p) => p.id === providerId);
+    protocol = provider && addedModels(provider).find((m) => m.id === provider.modelId)?.formulaOcr;
+  }
+  if (protocol === "glm-layout") return [{ ...GLM_OCR_MODEL }];
   return platform.listModels(providerId);
 }

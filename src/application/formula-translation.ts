@@ -1,8 +1,10 @@
 import type { FormulaAsset, FormulaPreparationIssue, SelectedRegion } from "../domain/analysis";
-import type { Provider } from "../domain/records";
+import type { FormulaOcrProtocol, Provider } from "../domain/records";
 import { formulaSources } from "../infrastructure/pdf/formula-source";
 import { formulaRepository } from "../infrastructure/formula-repository";
 import { platform } from "../infrastructure/platform";
+import { getOcrSelection, selectedOcrModel } from "./ocr-settings";
+import { OCR_ADAPTER_VERSION, recognizeFormula } from "../infrastructure/ocr/formula-ocr";
 
 import { formulaMarker } from "./formula-references";
 import {
@@ -15,24 +17,53 @@ import {
 const candidateKey = (provider: Provider) =>
   `${TRANSCRIPTION_VERSION}:${provider.id}:${provider.modelId}`;
 
-/** Expensive formula transcription runs on demand, on the user's selected
- * image model. Results pass syntax and native character checks, but are not verified math. */
+/** Formula recognition runs on demand with the independently selected OCR
+ * service (or the legacy vision LLM). Checks do not prove mathematical correctness. */
 export async function prepareFormulas(
   selection: SelectedRegion,
   provider: Provider,
   vision: boolean,
 ): Promise<{ assets: FormulaAsset[]; glossary: string; issues: FormulaPreparationIssue[] }> {
   const records = await formulaSources(selection.formulas || []);
-  const key = candidateKey(provider);
+  let protocol: FormulaOcrProtocol = "vision-llm";
+  let legacy = true;
+  let cacheAllowed = true;
+  let recognitionDisabled = false;
+  let configurationError: string | null = null;
+  try {
+    const selected = await getOcrSelection();
+    if (selected) {
+      legacy = false;
+      if (selected === "off") {
+        vision = false;
+        cacheAllowed = false;
+        recognitionDisabled = true;
+      } else {
+        const resolved = await selectedOcrModel(selected);
+        provider = resolved.provider;
+        protocol = resolved.protocol;
+        vision = true;
+      }
+    }
+  } catch (error) {
+    legacy = false;
+    vision = false;
+    cacheAllowed = false;
+    configurationError = String(error);
+  }
+  const key =
+    protocol === "vision-llm"
+      ? candidateKey(provider)
+      : `${OCR_ADAPTER_VERSION}:${protocol}:${provider.id}:${provider.modelId}`;
   const issues: FormulaPreparationIssue[] = [];
   const acceptable = (formula: FormulaAsset["formula"], value: unknown): value is string =>
     validLatex(value) && preservesNativeCharacters(formula, value);
   const readingLatex = (record: (typeof records)[number]) =>
     validLatex(record.asset.formula.latex)
       ? record.asset.formula.latex
-      : acceptable(record.asset.formula, record.candidates[key])
+      : cacheAllowed && acceptable(record.asset.formula, record.candidates[key])
         ? record.candidates[key]
-        : !vision
+        : legacy && !vision
           ? Object.entries(record.candidates).find(
               ([cacheKey, value]) =>
                 cacheKey.startsWith(`${TRANSCRIPTION_VERSION}:`) &&
@@ -43,9 +74,28 @@ export async function prepareFormulas(
     (r) =>
       !r.asset.formula.partial &&
       !validLatex(r.asset.formula.latex) &&
-      !acceptable(r.asset.formula, r.candidates[key]),
+      (!cacheAllowed || !acceptable(r.asset.formula, r.candidates[key])),
   );
-  if (vision)
+  if (vision && protocol !== "vision-llm") {
+    for (let offset = 0; offset < unresolved.length; offset++) {
+      const record = unresolved[offset];
+      try {
+        const latex = await recognizeFormula(protocol, provider, record.asset);
+        if (!validLatex(latex)) issues.push({ formulaId: record.id, reason: "invalid" });
+        else if (!preservesNativeCharacters(record.asset.formula, latex))
+          issues.push({ formulaId: record.id, reason: "characters" });
+        else {
+          record.candidates[key] = latex;
+          await formulaRepository.put(record);
+        }
+      } catch (error) {
+        for (const pending of unresolved.slice(offset))
+          issues.push({ formulaId: pending.id, reason: "request", details: String(error) });
+        break; // One failed request stops this selection; never auto-retry.
+      }
+    }
+  }
+  if (vision && protocol === "vision-llm")
     for (let offset = 0; offset < unresolved.length; offset += 12) {
       const batch = unresolved.slice(offset, offset + 12);
       let output = "";
@@ -108,10 +158,14 @@ export async function prepareFormulas(
         if (!received) break; // Do not repeat a failed provider request for later batches.
       }
     }
-  if (!vision)
+  if (!vision && !recognitionDisabled)
     for (const record of unresolved)
       if (!readingLatex(record))
-        issues.push({ formulaId: record.id, reason: "vision-unavailable" });
+        issues.push({
+          formulaId: record.id,
+          reason: configurationError ? "request" : "vision-unavailable",
+          ...(configurationError ? { details: configurationError } : {}),
+        });
   const glossary = records
     .map((r) => {
       const formula = r.asset.formula;

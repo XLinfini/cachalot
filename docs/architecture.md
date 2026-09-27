@@ -130,14 +130,24 @@
 2. 页面分析在 `formula-analysis.ts` 中建立 `FormulaFragment`：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。保存来源文档、页码、区域、字形索引、行内/行间形式、基线和有效字号。简单单基线与上下标生成 `native-candidate`；分数等二维结构不根据字符顺序猜测。
 3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此已有页面缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
 4. `formula-source.ts` 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
-5. 用户框选并启动翻译后，`formula-translation.ts` 将未识别且完整选中的区域交给当前翻译模型单独转写（需要配置图像理解能力），然后才翻译正文，每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`formula-transcription.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
-6. JSON、唯一 ID、KaTeX 语法通过后，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
+5. 用户框选并启动翻译后，`formula-translation.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，再翻译正文。`ocr-settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`formula-transcription.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
+6. 多模态 LLM 的 JSON/唯一 ID 或专用 OCR 规范化结果通过后，校验 KaTeX 语法，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
 7. 翻译请求包含正文位置标记和 LaTeX 阅读候选。`formula-references.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
 8. `translateRegion` 经 `onPhase` 回传准备/翻译状态，`onPrepared` 回传这次翻译实际使用的候选与失败原因。翻译弹窗为三栏：PDF 图片、重建原文、译文。中栏与右栏显式使用 `MathMarkdown` 的 `latex-candidate` 显示方式，中栏可切换到 LaTeX 源文本；识别完成立即更新，不等待正文翻译结束，翻译失败后也能继续核对原文。取消旧的折叠“查看提取的文字”入口。
 
-公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；语义候选按 `transcribe-v2-native:<providerId>:<modelId>` 分开保存，只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。页面缓存保持 `rules3-formulas2` 与原生字形 `native-rules2-metrics`，本次不失效页面分析。修改公式定位或语义规则时还需更新对应页面/资产/转写缓存版本。
+公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；多模态 LLM 候选按 `transcribe-v2-native:<providerId>:<modelId>` 保存，专用 OCR 按 `formula-ocr-v1:<protocol>:<providerId>:<modelId>` 保存。显式 OCR 选择只使用该模型的候选，停用、删除或协议不匹配时报错；旧文字模型的候选兼容路径仅在未配置独立 OCR 时使用。只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。页面缓存保持 `rules3-formulas2` 与原生字形 `native-rules2-metrics`，本次不失效页面分析。修改公式定位或语义规则时还需更新对应页面/资产/转写缓存版本。
 
 边界：行内定位是保守规则，模型也可能漏检独立公式；公式区域的完整性仍需对照原页核对。原图/矢量来源能保证已定位区域的外观，不能证明 OCR LaTeX 的数学正确性。尚未安装 Docling CodeFormula 等额外本地权重，也未实现整篇译文 PDF 重排导出。接口和来源资产已为后续工作准备。
+
+### 远端 OCR 服务与模型管理
+
+`ModelInfo.formulaOcr` 是已添加模型的接口类型（`glm-layout` / `formula-chat` / `vision-llm`），与 `addedModels:<providerId>` 一起保存，不增加第二份模型目录或 SQL 表。`chatModels/ocrModels` 为两个菜单提供派生列表；专用 OCR 不进入翻译或问答默认模型。`OcrSettings.tsx` 复用分组 `ModelPicker`，独立选择立即持久化；未完成的新选择仍使用此前保存的方式。
+
+GLM 公有版面 API 为 `POST /api/paas/v4/layout_parsing`，JSON 包含 `model` 和 `file`（公式 PNG data URI），Bearer 鉴权。`domain/ocr.ts` 的端点解析与 Rust `glm_endpoint` 由同一组夹具约束，界面展示实际请求地址。`platform.glmOcr` / `ai::glm_ocr` 复用既有凭据存储，桌面不会为 OCR 向 JavaScript 暴露 keyring 密钥。HTTP 错误和 HTTP 200 的业务错误均保留脱敏正文和 request ID。120 秒超时，不自动重试；遇到请求失败后停止当前选区剩余 OCR 请求。
+
+`infrastructure/ocr/formula-ocr.ts` 按接口类型调用模型并返回单一 LaTeX 候选。GLM 先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。多模态 LLM 仍接收裁剪及字符坐标。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。
+
+GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或 Z.AI 地址 `https://api.z.ai/api/paas/v4`；固定模型列表只提供 `glm-ocr`，不调用 `/models`。检查连接发送一张应用生成的测试公式；浏览器预览要求服务商支持 CORS，桌面使用 Rust HTTP 客户端。兼容 Chat 传输的远端公式模型可复用另一个适配器，其他鉴权/私有协议需单独实现。
 
 ### 标题结构的翻译与重排
 

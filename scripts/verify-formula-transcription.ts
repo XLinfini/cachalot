@@ -47,6 +47,54 @@ try {
     gate.recognition.release();
     gate.translation.release();
     const requests: any[] = [];
+    const glmRequests: any[] = [];
+    let glmMode: "valid" | "network" | "wrong" = "valid";
+    const fixtureKey = "ocr-fixture-private-1234";
+    await page.route("**/api/paas/v4/layout_parsing", async (route) => {
+      const input = route.request().postDataJSON();
+      glmRequests.push(input);
+      assert.ok(input.file.startsWith("data:image/png;base64,"));
+      assert.equal(input.messages, undefined, "Dedicated OCR receives a crop, not a chat prompt");
+      assert.equal(route.request().headers().authorization, `Bearer ${fixtureKey}`);
+      if (glmMode === "network") {
+        await route.fulfill({
+          status: 503,
+          headers: { "x-request-id": "glm-fixture-503" },
+          json: { error: { message: `local OCR diagnostic ${fixtureKey}` } },
+        });
+        return;
+      }
+      const id = await page.evaluate(async (image) => {
+        const db = await new Promise<IDBDatabase>((resolve) => {
+          const r = indexedDB.open("cachalot-formulas", 1);
+          r.onsuccess = () => resolve(r.result);
+        });
+        const records = await new Promise<any[]>((resolve) => {
+          const tx = db.transaction("assets", "readonly"),
+            r = tx.objectStore("assets").getAll();
+          r.onsuccess = () => resolve(r.result);
+        });
+        db.close();
+        return records.find((r) => r.asset.imageDataUrl === image)?.id;
+      }, input.file);
+      const latex = id
+        ? switchingFormulas[id as keyof typeof switchingFormulas] || correct
+        : "x^2+1=0";
+      await route.fulfill({
+        json: {
+          model: input.model,
+          md_results: `$$${latex}$$`,
+          layout_details: [
+            [
+              {
+                label: "formula",
+                content: `$$${glmMode === "wrong" ? latex.replaceAll("I_{op}", "I_{0p}") : latex}$$`,
+              },
+            ],
+          ],
+        },
+      });
+    });
     const ocr = () => requests.filter((r) => String(r.messages[0].content).startsWith("仅转写"));
     await page.route("**/v1/chat/completions", async (route) => {
       const input = route.request().postDataJSON();
@@ -426,13 +474,231 @@ try {
         "partial selections do not use full-formula reconstruction",
       );
       await page.getByRole("button", { name: labels.translation.close }).click();
-      // Recognition persisted across an app reload; old analysis needed no rerun.
+      // Exercise the new settings and a dedicated OCR service while keeping a
+      // text-only translation model. All responses stay local fixtures.
+      await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      await page.locator('[data-ui="add-glm-ocr"]').click();
+      await expect(page.locator('[data-ui="ocr-endpoint"]')).toHaveText(
+        "https://open.bigmodel.cn/api/paas/v4/layout_parsing",
+      );
+      await page
+        .getByLabel(labels.settings.apiUrl, { exact: true })
+        .fill(`${new URL(page.url()).origin}/api/paas/v4`);
+      await page.locator('[data-ui="api-key-input"]').fill(fixtureKey);
+      await page.getByRole("button", { name: labels.settings.fetchModels, exact: true }).click();
+      await expect(page.locator('[data-ui="available-model"]')).toHaveCount(1);
+      await expect(page.locator('[data-ui="available-model"]')).toHaveAttribute(
+        "data-model-id",
+        "glm-ocr",
+      );
+      await page.getByRole("button", { name: labels.common.done, exact: true }).click();
+      await page.getByRole("button", { name: labels.settings.testConnection, exact: true }).click();
+      await expect(
+        page.getByText(labels.messages.connectionSucceeded, { exact: true }),
+      ).toBeVisible();
+      assert.equal(glmRequests.length, 1);
+      await page.getByRole("button", { name: labels.ocr.title, exact: true }).click();
+      await page.locator("#ocr-mode").selectOption("separate");
+      await page.getByRole("button", { name: labels.ocr.chooseModel, exact: true }).click();
+      await page
+        .locator('[data-ui="model-menu"]')
+        .getByRole("button", { name: "GLM-OCR", exact: true })
+        .click();
+      await page
+        .locator('[data-ui="model-menu"]')
+        .getByRole("button", { name: "glm-ocr", exact: true })
+        .click();
+      await expect(page.locator('[data-ui="selected-ocr-model"]')).toHaveText("GLM-OCR · glm-ocr");
+      await page.screenshot({
+        path: `test-results/formula-transcription/ocr-settings-${language}.png`,
+      });
+      const selectedOcr = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("cachalot:setting:formulaOcrModel")!),
+      );
+      await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+      await choose("fixture-text");
+      await page.getByRole("button", { name: labels.chat.chooseModel, exact: true }).click();
+      await expect(
+        page
+          .locator('[data-ui="model-menu"]')
+          .getByRole("button", { name: "GLM-OCR", exact: true }),
+      ).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await host.waitFor();
+      await page.getByTitle(labels.reader.page.replace("{{page}}", "2"), { exact: true }).click();
+      await page.waitForFunction(() => {
+        const y = document
+          .querySelector('[data-ui="pdf-page"][data-page="2"]')
+          ?.getBoundingClientRect().y;
+        return y !== undefined && y > 100 && y < 250;
+      });
+      await scroll.evaluate((node) => {
+        node.scrollTop += 400;
+      });
+      await expect.poll(async () => (await host.boundingBox())!.y).toBeLessThan(0);
+      const legacyRequests = ocr().length;
+      await selectSwitching();
+      await checkBoth();
+      assert.equal(glmRequests.length, 3, "Each of the two formulas is recognized separately");
+      assert.equal(
+        ocr().length,
+        legacyRequests,
+        "Explicit OCR selection bypasses the translation model's recognizer",
+      );
+      assert.equal(requests.at(-1).model, "fixture-text");
+      assert.ok(!JSON.stringify(requests.at(-1)).includes('"type":"image_url"'));
+      await page.screenshot({ path: `test-results/formula-transcription/glm-ocr-${language}.png` });
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(glmRequests.length, 3, "Successful GLM results are cached independently");
+      await checkBoth();
+      // A compatible gateway can expose different served model IDs. A switch
+      // must use its own candidates, and switching back must recover the cache.
+      await page.evaluate((choice) => {
+        const key = `cachalot:setting:addedModels:${choice.providerId}`;
+        const models = JSON.parse(localStorage.getItem(key)!);
+        localStorage.setItem(
+          key,
+          JSON.stringify([...models, { id: "glm-ocr-alias", formulaOcr: "glm-layout" }]),
+        );
+        localStorage.setItem(
+          "cachalot:setting:formulaOcrModel",
+          JSON.stringify({ ...choice, modelId: "glm-ocr-alias" }),
+        );
+      }, selectedOcr);
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(glmRequests.length, 5);
+      assert.equal(glmRequests.at(-1).model, "glm-ocr-alias");
+      await checkBoth();
+      await page.evaluate(
+        (choice) =>
+          localStorage.setItem("cachalot:setting:formulaOcrModel", JSON.stringify(choice)),
+        selectedOcr,
+      );
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(glmRequests.length, 5, "Switching back reuses the original model cache");
+      await checkBoth();
+      const clearGlm = () =>
+        page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((resolve) => {
+            const r = indexedDB.open("cachalot-formulas", 1);
+            r.onsuccess = () => resolve(r.result);
+          });
+          await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction("assets", "readwrite"),
+              store = tx.objectStore("assets"),
+              r = store.getAll();
+            r.onsuccess = () => {
+              for (const record of r.result) {
+                for (const key of Object.keys(record.candidates))
+                  if (key.startsWith("formula-ocr-v1:")) delete record.candidates[key];
+                store.put(record);
+              }
+            };
+            tx.oncomplete = () => resolve();
+            tx.onabort = () => reject(tx.error);
+          });
+          db.close();
+        });
+      await clearGlm();
+      glmMode = "network";
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(
+        glmRequests.length,
+        6,
+        "One failed request stops remaining OCR crops without retries",
+      );
+      await expect(resultImages).toHaveCount(2);
+      const diagnostic = page.locator('[data-ui="formula-preparation-warning"]');
+      await expect(diagnostic).toContainText("glm-fixture-503");
+      await expect(diagnostic).toContainText("local OCR diagnostic");
+      await expect(diagnostic).not.toContainText(fixtureKey);
+      glmMode = "wrong";
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      await expect(result.locator(".katex-display")).toHaveCount(0);
+      await expect(diagnostic).toContainText(labels.translation.formulaIssue.characters);
+      glmMode = "valid";
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      await checkBoth();
+      await page.evaluate(
+        (choice) =>
+          localStorage.setItem(
+            "cachalot:setting:formulaOcrModel",
+            JSON.stringify({ ...choice, modelId: "removed-model" }),
+          ),
+        selectedOcr,
+      );
+      const beforeRemoved = glmRequests.length;
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(glmRequests.length, beforeRemoved);
+      assert.equal(
+        ocr().length,
+        legacyRequests,
+        "Missing OCR models never fall back to another paid provider",
+      );
+      await expect(diagnostic).toContainText(labels.messages.configureOcr);
+      await page.getByRole("button", { name: labels.translation.close }).click();
+      await choose("fixture-vision");
+      await open();
+      await expect(resultImages).toHaveCount(2);
+      await expect(diagnostic).toContainText(labels.messages.configureOcr);
+      assert.equal(
+        ocr().length,
+        legacyRequests,
+        "Invalid explicit OCR cannot reuse legacy vision results or call that model",
+      );
+      await page.evaluate(() => localStorage.setItem("cachalot:setting:formulaOcrModel", "off"));
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      await expect(result.locator(".katex-display")).toHaveCount(0);
+      await expect(resultImages).toHaveCount(2);
+      await expect(diagnostic).toHaveCount(0);
+      assert.equal(glmRequests.length, beforeRemoved);
+      assert.equal(
+        ocr().length,
+        legacyRequests,
+        "Turning OCR off retains source images even when a vision model has cached candidates",
+      );
+      await page.evaluate(
+        (choice) =>
+          localStorage.setItem("cachalot:setting:formulaOcrModel", JSON.stringify(choice)),
+        selectedOcr,
+      );
+      await page.getByRole("button", { name: labels.translation.close }).click();
+      await choose("fixture-text");
+      // Both the independent OCR choice and its candidates survive reload.
       await page.reload();
       await page.locator('[data-ui="document-card"]').first().click();
       await page.locator('[data-ui="analysis-strip"][data-phase="ready"]').waitFor();
+      await host.waitFor();
+      await page.getByTitle(labels.reader.page.replace("{{page}}", "2"), { exact: true }).click();
+      await page.waitForFunction(() => {
+        const y = document
+          .querySelector('[data-ui="pdf-page"][data-page="2"]')
+          ?.getBoundingClientRect().y;
+        return y !== undefined && y > 100 && y < 250;
+      });
+      await scroll.evaluate((node) => {
+        node.scrollTop += 400;
+      });
+      await expect.poll(async () => (await host.boundingBox())!.y).toBeLessThan(0);
+      const afterReload = glmRequests.length;
+      await selectSwitching();
+      await checkBoth();
+      assert.equal(
+        glmRequests.length,
+        afterReload,
+        "OCR selection and recognition cache survive reload",
+      );
       assert.deepEqual(errors, []);
       console.log(
-        `${language}: native evidence, matching source/translation LaTeX, two equations, mixed/partial image fallback, cache reuse, character/JSON/503 rejection and text-model switch passed`,
+        `${language}: legacy evidence/LaTeX/fallback checks and GLM preset, independent OCR selection, crop transport, text translation, caching, diagnostics and invalid selection checks passed`,
       );
     } catch (error) {
       gate.recognition.release();

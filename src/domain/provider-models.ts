@@ -9,6 +9,9 @@ export function normalizeModels(value: unknown): ModelInfo[] {
     unique.set(id, {
       id,
       ...(typeof model.ownedBy === "string" ? { ownedBy: model.ownedBy } : {}),
+      ...(["glm-layout", "formula-chat", "vision-llm"].includes(model.formulaOcr)
+        ? { formulaOcr: model.formulaOcr }
+        : {}),
     });
   }
   return [...unique.values()];
@@ -26,3 +29,10 @@ export function addedModels(provider: Pick<Provider, "modelId" | "addedModels">)
 export function hasAddedModel(provider: Provider, modelId: string): boolean {
   return addedModels(provider).some((model) => model.id === modelId);
 }
+
+export const chatModels = (provider: Pick<Provider, "modelId" | "addedModels">) =>
+  addedModels(provider).filter((model) => !model.formulaOcr || model.formulaOcr === "vision-llm");
+export const ocrModels = (provider: Pick<Provider, "modelId" | "addedModels">) =>
+  addedModels(provider).filter((model) => !!model.formulaOcr);
+export const hasChatModel = (provider: Provider, modelId: string) =>
+  chatModels(provider).some((model) => model.id === modelId);

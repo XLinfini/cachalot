@@ -25,6 +25,8 @@
 
 ## PDF 和公式样式
 
+独立 OCR 设置页在 `OcrSettings.tsx`，通过 `services.ocr` 保存选择，复用 `ModelPicker` 的提供商分组和向上展开行为。`ProviderSettings.tsx` 负责 GLM 预设、每个已添加模型的接口类型及实际请求地址；接口类型不应由样式或模型名字推断。重设计时保留 `ocr-settings`、`selected-ocr-model`、`add-glm-ocr`、`model-ocr-profile`、`ocr-endpoint` 标记。OCR 菜单和聊天菜单共享已添加模型数据，但由不同用途筛选；不要让 OCR 设置改变聊天模型选择。
+
 `src/styles/pdf-text-layer.css` 是 PDF.js 自动生成的文字层所需的兼容样式。这里的绝对定位、字体变换和选择规则用于对齐 PDF 字形，单独保留并标注了原因。文字层的指针事件由阅读器的 Tailwind 类控制。
 
 连续阅读的滚动容器为 `data-ui="pdf-scroll"`，各页为 `data-ui="pdf-page" data-page="页码"`。页栈的 `gap-6` / `py-7` 分别对应 `pdf/page-layout.ts` 的 `PAGE_GAP=24` / `PAGE_PADDING=28`；修改页面间距时同步这两处，避免导航和缩放定位偏移。每页宽高由 PDF 实际尺寸与缩放计算，不要用固定 CSS 尺寸覆盖。
