@@ -25,7 +25,6 @@ export function LibrarySortMenu({
     <ActionMenu
       kind="sort"
       label={t("library.sort")}
-      triggerClassName="mb-[10px]"
       triggerIcon={<ChevronDown size={17} />}
       disabled={saving}
     >

@@ -446,27 +446,11 @@ export default function App() {
                       {busy ? t("library.importing") : t("library.import")}
                     </button>
                   </div>
-                  <div className="mt-[42px] flex items-center gap-[10px] border-b border-border">
-                    <div className="mr-auto flex items-stretch gap-[27px]">
-                      <button
-                        className={ui.tabButton}
-                        aria-pressed={filter === "all"}
-                        onClick={() => setFilter("all")}
-                      >
-                        {t("nav.all")}{" "}
-                        <span className="ml-1 rounded-[7px] bg-[#eaf1fb] px-[6px] py-[2px] text-[10px]">
-                          {documents.length}
-                        </span>
-                      </button>
-                      <button
-                        className={ui.tabButton}
-                        aria-pressed={filter === "recent"}
-                        onClick={() => setFilter("recent")}
-                      >
-                        {t("nav.recent")}
-                      </button>
-                    </div>
-                    <label className={cx(ui.searchBox, "mb-[9px] h-[34px] w-[220px]")}>
+                  <div
+                    data-ui="library-search"
+                    className="mt-[42px] flex items-center justify-center gap-[10px]"
+                  >
+                    <label className={cx(ui.searchBox, "h-[36px] w-[420px] min-w-0")}>
                       <Search size={17} />
                       <input
                         className={ui.searchInput}

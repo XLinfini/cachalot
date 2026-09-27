@@ -31,8 +31,6 @@ export const ui = {
     "w-full border-0 bg-transparent text-[11px] text-[#263f5b] outline-none placeholder:text-[#a7b4c5]",
   navButton:
     "flex h-[38px] w-full items-center gap-3 rounded-lg border-0 bg-transparent px-[13px] text-left text-[12px] text-[#687d98] hover:bg-[#e4edfa] hover:font-bold hover:text-[#2062bd] aria-pressed:bg-[#e4edfa] aria-pressed:font-bold aria-pressed:text-[#2062bd]",
-  tabButton:
-    "border-0 border-b-2 border-transparent bg-transparent pb-[15px] text-[12px] whitespace-nowrap text-[#8a9bb0] aria-pressed:border-[#2d6ec8] aria-pressed:font-bold aria-pressed:text-[#2768c5]",
   toolbarButton:
     "flex items-center gap-[5px] rounded-[6px] border-0 bg-transparent p-[7px] text-[10px] text-[#71849c] hover:bg-brand-soft hover:text-[#2868be] aria-pressed:bg-brand-soft aria-pressed:text-[#2868be] max-compact:gap-0 max-compact:text-[0px] max-compact:[&>svg]:w-4",
   settingsNavButton:
