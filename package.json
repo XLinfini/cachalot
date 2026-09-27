@@ -27,6 +27,8 @@
     "test:reader-navigation": "node --import tsx scripts/verify-reader-navigation.ts",
     "test:categories": "node --import tsx tests/categories.test.ts",
     "test:category-ui": "node --import tsx scripts/verify-categories.ts",
+    "test:library-sort": "node --import tsx tests/library-sort.test.ts",
+    "test:library-sort-ui": "node --import tsx scripts/verify-library-sort.ts",
     "format": "prettier --write src/App.tsx src/components src/styles src/i18n src/main.tsx vite.config.ts",
     "format:check": "prettier --check src/App.tsx src/components src/styles src/i18n src/main.tsx vite.config.ts",
     "preview": "vite preview",

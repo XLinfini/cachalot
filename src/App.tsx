@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bookmark,
   BookOpen,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FilePlus2,
@@ -21,6 +20,14 @@ import PdfReader from "./components/PdfReader";
 import { LibraryDocumentCard } from "./components/LibraryDocumentCard";
 import { CategorySidebar } from "./components/CategorySidebar";
 import type { LibraryFilter } from "./domain/categories";
+import {
+  DEFAULT_LIBRARY_SORT,
+  LIBRARY_SORT_SETTING,
+  parseLibrarySort,
+  sortDocuments,
+  type LibrarySort,
+} from "./domain/library-sort";
+import { LibrarySortMenu } from "./components/LibrarySortMenu";
 import { CreateCategoryDialog, MoveCategoryDialog } from "./components/CategoryDialogs";
 import ChatPanel from "./components/ChatPanel";
 import ProviderSettings from "./components/ProviderSettings";
@@ -29,6 +36,7 @@ import logo from "../assets/brand/cachalot-icon.png";
 import { cx, ui } from "./components/ui/styles";
 import { useTranslation } from "react-i18next";
 import { localizeMessage } from "./i18n/messages";
+import { dateLocale } from "./i18n";
 import { hasAddedModel } from "./domain/provider-models";
 
 type View = "library" | "reader" | "settings";
@@ -51,6 +59,8 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<LibrarySort>(DEFAULT_LIBRARY_SORT);
+  const [savingSort, setSavingSort] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(true);
   const [selection, setSelection] = useState<SelectedRegion | null>(null);
@@ -99,8 +109,9 @@ export default function App() {
       services.settings.get("activeProviderId"),
       services.settings.get("activeModel"),
       services.categories.list(),
+      services.settings.get(LIBRARY_SORT_SETTING),
     ])
-      .then(([docs, modelProviders, providerId, model, savedCategories]) => {
+      .then(([docs, modelProviders, providerId, model, savedCategories, savedSort]) => {
         let restored: { providerId: string; modelId: string } | null = null;
         try {
           const value = JSON.parse(model || "null");
@@ -121,6 +132,7 @@ export default function App() {
         setActiveModel(restored);
         setDocuments(docs);
         setCategories(savedCategories);
+        setSort(parseLibrarySort(savedSort));
         setProviders(modelProviders);
         setActiveProviderId(
           restored?.providerId ||
@@ -242,6 +254,18 @@ export default function App() {
     setSelection(null);
     setTranslationOpen(false);
   };
+  const changeSort = async (next: LibrarySort) => {
+    if (savingSort) return;
+    setSavingSort(true);
+    try {
+      await services.settings.set(LIBRARY_SORT_SETTING, next);
+      setSort(next);
+    } catch (cause) {
+      setNotice(String(cause));
+    } finally {
+      setSavingSort(false);
+    }
+  };
   const createCategory = async (name: string) => {
     const saved = await services.categories.create(name);
     setCategories(await services.categories.list());
@@ -280,16 +304,18 @@ export default function App() {
         );
 
   // All papers deliberately ignores both category membership and favorites.
-  const visible = documents
-    .filter(
+  const visible = sortDocuments(
+    documents.filter(
       (document) =>
         (filter !== "starred" || document.starred) &&
         (filter !== "uncategorized" || !document.categoryId) &&
         (typeof filter !== "object" || document.categoryId === filter.categoryId) &&
         (filter !== "recent" || Date.now() / 1000 - document.updatedAt < 30 * 24 * 3600) &&
         `${document.title} ${document.fileName}`.toLowerCase().includes(query.toLowerCase()),
-    )
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    ),
+    sort,
+    dateLocale(),
+  );
 
   return (
     <div
@@ -449,12 +475,11 @@ export default function App() {
                         placeholder={t("library.search")}
                       />
                     </label>
-                    <button
-                      className={cx(ui.iconButton, "mb-[10px]")}
-                      title={t("library.sortRecent")}
-                    >
-                      <ChevronDown size={17} />
-                    </button>
+                    <LibrarySortMenu
+                      value={sort}
+                      saving={savingSort}
+                      onChange={(next) => void changeSort(next)}
+                    />
                   </div>
                   {visible.length ? (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(235px,1fr))] gap-[22px] pt-[26px]">

@@ -12,11 +12,15 @@ export function ActionMenu({
   label,
   kind,
   triggerClassName,
+  triggerIcon,
+  disabled,
   children,
 }: {
   label: string;
-  kind: "document" | "category";
+  kind: "document" | "category" | "sort";
   triggerClassName?: string;
+  triggerIcon?: ReactNode;
+  disabled?: boolean;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -39,7 +43,9 @@ export function ActionMenu({
           : Math.max(8, anchor.top - bounds.height - 6),
       left: Math.max(8, Math.min(anchor.right - bounds.width, innerWidth - bounds.width - 8)),
     });
-    menu.current.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    menu.current
+      .querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -69,6 +75,8 @@ export function ActionMenu({
         data-ui={`${kind}-actions`}
         className={cx(ui.iconButton, triggerClassName, open && "opacity-100")}
         aria-label={label}
+        title={label}
+        disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(event) => {
@@ -82,7 +90,7 @@ export function ActionMenu({
           }
         }}
       >
-        <MoreVertical size={18} />
+        {triggerIcon || <MoreVertical size={18} />}
       </button>
       {open &&
         createPortal(
@@ -97,7 +105,8 @@ export function ActionMenu({
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               const items = Array.from(
-                menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [],
+                menu.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not(:disabled)') ||
+                  [],
               );
               const index = items.indexOf(window.document.activeElement as HTMLElement);
               if (event.key === "Escape" || event.key === "Tab") {

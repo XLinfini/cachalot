@@ -28,6 +28,12 @@
 
 `CategorySidebar`、`LibraryDocumentCard` 和 `CategoryDialogs` 负责展示和事件；弹窗和三点菜单分别使用 `ui/Modal` 与 `ui/ActionMenu`。菜单通过 portal 避免卡片、滚动侧栏裁切，支持键盘和点击外部关闭。界面重构时保留服务契约即可。分类存储测试：`npm run test:categories`；原生迁移及删除保全测试：`cd src-tauri && cargo test --lib categories`；中英文完整交互：先运行 `test:paper`，启动预览后运行 `npm run test:category-ui -- /absolute/path/reference.pdf`。
 
+## 文献排序
+
+`domain/library-sort.ts` 定义名称及导入时间的升序/降序比较，默认按首次导入时间由新到旧。导入时间使用 `createdAt`，与阅读活动的 `updatedAt` 分开；名称使用当前 UI locale 的 `Intl.Collator`，支持数字自然排序。同值用名称和文献 ID 确定顺序，排序不修改存储记录。搜索和分类先过滤，再使用相同排序偏好。
+
+`LibrarySortMenu` 是受控菜单；App 通过 `services.settings` 保存 `librarySort` 后更新界面，浏览器与桌面沿用各自现有设置存储。非法或缺失偏好回退到默认。菜单复用 `ActionMenu` 的定位、关闭及键盘交互，选择项使用 `menuitemradio`。验证：`npm run test:library-sort`；启动预览后运行 `npm run test:library-sort-ui`，覆盖中英文、四种顺序、刷新恢复、分类和搜索。
+
 ## API 密钥显示与编辑
 
 设置中的 `ApiKeyField.tsx` 将密钥显示和编辑草稿分开：`services.providers.keyPreview` 只返回前缀与末四位遮罩，点击眼睛才通过 `revealKey` 读取完整密钥；切换提供商、保存或退出设置都会恢复隐藏。只有实际输入才更新 `ProviderInput.apiKey`，留空保存保留现有密钥。桌面适配器从系统密钥库读取；浏览器适配器 `browser-provider-keys.ts` 使用 AES-GCM 加密后写入 IndexedDB，同时保存不可导出的 Web Crypto 密钥，不向 localStorage 写入原始凭据。浏览器存储属于当前 origin，同源脚本仍可使用加密密钥；它不具备系统密钥库的隔离能力。
