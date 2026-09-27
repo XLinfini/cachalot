@@ -1,0 +1,44 @@
+[
+  {
+    "body": "{\"error\":{\"message\":\"No available channel for model fixture-model in group fixture-group\",\"type\":\"new_api_error\",\"code\":\"model_not_found\"}}",
+    "headers": { "x-request-id": "fixture-request-503" },
+    "contains": ["No available channel", "fixture-group", "model_not_found", "fixture-request-503"]
+  },
+  {
+    "body": "Upstream unavailable\nRetry later.\nAuthorization: Bearer fake-token-for-test",
+    "headers": {},
+    "contains": ["Upstream unavailable\nRetry later.", "Bearer [redacted]"],
+    "excludes": ["fake-token-for-test"]
+  },
+  {
+    "body": "<html><title>503 Service Unavailable</title><script>example()</script></html>",
+    "headers": { "cf-ray": "fixture-ray" },
+    "contains": ["503 Service Unavailable", "<script>example()</script>", "fixture-ray"]
+  },
+  {
+    "body": "{\"error\":{\"message\":\"Rejected key sk-fixture-only-abcd\",\"api_key\":\"opaque-credential\",\"token\":\"another-credential\",\"authorization\":\"Bearer fake-bearer\"}}",
+    "headers": {},
+    "secret": "sk-fixture-only-abcd",
+    "contains": [
+      "Rejected key [redacted]",
+      "\"api_key\": \"[redacted]\"",
+      "\"token\": \"[redacted]\""
+    ],
+    "excludes": ["sk-fixture-only-abcd", "opaque-credential", "another-credential", "fake-bearer"]
+  },
+  {
+    "body": "bad credential: arbitrary-private-value; image data:image/png;base64,QUJDRA==",
+    "headers": { "x-request-id": "arbitrary-private-value" },
+    "secret": "arbitrary-private-value",
+    "contains": ["bad credential: [redacted]", "[image data]"],
+    "excludes": ["arbitrary-private-value", "QUJDRA=="]
+  },
+  {
+    "body": "Request rejected",
+    "headers": { "x-request-id": "arbitrary-private-value" },
+    "secret": "arbitrary-private-value",
+    "contains": ["request_id: [redacted]"],
+    "excludes": ["arbitrary-private-value"]
+  },
+  { "body": "", "headers": {}, "contains": [] }
+]

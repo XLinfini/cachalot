@@ -1,0 +1,7 @@
+Use case: stylized-concept
+Asset type: replaceable wallpaper behind a liquid-glass desktop app window for Cachalot, an academic PDF translation tool.
+Primary request: a quiet, elegant, landscape wallpaper of a calm sea at dawn, designed to remain attractive when heavily blurred behind translucent glass.
+Composition: wide 16:9, low horizon, large soft color fields, slight atmospheric clouds and gentle surface reflections; no focal object in the center.
+Style: premium editorial photography with subtle painterly softness, not an illustration of an app.
+Color palette: muted deep ocean blue, slate teal, pale pearl, warm ivory, a restrained copper glow near the horizon.
+Constraints: no people, no whales, no ships, no coastline landmarks, no text, no UI, no logos, no watermark. Keep natural light and a smooth, understated gradient of color.

@@ -1,0 +1,37 @@
+[
+  {
+    "baseUrl": "https://infai.cc",
+    "models": "https://infai.cc/v1/models",
+    "chat": "https://infai.cc/v1/chat/completions"
+  },
+  {
+    "baseUrl": " https://infai.cc/ ",
+    "models": "https://infai.cc/v1/models",
+    "chat": "https://infai.cc/v1/chat/completions"
+  },
+  {
+    "baseUrl": "https://infai.cc/v1///",
+    "models": "https://infai.cc/v1/models",
+    "chat": "https://infai.cc/v1/chat/completions"
+  },
+  {
+    "baseUrl": "https://infai.cc/v1/chat/completions/",
+    "models": "https://infai.cc/v1/models",
+    "chat": "https://infai.cc/v1/chat/completions"
+  },
+  {
+    "baseUrl": "https://infai.cc/v1/models",
+    "models": "https://infai.cc/v1/models",
+    "chat": "https://infai.cc/v1/chat/completions"
+  },
+  {
+    "baseUrl": "http://127.0.0.1:3434/gateway/openai/v2/chat/completions?api-version=2025-01-01#ignored",
+    "models": "http://127.0.0.1:3434/gateway/openai/v2/models?api-version=2025-01-01",
+    "chat": "http://127.0.0.1:3434/gateway/openai/v2/chat/completions?api-version=2025-01-01"
+  },
+  {
+    "baseUrl": "https://example.com/custom%20gateway/v1",
+    "models": "https://example.com/custom%20gateway/v1/models",
+    "chat": "https://example.com/custom%20gateway/v1/chat/completions"
+  }
+]
