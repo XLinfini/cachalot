@@ -139,6 +139,12 @@
 
 边界：行内定位是保守规则，模型也可能漏检独立公式；公式区域的完整性仍需对照原页核对。原图/矢量来源能保证已定位区域的外观，不能证明 OCR LaTeX 的数学正确性。尚未安装 Docling CodeFormula 等额外本地权重，也未实现整篇译文 PDF 重排导出。接口和来源资产已为后续工作准备。
 
+### 标题结构的翻译与重排
+
+`select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`heading-translation.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
+
+Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h1；重叠的 title/heading 预测优先保留标题语义（示例论文存在空 title 与有文字的 heading 重合）。章节标题默认 h2，数字编号深度和罗马章节下的字母小节推为更深层级；未来解析器可通过 `ContentBlock.headingLevel` 直接提供层级。无法判断的标题保留为 h2，识别错误或不常见的编号体系仍可能需要人工核对。依据来自完整原始块，不依赖翻译后的文字或裁剪后的编号。多行标题合并为一个标题；只选中半个标题仍按标题格式显示实际选中的文字，不补回未选中内容。标题结构从已有页面缓存派生，无需重新分析论文。
+
 ## 新界面接入示例
 
 ```ts
@@ -163,6 +169,7 @@ session.dispose();
 ```bash
 npm run test:analysis
 npm run test:formulas
+npm run test:headings
 npm run test:formula-transcription
 npm run test:formula-transcription-ui -- /absolute/path/reference.pdf
 npm run test:formula-sources -- /absolute/path/reference.pdf

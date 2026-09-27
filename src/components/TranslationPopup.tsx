@@ -9,6 +9,7 @@ import type {
   TranslationPhase,
 } from "../domain/analysis";
 import { FORMULA_PATTERN, formulaClipboard } from "../application/formula-references";
+import { previewTranslatedHeadings, sourceMarkdown } from "../application/heading-translation";
 import MathMarkdown from "./MathMarkdown";
 import { ui } from "./ui/styles";
 import { useTranslation } from "react-i18next";
@@ -113,7 +114,8 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
         height: 0,
         scale: 1,
       }));
-  const sourceText = formulaClipboard(selection.text, sourceFormulas).replace(
+  const reconstructedSource = sourceMarkdown(selection);
+  const sourceText = formulaClipboard(reconstructedSource, sourceFormulas).replace(
     FORMULA_PATTERN,
     () => `[${t("translation.originalFormula")}]`,
   );
@@ -190,7 +192,7 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
                 formulaRendering="latex-candidate"
                 className="text-[12px] leading-[1.85] text-[#415b78]"
               >
-                {selection.text || t("translation.noExtractedText")}
+                {reconstructedSource || t("translation.noExtractedText")}
               </MathMarkdown>
             )}
             {!!issues.length && (
@@ -237,7 +239,7 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
             )}
             {translation && (
               <MathMarkdown formulas={formulas} className="text-[12px] leading-[1.85]">
-                {translation}
+                {previewTranslatedHeadings(translation, selection.blocks)}
               </MathMarkdown>
             )}
             {error && (

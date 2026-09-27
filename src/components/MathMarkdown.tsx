@@ -34,7 +34,7 @@ export default function MathMarkdown({
     <div
       data-ui="math-markdown"
       className={cx(
-        "[overflow-wrap:anywhere] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:py-[5px] [&_:is(h1,h2,h3)]:mt-3 [&_:is(h1,h2,h3)]:mb-[7px] [&_:is(h1,h2,h3)]:text-[1.12em] [&_:is(ul,ol)]:my-[1em] [&_:is(ul,ol)]:pl-[22px] [&_ol]:list-decimal [&_p]:mb-[10px] [&_p:last-child]:mb-0 [&_pre]:overflow-auto [&_pre]:rounded-[6px] [&_pre]:bg-[#f4f7fa] [&_pre]:p-[10px] [&_ul]:list-disc",
+        "[overflow-wrap:anywhere] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:py-[5px] [&_:is(h1,h2,h3,h4,h5,h6)]:mt-[1em] [&_:is(h1,h2,h3,h4,h5,h6)]:mb-[.55em] [&_:is(h1,h2,h3,h4,h5,h6)]:leading-[1.4] [&_:is(h1,h2,h3,h4,h5,h6)]:font-bold [&_:is(ul,ol)]:my-[1em] [&_:is(ul,ol)]:pl-[22px] [&_h1]:text-[1.6em] [&_h2]:text-[1.35em] [&_h3]:text-[1.18em] [&_h4]:text-[1.08em] [&_h5]:text-[1em] [&_h6]:text-[1em] [&_ol]:list-decimal [&_p]:mb-[10px] [&_p:last-child]:mb-0 [&_pre]:overflow-auto [&_pre]:rounded-[6px] [&_pre]:bg-[#f4f7fa] [&_pre]:p-[10px] [&_ul]:list-disc",
         className,
       )}
     >

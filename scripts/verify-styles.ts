@@ -9,6 +9,7 @@ import { zh } from "../src/i18n/locales/zh";
 import { verifyContinuousReader } from "./verify-continuous-reader";
 import { verifyModelComposer } from "./verify-model-composer";
 import { verifyFormulas } from "./verify-formulas";
+import { fixtureTranslation } from "./fixtures/translation";
 
 const paper = process.argv[2];
 if (!paper) throw new Error("用法：npm run test:styles -- /absolute/path/reference.pdf");
@@ -66,7 +67,9 @@ try {
                   latex: "C\\approx\\frac{0.2\\cdot I_{op}}{2\\pi\\cdot f_o\\cdot V_{op}}",
                 })),
             )
-          : `这是用于检查样式的译文。\n\n$$V = I R$$\n\n- 保留公式\n- 核对原文${markers.length ? `\n\n${markers.join("\n\n")}` : ""}`;
+          : text.includes("[[heading:")
+            ? fixtureTranslation(text)
+            : `这是用于检查样式的译文。\n\n$$V = I R$$\n\n- 保留公式\n- 核对原文${markers.length ? `\n\n${markers.join("\n\n")}` : ""}`;
         return route.fulfill({
           contentType: "text/event-stream",
           body: `data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`,

@@ -1,12 +1,13 @@
-import type { Box, FormulaFragment, PageAnalysis } from "../domain/analysis";
+import type { Box, FormulaFragment, PageAnalysis, SelectedTextBlock } from "../domain/analysis";
 import { area, characterText, containsCenter, intersection } from "../domain/geometry";
+import { selectedHeadingLevel } from "./heading-translation";
 
 /** A glyph is selected when its centre lies in the rectangle. No text-run expansion. */
 export function selectRegion(
   page: PageAnalysis,
   box: Box,
   selectedGlyphs?: Set<number>,
-): { text: string; blockIds: string[]; formulas: FormulaFragment[] } {
+): { text: string; blockIds: string[]; formulas: FormulaFragment[]; blocks: SelectedTextBlock[] } {
   const selected =
     selectedGlyphs ||
     new Set(
@@ -57,11 +58,21 @@ export function selectRegion(
           }
         : evidence;
     });
-  const chunks = page.readingOrder.flatMap((id) => {
+  const chunks = page.readingOrder.flatMap<SelectedTextBlock>((id) => {
     const block = byId.get(id);
     if (!block || ["figure", "table", "header", "footer"].includes(block.kind)) return [];
     const own = formulas.filter((f) => f.blockId === id);
-    if (block.kind === "formula") return own.map((f) => `[[formula:${f.id}]]`);
+    if (block.kind === "formula")
+      return own.length
+        ? [
+            {
+              id,
+              kind: block.kind,
+              text: own.map((f) => `[[formula:${f.id}]]`).join("\n\n"),
+              partial: own.some((f) => f.partial),
+            },
+          ]
+        : [];
     const indices = new Set(
       block.characterIndices.filter((index) => selected.has(index) && !retained.has(index)),
     );
@@ -80,7 +91,22 @@ export function selectRegion(
       remaining = new Set([...remaining].filter((index) => index > last));
     }
     text += characterText(page.characters, remaining);
-    return text ? [text] : [];
+    return text
+      ? [
+          {
+            id,
+            kind: block.kind,
+            text,
+            headingLevel: selectedHeadingLevel(block, page),
+            partial: block.characterIndices.some((index) => !selected.has(index)),
+          },
+        ]
+      : [];
   });
-  return { text: chunks.join("\n\n"), blockIds: blocks.map((b) => b.id), formulas };
+  return {
+    text: chunks.map((block) => block.text).join("\n\n"),
+    blockIds: blocks.map((b) => b.id),
+    formulas,
+    blocks: chunks,
+  };
 }

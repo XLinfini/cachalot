@@ -63,6 +63,19 @@ export interface ContentBlock extends LayoutDetection {
   captionId?: string;
   /** Nested panel inside a larger figure; render the outer region only once. */
   parentId?: string;
+  /** Optional explicit level from future layout engines; current Heron only
+   * labels title/heading, so selection derives conservative numbering levels. */
+  headingLevel?: HeadingLevel;
+}
+
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export interface SelectedTextBlock {
+  id: string;
+  kind: BlockKind;
+  text: string;
+  headingLevel?: HeadingLevel;
+  /** Formatting survives partial selection; unselected text never does. */
+  partial: boolean;
 }
 
 export interface PageAnalysis {
@@ -143,6 +156,7 @@ export interface SelectedRegion {
   text: string;
   imageDataUrl: string;
   blockIds: string[];
+  blocks?: SelectedTextBlock[];
   formulas?: FormulaFragment[];
 }
 

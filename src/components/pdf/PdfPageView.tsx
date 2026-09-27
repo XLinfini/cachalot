@@ -320,7 +320,10 @@ export function PdfPageView({
           page: number,
           ...normalized,
           ...result,
-          text: result.formulas.length ? result.text : text,
+          text:
+            result.formulas.length || result.blocks.some((block) => block.headingLevel)
+              ? result.text
+              : text,
           imageDataUrl,
         });
       })

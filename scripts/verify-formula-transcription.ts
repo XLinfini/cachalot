@@ -8,6 +8,8 @@ import { ANALYSIS_CACHE_KEY } from "../src/domain/model";
 import { TRANSCRIPTION_VERSION } from "../src/application/formula-transcription";
 import { zh } from "../src/i18n/locales/zh";
 import { en } from "../src/i18n/locales/en";
+import { fixtureTranslation } from "./fixtures/translation";
+import { verifyHeadings } from "./verify-headings";
 
 const paper = process.argv[2];
 if (!paper)
@@ -77,9 +79,7 @@ try {
         await gate.translation.promise;
         const text =
           typeof content === "string" ? content : content.find((p: any) => p.type === "text").text;
-        const markers =
-          text.split("\n\n公式阅读辅助")[0].match(/\[\[formula:[a-zA-Z0-9-]+\]\]/g) || [];
-        answer = `Fixture translation.\n\n${markers.join("\n\n")}`;
+        answer = fixtureTranslation(text);
       }
       await route.fulfill({
         contentType: "text/event-stream",
@@ -328,6 +328,10 @@ try {
       assert.ok(!JSON.stringify(requests.at(-1)).includes('"type":"image_url"'));
       await page.locator('[data-ui="translation-source-format"]').click();
       await expect(raw).toContainText(correct);
+      await page.getByRole("button", { name: labels.translation.close }).click();
+      const headingOutput = `test-results/formula-transcription/headings-${language}`;
+      await mkdir(headingOutput, { recursive: true });
+      await verifyHeadings(page, labels, headingOutput);
       // Recognition persisted across an app reload; old analysis needed no rerun.
       await page.reload();
       await page.locator('[data-ui="document-card"]').first().click();

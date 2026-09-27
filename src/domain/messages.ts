@@ -60,6 +60,7 @@ export const MESSAGE_CODES = [
   "imageFileTooLarge",
   "formulaSourceFailed",
   "formulaReferencesChanged",
+  "headingReferencesChanged",
 ] as const;
 export type MessageCode = (typeof MESSAGE_CODES)[number];
 export type MessageValues = Record<string, string | number>;

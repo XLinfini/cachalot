@@ -35,6 +35,8 @@ KaTeX 使用其自带样式；`MathMarkdown.tsx` 用 Tailwind 的后代选择器
 
 翻译弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，允许以 `latex-candidate` 渲染，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
 
+重建原文与译文的标题来自选区块结构，而不是依靠模型自己选择 Markdown 层级。`MathMarkdown` 为 h1–h6 统一设置粗体、行距和上下间距，并逐级缩小字号。后续更换 UI 时，应保持这些 HTML 标题的语义，不将标题统一改为普通段落。浏览器验证还覆盖示例论文重叠检测的主标题、章节/字母小节、部分选中的标题，以及模型漏掉标题边界时的提示。
+
 ## 格式化与验证
 
 ```bash

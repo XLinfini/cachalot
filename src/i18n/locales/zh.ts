@@ -265,6 +265,7 @@ export const zh = {
   messages: {
     formulaSourceFailed: "无法保留原始公式区域。",
     formulaReferencesChanged: "译文改动或遗漏了公式位置，请重试以完整保留原始公式。",
+    headingReferencesChanged: "译文改动或遗漏了标题结构，请重试以保留原文的标题层级。",
     imageUnsupported: "无法给不支持图像理解的模型上传图片",
     imageFileInvalid: "请选择 PNG、JPEG、WebP 或 GIF 图片。",
     imageFileTooLarge: "每张图片不能超过 10 MB。",

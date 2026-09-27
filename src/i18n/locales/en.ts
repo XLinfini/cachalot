@@ -276,6 +276,8 @@ export const en = {
     formulaSourceFailed: "Could not preserve the original equation region.",
     formulaReferencesChanged:
       "The translation changed or omitted equation positions. Retry to preserve every original equation.",
+    headingReferencesChanged:
+      "The translation changed or omitted heading structure. Retry to preserve the source heading levels.",
     imageUnsupported: "Cannot upload images to a model that does not support image understanding",
     imageFileInvalid: "Choose a PNG, JPEG, WebP or GIF image.",
     imageFileTooLarge: "Each image must be 10 MB or smaller.",

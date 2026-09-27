@@ -11,6 +11,11 @@ import { DEFAULT_TRANSLATION_PROMPT } from "./prompts";
 import { supportsImages } from "./model-catalog";
 import { prepareFormulas } from "./formula-translation";
 import { finishTranslation, FORMULA_TRANSLATION_POLICY } from "./formula-references";
+import {
+  finishTranslatedHeadings,
+  HEADING_TRANSLATION_POLICY,
+  markedTranslationSource,
+} from "./heading-translation";
 
 export function relevantPages(
   question: string,
@@ -60,12 +65,10 @@ export async function askPaper(
       modelId: provider.modelId,
       messages: [
         { role: "system", content: context },
-        ...history
-          .slice(-12)
-          .map((message) => ({
-            role: message.role,
-            content: conversationContent(message, vision),
-          })),
+        ...history.slice(-12).map((message) => ({
+          role: message.role,
+          content: conversationContent(message, vision),
+        })),
       ],
     },
     (delta) => {
@@ -96,7 +99,8 @@ export async function translateRegion(
   const { assets, glossary, issues } = await prepareFormulas(selection, provider, vision);
   callbacks.onPrepared?.({ formulas: assets, issues });
   callbacks.onPhase?.("translating");
-  const text = `${selection.text}${glossary ? `\n\n公式阅读辅助（不属于待翻译正文）：\n${glossary}` : ""}`;
+  const source = markedTranslationSource(selection);
+  const text = `${source}${glossary ? `\n\n公式阅读辅助（不属于待翻译正文）：\n${glossary}` : ""}`;
   const content: unknown = vision
     ? [
         {
@@ -112,7 +116,10 @@ export async function translateRegion(
       providerId: provider.id,
       modelId: provider.modelId,
       messages: [
-        { role: "system", content: `${prompt}\n\n${FORMULA_TRANSLATION_POLICY}` },
+        {
+          role: "system",
+          content: `${prompt}\n\n${FORMULA_TRANSLATION_POLICY}\n\n${HEADING_TRANSLATION_POLICY}`,
+        },
         { role: "user", content },
       ],
     },
@@ -122,7 +129,7 @@ export async function translateRegion(
     },
   );
   if (!answer.trim()) throw new Error(message("emptyResponse"));
-  return finishTranslation(selection.text, answer, assets);
+  return finishTranslation(selection.text, finishTranslatedHeadings(selection, answer), assets);
 }
 
 /** Preserve user images in vision requests; historical images are omitted when
