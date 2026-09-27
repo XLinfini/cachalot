@@ -62,8 +62,8 @@ try {
               user
                 .filter((part: { type: string }) => part.type === "text")
                 .map((part: { text: string }) => ({
-                  id: part.text.slice(4),
-                  latex: "\\frac{0.2 I_{op}}{2\\pi f_o V_{op}}",
+                  id: JSON.parse(part.text).id,
+                  latex: "C\\approx\\frac{0.2\\cdot I_{op}}{2\\pi\\cdot f_o\\cdot V_{op}}",
                 })),
             )
           : `这是用于检查样式的译文。\n\n$$V = I R$$\n\n- 保留公式\n- 核对原文${markers.length ? `\n\n${markers.join("\n\n")}` : ""}`;

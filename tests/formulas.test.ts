@@ -62,6 +62,15 @@ test("italic prose does not become a formula; partial formula selection never co
   assert.equal(selected.formulas[0].partial, true);
   assert.equal(selected.formulas[0].latex, null);
   assert.deepEqual(selected.formulas[0].characterIndices, [0]);
+  assert.deepEqual(
+    selected.formulas[0].characters?.map((c) => c.index),
+    [0],
+  );
+  assert.equal(
+    selected.formulas[0].nativeText,
+    "I",
+    "clipped evidence cannot contain an unselected suffix",
+  );
   assert.ok(selected.formulas[0].box[2] <= 0.109);
 });
 

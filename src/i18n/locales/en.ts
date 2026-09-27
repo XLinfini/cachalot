@@ -178,7 +178,21 @@ export const en = {
     close: "Close translation",
     source: "Original selection",
     imageAlt: "Selected region on page {{page}} of the paper",
-    extracted: "Show extracted text",
+    reconstructedSource: "Reconstructed source",
+    noExtractedText: "No body text was extracted. Refer to the image on the left.",
+    showRenderedSource: "Show rendered source",
+    preparing: "Preparing source and recognizing complex equations…",
+    latexSource: "Show source text with LaTeX",
+    formulaFallback:
+      "{{count}} equation(s) could not be reconstructed; original images are retained.",
+    formulaIssue: {
+      request: "The equation recognition request failed.",
+      invalid: "The model did not return usable LaTeX.",
+      characters:
+        "The reconstruction lost or changed letters or digits from the PDF and was discarded.",
+      "vision-unavailable":
+        "The current model cannot read images and no reusable recognition result is available.",
+    },
     result: "Translation",
     noModel: "No model configured",
     running: "Translating the selection…",

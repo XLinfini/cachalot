@@ -137,8 +137,8 @@ export async function verifyContinuousReader(
   });
   await page.mouse.up();
   await page.getByRole("button", { name: labels.reader.translate }).click();
-  await page.locator('[data-ui="translation-source"] details summary').click();
-  const selected = await page.locator('[data-ui="translation-source"] details p').innerText();
+  await page.locator('[data-ui="translation-source-format"]').click();
+  const selected = await page.locator('[data-ui="translation-source-text"]').innerText();
   const expected = selectRegion(second, box).text;
   assert.ok(selected.length > 30 && selected.length < body.text.length);
   // Browser pointer coordinates round to pixels; compare the stable text prefix.

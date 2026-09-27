@@ -128,12 +128,14 @@
 
 1. PDFium 提取字形 Unicode、原始字号、字体、字形原点及文字矩阵。`emSize` 包含文字矩阵缩放，不能只使用 PDF 声明的字号（示例论文中常为 1）。基线转换到与版面相同的显示页坐标。
 2. 页面分析在 `formula-analysis.ts` 中建立 `FormulaFragment`：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。保存来源文档、页码、区域、字形索引、行内/行间形式、基线和有效字号。简单单基线与上下标生成 `native-candidate`；分数等二维结构不根据字符顺序猜测。
-3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
+3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此已有页面缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
 4. `formula-source.ts` 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
-5. `formula-translation.ts` 将未识别且完整选中的区域交给当前图像模型单独转写，每批最多 12 个。固定 prompt 要求不求解、不简化、不改写作者符号；结果通过 JSON、ID 和 KaTeX 语法检查后仍为 `model-candidate`，未做语义认证。文字模型可以复用已有候选，图片载荷不会随之发送；识别失败或无图像模型时仍保留原始公式。
-6. 翻译请求包含正文位置标记和 LaTeX 阅读候选。`formula-references.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；`MathMarkdown.tsx` 在原位置显示来源 PNG，并按原基线对齐行内公式。后续 PDF 导出应调用矢量裁剪接口，不使用 OCR 重排公式字形。
+5. 用户框选并启动翻译后，`formula-translation.ts` 将未识别且完整选中的区域交给当前翻译模型单独转写（需要配置图像理解能力），然后才翻译正文，每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`formula-transcription.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
+6. JSON、唯一 ID、KaTeX 语法通过后，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
+7. 翻译请求包含正文位置标记和 LaTeX 阅读候选。`formula-references.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；`MathMarkdown.tsx` 在译文中按原位置显示来源 PNG，并按原基线对齐行内公式。后续 PDF 导出应调用矢量裁剪接口，不使用 OCR 重排公式字形。
+8. `translateRegion` 经 `onPhase` 回传准备/翻译状态，`onPrepared` 回传这次翻译实际使用的候选与失败原因。翻译弹窗为三栏：PDF 图片、重建原文、译文。中栏独立使用 `MathMarkdown` 的 `latex-candidate` 显示方式，并可切换到 LaTeX 源文本；识别完成立即更新，不等待正文翻译结束，翻译失败后也能继续核对原文。未识别/部分选中的公式显示原图。取消旧的折叠“查看提取的文字”入口。
 
-公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；语义候选按 `transcribe-v1:<providerId>:<modelId>` 分开保存。页面缓存已升级 `rules3-formulas2` 与原生字形 `native-rules2-metrics`，旧缓存需重新分析一次。修改公式定位或语义规则时还需更新页面/资产/转写缓存版本。
+公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；语义候选按 `transcribe-v2-native:<providerId>:<modelId>` 分开保存，只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。页面缓存保持 `rules3-formulas2` 与原生字形 `native-rules2-metrics`，本次不失效页面分析。修改公式定位或语义规则时还需更新对应页面/资产/转写缓存版本。
 
 边界：行内定位是保守规则，模型也可能漏检独立公式；公式区域的完整性仍需对照原页核对。原图/矢量来源能保证已定位区域的外观，不能证明 OCR LaTeX 的数学正确性。尚未安装 Docling CodeFormula 等额外本地权重，也未实现整篇译文 PDF 重排导出。接口和来源资产已为后续工作准备。
 
@@ -161,6 +163,8 @@ session.dispose();
 ```bash
 npm run test:analysis
 npm run test:formulas
+npm run test:formula-transcription
+npm run test:formula-transcription-ui -- /absolute/path/reference.pdf
 npm run test:formula-sources -- /absolute/path/reference.pdf
 npm run test:reader
 npm run test:paper -- /absolute/path/reference.pdf

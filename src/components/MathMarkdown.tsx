@@ -11,17 +11,23 @@ export default function MathMarkdown({
   children,
   className,
   formulas = [],
+  formulaRendering = "original",
 }: {
   children: string;
   className?: string;
   formulas?: FormulaAsset[];
+  /** LaTeX candidates are displayed only in the source review, where the PDF
+   * screenshot is available for comparison. Translation retains source crops. */
+  formulaRendering?: "original" | "latex-candidate";
 }) {
   const { t } = useTranslation();
-  const source = children.replace(FORMULA_PATTERN, (marker, id: string) =>
-    formulas.some((asset) => asset.formula.id === id)
-      ? `![formula](cachalot-formula:${id})`
-      : marker,
-  );
+  const source = children.replace(FORMULA_PATTERN, (marker, id: string) => {
+    const formula = formulas.find((asset) => asset.formula.id === id)?.formula;
+    if (!formula) return marker;
+    if (formulaRendering === "latex-candidate" && formula.latex && !formula.partial)
+      return formula.mode === "display" ? `\n\n$$\n${formula.latex}\n$$\n\n` : `$${formula.latex}$`;
+    return `![formula](cachalot-formula:${id})`;
+  });
   // Markdown/KaTeX generate descendants, so typography is scoped here using
   // Tailwind descendant variants instead of global tag selectors.
   return (
@@ -42,6 +48,8 @@ export default function MathMarkdown({
           img: ({ src, alt }) => {
             const asset = formulas.find((a) => src === `cachalot-formula:${a.formula.id}`);
             if (!asset) return <img src={src} alt={alt || ""} />;
+            if (!asset.imageDataUrl)
+              return <span className="text-muted">[{t("translation.originalFormula")}]</span>;
             const formula = asset.formula,
               emSize = formula.emSize || 10;
             const baselineOffset =

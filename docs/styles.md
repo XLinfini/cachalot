@@ -33,6 +33,8 @@ KaTeX 使用其自带样式；`MathMarkdown.tsx` 用 Tailwind 的后代选择器
 
 翻译结果中的 `data-ui="preserved-formula"` 使用无损 PNG 来源，行内公式的 `width` 与 `verticalAlign` 根据原有效字号和基线计算。不要将来源公式替换成 OCR LaTeX 的 KaTeX 输出，也不要用固定高度拉伸公式。行间公式限制最大宽度、保持比例，后续 PDF 导出使用独立的矢量裁剪服务。
 
+翻译弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，允许以 `latex-candidate` 渲染，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
+
 ## 格式化与验证
 
 ```bash

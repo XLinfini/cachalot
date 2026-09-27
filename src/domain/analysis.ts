@@ -5,7 +5,20 @@
  * Keep this module independent of React, Tauri and inference libraries.
  */
 export type Box = [number, number, number, number];
-export type BlockKind = "paragraph" | "title" | "heading" | "caption" | "figure" | "table" | "formula" | "footnote" | "header" | "footer" | "list" | "code" | "other";
+export type BlockKind =
+  | "paragraph"
+  | "title"
+  | "heading"
+  | "caption"
+  | "figure"
+  | "table"
+  | "formula"
+  | "footnote"
+  | "header"
+  | "footer"
+  | "list"
+  | "code"
+  | "other";
 
 export interface PdfCharacter {
   index: number;
@@ -82,6 +95,9 @@ export interface FormulaFragment {
   blockId: string;
   characterIndices: number[];
   nativeText: string;
+  /** Hydrated from the cached page when selecting, including older page caches.
+   * Unicode identifies glyphs; geometry supplies evidence for 2D reconstruction. */
+  characters?: PdfCharacter[];
   latex: string | null;
   recognition: "native-candidate" | "model-candidate" | "unrecognized";
   baseline?: number;
@@ -102,6 +118,18 @@ export interface TranslationResult {
   /** Stable formula references survive model translation and later reflow. */
   markdown: string;
   formulas: FormulaAsset[];
+}
+
+export type TranslationPhase = "preparing" | "translating";
+export interface FormulaPreparationIssue {
+  formulaId: string;
+  reason: "request" | "invalid" | "characters" | "vision-unavailable";
+  /** Transport errors are already credential-redacted by the platform adapter. */
+  details?: string;
+}
+export interface PreparedTranslationSource {
+  formulas: FormulaAsset[];
+  issues: FormulaPreparationIssue[];
 }
 
 /** UI-neutral selection DTO. Image is a temporary preview, not a cached PDF. */

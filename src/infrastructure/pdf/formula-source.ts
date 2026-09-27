@@ -12,7 +12,14 @@ let queue: Promise<unknown> = Promise.resolve();
  * canonical; these PNGs are only for browser layout and recognition input. */
 export function formulaSources(formulas: FormulaFragment[]): Promise<FormulaRecord[]> {
   const work = queue.then(async () => {
-    const records = await Promise.all(formulas.map((f) => formulaRepository.get(f)));
+    const records = await Promise.all(
+      formulas.map(async (f) => {
+        const cached = await formulaRepository.get(f);
+        // Reuse image bytes/candidates, but never let an old asset erase fresh
+        // selection evidence or restore characters outside a clipped selection.
+        return cached ? { ...cached, asset: { ...cached.asset, formula: f } } : null;
+      }),
+    );
     const missing = formulas.filter((_, i) => !records[i]);
     if (!missing.length) return records as FormulaRecord[];
     const task = pdfjs.getDocument({ data: await platform.loadPdf(missing[0].documentId) });

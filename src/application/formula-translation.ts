@@ -1,56 +1,55 @@
-import katex from "katex";
-import type { FormulaAsset, SelectedRegion } from "../domain/analysis";
+import type { FormulaAsset, FormulaPreparationIssue, SelectedRegion } from "../domain/analysis";
 import type { Provider } from "../domain/records";
 import { formulaSources } from "../infrastructure/pdf/formula-source";
 import { formulaRepository } from "../infrastructure/formula-repository";
 import { platform } from "../infrastructure/platform";
 
 import { formulaMarker } from "./formula-references";
-const candidateKey = (provider: Provider) => `transcribe-v1:${provider.id}:${provider.modelId}`;
-
-function validLatex(value: unknown): value is string {
-  if (
-    typeof value !== "string" ||
-    !value.trim() ||
-    value.length > 12000 ||
-    /\\(?:href|url|includegraphics|html|def|newcommand|require)\b/.test(value)
-  )
-    return false;
-  try {
-    katex.renderToString(value, { throwOnError: true, trust: false, strict: "error" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import {
+  FORMULA_TRANSCRIPTION_PROMPT,
+  TRANSCRIPTION_VERSION,
+  formulaEvidence,
+  preservesNativeCharacters,
+  validLatex,
+} from "./formula-transcription";
+const candidateKey = (provider: Provider) =>
+  `${TRANSCRIPTION_VERSION}:${provider.id}:${provider.modelId}`;
 
 /** Expensive formula transcription runs on demand, on the user's selected
- * image model. Results are only syntax-checked candidates, not verified math. */
+ * image model. Results pass syntax and native character checks, but are not verified math. */
 export async function prepareFormulas(
   selection: SelectedRegion,
   provider: Provider,
   vision: boolean,
-): Promise<{ assets: FormulaAsset[]; glossary: string }> {
+): Promise<{ assets: FormulaAsset[]; glossary: string; issues: FormulaPreparationIssue[] }> {
   const records = await formulaSources(selection.formulas || []);
   const key = candidateKey(provider);
+  const issues: FormulaPreparationIssue[] = [];
+  const acceptable = (formula: FormulaAsset["formula"], value: unknown): value is string =>
+    validLatex(value) && preservesNativeCharacters(formula, value);
   const readingLatex = (record: (typeof records)[number]) =>
     validLatex(record.asset.formula.latex)
       ? record.asset.formula.latex
-      : validLatex(record.candidates[key])
+      : acceptable(record.asset.formula, record.candidates[key])
         ? record.candidates[key]
         : !vision
-          ? Object.values(record.candidates).find(validLatex) || null
+          ? Object.entries(record.candidates).find(
+              ([cacheKey, value]) =>
+                cacheKey.startsWith(`${TRANSCRIPTION_VERSION}:`) &&
+                acceptable(record.asset.formula, value),
+            )?.[1] || null
           : null;
   const unresolved = records.filter(
     (r) =>
       !r.asset.formula.partial &&
       !validLatex(r.asset.formula.latex) &&
-      !validLatex(r.candidates[key]),
+      !acceptable(r.asset.formula, r.candidates[key]),
   );
   if (vision)
     for (let offset = 0; offset < unresolved.length; offset += 12) {
       const batch = unresolved.slice(offset, offset + 12);
       let output = "";
+      let received = false;
       try {
         await platform.complete(
           {
@@ -60,13 +59,12 @@ export async function prepareFormulas(
             messages: [
               {
                 role: "system",
-                content:
-                  "仅转写图片中的数学公式为 LaTeX，不翻译、不求解、不化简、不纠正作者。保留所有上下标、分数、括号、积分界限及原有函数写法；忽略右侧独立的公式编号。无法确定时 latex 为 null。返回纯 JSON 数组，每项只有 id 和 latex，latex 不带美元符号。不要根据邻近文字猜测符号。",
+                content: FORMULA_TRANSCRIPTION_PROMPT,
               },
               {
                 role: "user",
                 content: batch.flatMap((r) => [
-                  { type: "text", text: `id: ${r.id}` },
+                  { type: "text", text: JSON.stringify(formulaEvidence(r.asset.formula)) },
                   { type: "image_url", image_url: { url: r.asset.imageDataUrl } },
                 ]),
               },
@@ -76,25 +74,44 @@ export async function prepareFormulas(
             output += delta;
           },
         );
+        received = true;
         const values: unknown = JSON.parse(
           output
             .trim()
             .replace(/^```(?:json)?\s*/i, "")
             .replace(/\s*```$/, ""),
         );
-        if (Array.isArray(values))
-          for (const record of batch) {
-            const entries = values.filter((item) => item?.id === record.id);
-            if (entries.length === 1 && validLatex(entries[0].latex)) {
-              record.candidates[key] = entries[0].latex;
-              await formulaRepository.put(record);
-            }
+        for (const record of batch) {
+          const entries = Array.isArray(values)
+            ? values.filter((item) => item?.id === record.id)
+            : [];
+          const latex: unknown = entries.length === 1 ? entries[0].latex : null;
+          if (!validLatex(latex)) {
+            issues.push({ formulaId: record.id, reason: "invalid" });
+          } else if (!preservesNativeCharacters(record.asset.formula, latex)) {
+            issues.push({ formulaId: record.id, reason: "characters" });
+          } else {
+            record.candidates[key] = latex;
+            await formulaRepository.put(record);
           }
-      } catch {
-        // Source formulas remain usable even if OCR/network/syntax fails.
-        // Failed recognition is not cached, so a later request can retry.
+        }
+      } catch (error) {
+        // Failed candidates never enter the cache. Retain source assets and
+        // report failure instead of silently hiding the provider's diagnostic.
+        for (const record of received ? batch : unresolved.slice(offset))
+          if (!acceptable(record.asset.formula, record.candidates[key]))
+            issues.push({
+              formulaId: record.id,
+              reason: received ? "invalid" : "request",
+              ...(received ? {} : { details: String(error) }),
+            });
+        if (!received) break; // Do not repeat a failed provider request for later batches.
       }
     }
+  if (!vision)
+    for (const record of unresolved)
+      if (!readingLatex(record))
+        issues.push({ formulaId: record.id, reason: "vision-unavailable" });
   const glossary = records
     .map((r) => {
       const formula = r.asset.formula;
@@ -110,5 +127,6 @@ export async function prepareFormulas(
         : r.asset;
     }),
     glossary,
+    issues,
   };
 }

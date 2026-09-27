@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, Languages, RefreshCw, X } from "lucide-react";
+import { Check, Code2, Copy, Eye, Languages, RefreshCw, X } from "lucide-react";
 import { services } from "../application/services";
 import type { Provider } from "../domain/records";
-import type { FormulaAsset, SelectedRegion } from "../domain/analysis";
-import { formulaClipboard } from "../application/formula-references";
+import type {
+  FormulaAsset,
+  FormulaPreparationIssue,
+  SelectedRegion,
+  TranslationPhase,
+} from "../domain/analysis";
+import { FORMULA_PATTERN, formulaClipboard } from "../application/formula-references";
 import MathMarkdown from "./MathMarkdown";
 import { ui } from "./ui/styles";
 import { useTranslation } from "react-i18next";
@@ -23,7 +28,10 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [formulas, setFormulas] = useState<FormulaAsset[]>([]);
+  const [showSourceLatex, setShowSourceLatex] = useState(false);
   const [validated, setValidated] = useState(false);
+  const [phase, setPhase] = useState<TranslationPhase>("preparing");
+  const [issues, setIssues] = useState<FormulaPreparationIssue[]>([]);
   const generation = useRef(0);
   const automaticRun = useRef<{
     selection: SelectedRegion;
@@ -34,13 +42,16 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
   const translate = async () => {
     const request = ++generation.current;
     setValidated(false);
+    setTranslation("");
+    setFormulas([]);
+    setIssues([]);
+    setPhase("preparing");
     if (!provider?.modelId) {
+      setRunning(false);
       setError(message("configureTranslation"));
       return;
     }
     setError("");
-    setTranslation("");
-    setFormulas([]);
     setRunning(true);
     try {
       const result = await services.assistant.translateRegion(
@@ -49,8 +60,16 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
         (delta) => {
           if (request === generation.current) setTranslation((text) => text + delta);
         },
-        (sources) => {
-          if (request === generation.current) setFormulas(sources);
+        {
+          onPrepared: (source) => {
+            if (request === generation.current) {
+              setFormulas(source.formulas);
+              setIssues(source.issues);
+            }
+          },
+          onPhase: (next) => {
+            if (request === generation.current) setPhase(next);
+          },
         },
       );
       if (request === generation.current) {
@@ -83,6 +102,22 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
     void translate();
   }, [selection, provider?.id, provider?.modelId]);
 
+  // Before preparation finishes, native candidates can already be inspected.
+  // Afterwards use the same assets/candidates the translation request received.
+  const sourceFormulas = formulas.length
+    ? formulas
+    : (selection.formulas || []).map((formula) => ({
+        formula,
+        imageDataUrl: "",
+        width: 0,
+        height: 0,
+        scale: 1,
+      }));
+  const sourceText = formulaClipboard(selection.text, sourceFormulas).replace(
+    FORMULA_PATTERN,
+    () => `[${t("translation.originalFormula")}]`,
+  );
+
   return (
     <div
       className="fixed inset-0 z-20 flex items-center justify-center bg-[#1c2b42]/45 p-6"
@@ -90,7 +125,7 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
     >
       <section
         data-ui="translation-popup"
-        className="flex max-h-[min(82vh,780px)] w-full max-w-[800px] flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_25px_60px_#0e254858]"
+        className="flex max-h-[90vh] w-full max-w-[1440px] flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_25px_60px_#0e254858]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex items-center gap-[11px] border-b border-[#e9eef5] px-[22px] py-[17px]">
@@ -107,10 +142,10 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
             <X size={20} />
           </button>
         </header>
-        <div className="grid min-h-0 grid-cols-2 overflow-auto">
+        <div className="grid min-h-0 grid-cols-[1fr_1.05fr_1.05fr] overflow-hidden">
           <div
             data-ui="translation-source"
-            className="overflow-auto border-r border-[#e8edf4] bg-[#f8fafd] px-[21px] py-[19px]"
+            className="min-w-0 overflow-auto border-r border-[#e8edf4] bg-[#f8fafd] px-[21px] py-[19px]"
           >
             <div className="mb-4 flex justify-between gap-3 text-[11px] font-bold text-[#617b9b]">
               {t("translation.source")}
@@ -120,22 +155,62 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
               src={selection.imageDataUrl}
               alt={t("translation.imageAlt", { page: selection.page })}
             />
-            {selection.text && (
-              <details className="mt-[14px] text-[10px] text-[#7389a3]">
-                <summary>{t("translation.extracted")}</summary>
-                <p className="leading-[1.6] whitespace-pre-wrap">
-                  {formulaClipboard(
-                    selection.text,
-                    (selection.formulas || []).map((formula) => ({
-                      formula,
-                      imageDataUrl: "",
-                      width: 0,
-                      height: 0,
-                      scale: 1,
-                    })),
-                  )}
-                </p>
-              </details>
+          </div>
+          <div
+            data-ui="translation-reconstructed-source"
+            className="min-w-0 overflow-auto border-r border-[#e8edf4] px-[21px] py-[19px]"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3 text-[11px] font-bold text-[#617b9b]">
+              {t("translation.reconstructedSource")}
+              <button
+                data-ui="translation-source-format"
+                className={ui.iconButton}
+                aria-label={t(
+                  showSourceLatex ? "translation.showRenderedSource" : "translation.latexSource",
+                )}
+                title={t(
+                  showSourceLatex ? "translation.showRenderedSource" : "translation.latexSource",
+                )}
+                aria-pressed={showSourceLatex}
+                onClick={() => setShowSourceLatex((value) => !value)}
+              >
+                {showSourceLatex ? <Eye size={16} /> : <Code2 size={16} />}
+              </button>
+            </div>
+            {showSourceLatex ? (
+              <p
+                data-ui="translation-source-text"
+                className="font-mono text-[12px] leading-[1.85] [overflow-wrap:anywhere] whitespace-pre-wrap"
+              >
+                {sourceText}
+              </p>
+            ) : (
+              <MathMarkdown
+                formulas={sourceFormulas}
+                formulaRendering="latex-candidate"
+                className="text-[12px] leading-[1.85] text-[#415b78]"
+              >
+                {selection.text || t("translation.noExtractedText")}
+              </MathMarkdown>
+            )}
+            {!!issues.length && (
+              <div
+                data-ui="formula-preparation-warning"
+                role="status"
+                className="mt-3 rounded-button bg-[#fff7eb] p-3 text-[10px] leading-[1.6] text-[#946216]"
+              >
+                <p>{t("translation.formulaFallback", { count: issues.length })}</p>
+                {[...new Set(issues.map((issue) => issue.reason))].map((reason) => (
+                  <p key={reason}>{t(`translation.formulaIssue.${reason}`)}</p>
+                ))}
+                {[
+                  ...new Set(issues.flatMap((issue) => (issue.details ? [issue.details] : []))),
+                ].map((details) => (
+                  <p key={details} className="mt-2 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                    {localizeMessage(details)}
+                  </p>
+                ))}
+              </div>
             )}
             {!!selection.formulas?.length && (
               <p className="mt-3 text-[10px] text-[#617b9b]">
@@ -143,14 +218,23 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
               </p>
             )}
           </div>
-          <div data-ui="translation-result" className="overflow-auto px-[21px] py-[19px]">
+          <div data-ui="translation-result" className="min-w-0 overflow-auto px-[21px] py-[19px]">
             <div className="mb-4 flex justify-between gap-3 text-[11px] font-bold text-[#617b9b]">
               {t("translation.result")}{" "}
               <span className="text-[10px] font-normal text-[#a0afbf]">
                 {provider ? `${provider.name} · ${provider.modelId}` : t("translation.noModel")}
               </span>
             </div>
-            {running && !translation && <p className="text-muted">{t("translation.running")}</p>}
+            {running && !translation && (
+              <p
+                data-ui="translation-progress"
+                data-phase={phase}
+                role="status"
+                className="text-muted"
+              >
+                {t(phase === "preparing" ? "translation.preparing" : "translation.running")}
+              </p>
+            )}
             {translation && (
               <MathMarkdown formulas={formulas} className="text-[12px] leading-[1.85]">
                 {translation}

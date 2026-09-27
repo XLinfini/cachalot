@@ -62,8 +62,8 @@ try {
   await page.mouse.move(bounds.x + right * bounds.width, bounds.y + body.box[3] * bounds.height, { steps: 8 });
   await page.mouse.up();
   await page.getByRole("button", { name: "翻译选区" }).click();
-  await page.locator('[data-ui="translation-source"] details summary').click();
-  const selected = await page.locator('[data-ui="translation-source"] details p').innerText();
+  await page.locator('[data-ui="translation-source-format"]').click();
+  const selected = await page.locator('[data-ui="translation-source-text"]').innerText();
   assert.ok(selected.length > 0 && selected.length < body.text.length, "partial rectangle must not expand to the full paragraph");
   await page.getByRole("button", { name: "关闭翻译" }).click();
 

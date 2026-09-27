@@ -11,6 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "test:analysis": "node --import tsx tests/analysis.test.ts",
     "test:formulas": "node --import tsx tests/formulas.test.ts",
+    "test:formula-transcription": "node --import tsx tests/formula-transcription.test.ts",
+    "test:formula-transcription-ui": "node --import tsx scripts/verify-formula-transcription.ts",
     "test:formula-sources": "node --import tsx scripts/verify-formula-sources.ts",
     "test:paper": "node --import tsx scripts/inspect-paper.ts",
     "test:browser": "node --import tsx scripts/verify-browser.ts",
