@@ -24,6 +24,7 @@
     "test:provider-errors": "node --import tsx tests/provider-error.test.ts",
     "test:provider-error-ui": "node --import tsx scripts/verify-provider-errors.ts",
     "test:reader": "node --import tsx tests/page-layout.test.ts",
+    "test:reader-navigation": "node --import tsx scripts/verify-reader-navigation.ts",
     "format": "prettier --write src/App.tsx src/components src/styles src/i18n src/main.tsx vite.config.ts",
     "format:check": "prettier --check src/App.tsx src/components src/styles src/i18n src/main.tsx vite.config.ts",
     "preview": "vite preview",

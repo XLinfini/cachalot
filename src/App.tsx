@@ -572,8 +572,10 @@ export default function App() {
                   </button>
                 </header>
                 <div className="flex min-h-0 min-w-0 flex-1">
+                  {/* Sibling keys include the panel type so React can remove both
+                      panels when returning to the library or switching documents. */}
                   <PdfReader
-                    key={activeDocument.id}
+                    key={`reader:${activeDocument.id}`}
                     document={activeDocument}
                     page={page}
                     onPageChange={changePage}
@@ -587,7 +589,7 @@ export default function App() {
                   />
                   {chatOpen && (
                     <ChatPanel
-                      key={activeDocument.id}
+                      key={`chat:${activeDocument.id}`}
                       providers={providers}
                       vision={vision}
                       onSelectModel={chooseModel}
