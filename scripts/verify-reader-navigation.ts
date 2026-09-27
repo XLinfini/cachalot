@@ -94,6 +94,32 @@ try {
       const all = page
         .locator('[data-ui="app-nav"]')
         .getByRole("button", { name: labels.nav.all, exact: true });
+      // Page entry navigates the continuous reader without filtering previews.
+      await card.click();
+      await expect(firstPage).toHaveAttribute("data-rendered", "true", { timeout: 30_000 });
+      const entry = page.getByRole("textbox", { name: labels.reader.jumpToPage, exact: true });
+      const previews = page.locator('[data-ui="page-thumbnail"]');
+      await expect(previews.locator("span")).toHaveText(["1", "2", "3", "4", "5", "6", "7"]);
+      for (const value of ["0", "8", "2.5"]) {
+        await entry.fill(value);
+        await entry.press("Enter");
+        await expect(entry).toHaveAttribute("aria-invalid", "true");
+        await expect(previews).toHaveCount(7);
+      }
+      await entry.fill("07");
+      await entry.press("Enter");
+      await expect(previews.filter({ hasText: /^7$/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator('[data-ui="pdf-page"][data-page="7"]')).toHaveAttribute(
+        "data-rendered",
+        "true",
+        { timeout: 30_000 },
+      );
+      await expect(entry).toHaveValue("7");
+      await expect(previews).toHaveCount(7);
+      await entry.fill("1");
+      await page.getByRole("button", { name: labels.reader.jumpSubmit, exact: true }).click();
+      await expect(firstPage).toHaveAttribute("data-rendered", "true", { timeout: 30_000 });
+      await back.click();
       for (const entry of ["header", "sidebar", "zoom", "loading"] as const) {
         await card.click();
         await expect(back).toBeVisible();

@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
   Columns2,
   Layers3,
-  Search,
+  ArrowRight,
   ScanLine,
   TextCursor,
   ZoomIn,
@@ -112,6 +112,8 @@ function Thumbnail({
   return (
     <button
       ref={hostRef}
+      data-ui="page-thumbnail"
+      data-page={number}
       aria-pressed={active}
       className="flex w-full items-center gap-3 rounded-[7px] border border-transparent bg-transparent p-[7px] text-left text-[10px] text-[#8797aa] hover:border-[#dce9f8] hover:bg-brand-soft hover:text-[#2467c2] aria-pressed:border-[#dce9f8] aria-pressed:bg-brand-soft aria-pressed:text-[#2467c2]"
       onClick={onClick}
@@ -121,7 +123,7 @@ function Thumbnail({
         className="max-h-[60px] w-[42px] border border-[#e6ebf1] bg-white object-contain shadow-[0_2px_5px_#00000012]"
         ref={canvasRef}
       />
-      <span>{String(number).padStart(2, "0")}</span>
+      <span>{number}</span>
     </button>
   );
 }
@@ -146,6 +148,8 @@ export default function PdfReader({
   const [mode, setMode] = useState<"region" | "text">("region");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [invalidPage, setInvalidPage] = useState(false);
+  const pageErrorId = useId();
   const [showLayout, setShowLayout] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [sizes, setSizes] = useState<PageSize[]>([]);
@@ -344,28 +348,65 @@ export default function PdfReader({
               <Columns2 size={16} />
             </button>
           </div>
-          <label className={cx(ui.searchBox, "h-[30px]")}>
-            <Search size={16} />
+          <form
+            className={cx(ui.searchBox, "h-[32px] pr-[3px]")}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const target = Number(query.trim());
+              if (
+                !/^\d+$/.test(query.trim()) ||
+                !Number.isInteger(target) ||
+                target < 1 ||
+                target > (pdf?.numPages || document.pageCount)
+              ) {
+                setInvalidPage(true);
+                return;
+              }
+              jumpToPage(target);
+              setQuery(String(target));
+              setInvalidPage(false);
+            }}
+          >
             <input
               className={ui.searchInput}
+              inputMode="numeric"
+              aria-label={t("reader.jumpToPage")}
+              aria-invalid={invalidPage}
+              aria-describedby={invalidPage ? pageErrorId : undefined}
+              disabled={!positions.length}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("reader.searchPages")}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setInvalidPage(false);
+              }}
+              placeholder={t("reader.jumpToPage")}
             />
-          </label>
+            <button
+              type="submit"
+              aria-label={t("reader.jumpSubmit")}
+              title={t("reader.jumpSubmit")}
+              disabled={!positions.length || !query.trim()}
+              className="grid size-[24px] flex-none place-items-center rounded-md border-0 bg-transparent text-[#69809e] hover:bg-brand-soft hover:text-brand disabled:opacity-40"
+            >
+              <ArrowRight size={15} />
+            </button>
+          </form>
+          {invalidPage && (
+            <p id={pageErrorId} role="alert" className="mt-2 text-[10px] text-danger">
+              {t("reader.invalidPage", { count: pdf?.numPages || document.pageCount })}
+            </p>
+          )}
           <div className="flex-1 overflow-y-auto px-[3px] py-5">
             <div className={cx(ui.eyebrow, "mb-[11px]")}>{t("reader.previews")}</div>
-            {visibleThumbnails
-              .filter((number) => !query || String(number).includes(query))
-              .map((number) => (
-                <Thumbnail
-                  key={number}
-                  pdf={pdf!}
-                  number={number}
-                  active={page === number}
-                  onClick={() => jumpToPage(number)}
-                />
-              ))}
+            {visibleThumbnails.map((number) => (
+              <Thumbnail
+                key={number}
+                pdf={pdf!}
+                number={number}
+                active={page === number}
+                onClick={() => jumpToPage(number)}
+              />
+            ))}
             {outline.length > 0 && (
               <>
                 <div className="my-5 h-px bg-[#e8edf4]" />
