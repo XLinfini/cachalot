@@ -95,8 +95,9 @@ export interface PageAnalysis {
   formulas?: FormulaFragment[];
 }
 
-/** Source is authoritative for appearance. LaTeX is a reading aid, never a
- * replacement for the original glyphs/paths when reflowing or exporting. */
+/** Original glyphs/paths remain available for comparison and faithful export.
+ * Reconstructed source and translation can render the same LaTeX candidate;
+ * syntax/character checks do not prove mathematical correctness. */
 export interface FormulaFragment {
   id: string;
   documentId: string;

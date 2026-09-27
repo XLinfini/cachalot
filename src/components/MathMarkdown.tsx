@@ -16,8 +16,8 @@ export default function MathMarkdown({
   children: string;
   className?: string;
   formulas?: FormulaAsset[];
-  /** LaTeX candidates are displayed only in the source review, where the PDF
-   * screenshot is available for comparison. Translation retains source crops. */
+  /** Source review and translation use the same prepared LaTeX candidates.
+   * Missing candidates and partial selections always retain source crops. */
   formulaRendering?: "original" | "latex-candidate";
 }) {
   const { t } = useTranslation();

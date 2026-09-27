@@ -19,6 +19,12 @@ const analyses: PageAnalysis[] = JSON.parse(
 );
 const bytes = Array.from(await readFile(paper));
 const correct = "C\\approx\\frac{0.2\\cdot I_{op}}{2\\pi\\cdot f_o\\cdot V_{op}}";
+const switchingFormulas = {
+  "p2-display-3766-3831":
+    "f_s=\\frac{\\frac{\\alpha^2}{4}-(\\sin\\omega t-\\frac{\\alpha}{2})^2}{\\alpha\\cdot C\\cdot V_b}\\cdot I_{op}.",
+  "p2-display-3990-4051":
+    "f_{s\\_\\mathrm{max}}=\\frac{\\alpha\\cdot I_{op}}{4C\\cdot V_b}=\\frac{I_L}{4C\\cdot V_b}.",
+} as const;
 const deferred = () => {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
@@ -36,7 +42,7 @@ try {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("https://**/*", (route) => route.abort());
-    let mode: "valid" | "wrong" | "null" | "malformed" | "network" = "valid";
+    let mode: "valid" | "mixed" | "wrong" | "null" | "malformed" | "network" = "valid";
     let gate = { recognition: deferred(), translation: deferred() };
     gate.recognition.release();
     gate.translation.release();
@@ -65,15 +71,20 @@ try {
             : JSON.stringify(
                 content
                   .filter((part: any) => part.type === "text")
-                  .map((part: any) => ({
-                    id: JSON.parse(part.text).id,
-                    latex:
-                      mode === "null"
-                        ? null
-                        : mode === "wrong"
-                          ? correct.replace("I_{op}", "I_{0p}")
-                          : correct,
-                  })),
+                  .map((part: any) => {
+                    const id = JSON.parse(part.text).id;
+                    const latex =
+                      switchingFormulas[id as keyof typeof switchingFormulas] || correct;
+                    return {
+                      id,
+                      latex:
+                        mode === "null" || (mode === "mixed" && id === "p2-display-3990-4051")
+                          ? null
+                          : mode === "wrong"
+                            ? latex.replace("I_{op}", "I_{0p}")
+                            : latex,
+                    };
+                  }),
               );
       } else {
         await gate.translation.promise;
@@ -228,6 +239,9 @@ try {
       const sourceBytes = await page
         .locator('[data-ui="translation-result"] [data-ui="preserved-formula"]')
         .evaluateAll((nodes) => nodes.map((n) => (n as HTMLImageElement).src));
+      const partialBytes = await page
+        .locator('[data-ui="translation-result"] [data-ui="preserved-formula"][data-mode="inline"]')
+        .evaluateAll((nodes) => nodes.map((n) => (n as HTMLImageElement).src));
       await page.getByRole("button", { name: labels.translation.close }).click();
       await mutateCache(true);
       await choose("fixture-vision");
@@ -262,6 +276,16 @@ try {
         "translating",
       );
       const raw = page.locator('[data-ui="translation-source-text"]');
+      const result = page.locator('[data-ui="translation-result"]');
+      const resultImages = result.locator('[data-ui="preserved-formula"]');
+      const checkSingleEquation = async () => {
+        await expect(result.locator(".katex-display annotation")).toHaveText(correct);
+        assert.deepEqual(
+          await resultImages.evaluateAll((nodes) => nodes.map((n) => (n as HTMLImageElement).src)),
+          partialBytes,
+          "only the partially selected inline formula retains its original crop",
+        );
+      };
       await expect(
         page.locator('[data-ui="translation-reconstructed-source"] .katex-display'),
       ).toHaveCount(1);
@@ -285,15 +309,12 @@ try {
       await expect(raw).toContainText(correct);
       gate.translation.release();
       await expect(copy).toBeEnabled();
-      assert.deepEqual(
-        await page
-          .locator('[data-ui="translation-result"] [data-ui="preserved-formula"]')
-          .evaluateAll((nodes) => nodes.map((n) => (n as HTMLImageElement).src)),
-        sourceBytes,
-      );
+      await expect(result.locator(".katex-display")).toHaveCount(1);
+      await checkSingleEquation();
       await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
       await expect(copy).toBeEnabled();
       assert.equal(ocr().length, 1, "same model and prompt reuse persistent recognition");
+      await checkSingleEquation();
       for (const failed of ["wrong", "null", "malformed", "network"] as const) {
         mode = failed;
         await mutateCache(false);
@@ -305,6 +326,12 @@ try {
         await expect(warning).toBeVisible();
         await expect(raw).not.toContainText(correct);
         await expect(raw).not.toContainText("I_{0p}");
+        await expect(result.locator(".katex-display")).toHaveCount(0);
+        assert.deepEqual(
+          await resultImages.evaluateAll((nodes) => nodes.map((n) => (n as HTMLImageElement).src)),
+          sourceBytes,
+          "failed reconstruction retains the exact original crop",
+        );
         if (failed === "wrong")
           await expect(warning).toContainText(labels.translation.formulaIssue.characters);
         if (failed === "network") {
@@ -326,19 +353,86 @@ try {
       await open();
       assert.equal(ocr().length, beforeText);
       assert.ok(!JSON.stringify(requests.at(-1)).includes('"type":"image_url"'));
+      await checkSingleEquation();
       await page.locator('[data-ui="translation-source-format"]').click();
       await expect(raw).toContainText(correct);
       await page.getByRole("button", { name: labels.translation.close }).click();
       const headingOutput = `test-results/formula-transcription/headings-${language}`;
       await mkdir(headingOutput, { recursive: true });
       await verifyHeadings(page, labels, headingOutput);
+      // Reproduce the reported two-equation selection. Both columns must use
+      // the same candidates; a failure in one equation cannot rasterize both.
+      await choose("fixture-vision");
+      const scroll = page.locator('[data-ui="pdf-scroll"]');
+      await scroll.evaluate((node) => {
+        node.scrollTop += 400;
+      });
+      await expect.poll(async () => (await host.boundingBox())!.y).toBeLessThan(0);
+      const selectSwitching = async (right = 0.936) => {
+        const box = (await host.boundingBox())!;
+        await page.mouse.move(box.x + 0.509 * box.width, box.y + 0.535 * box.height);
+        await page.mouse.down();
+        await page.mouse.move(box.x + right * box.width, box.y + 0.765 * box.height, { steps: 6 });
+        await page.mouse.up();
+        await open();
+      };
+      const checkBoth = async () => {
+        const expected = Object.values(switchingFormulas);
+        for (const column of [
+          page.locator('[data-ui="translation-reconstructed-source"]'),
+          result,
+        ]) {
+          await expect(column.locator(".katex-display")).toHaveCount(2);
+          assert.deepEqual(
+            await column.locator(".katex-display annotation").allTextContents(),
+            expected,
+          );
+          await expect(column.locator('[data-ui="preserved-formula"]')).toHaveCount(0);
+        }
+      };
+      await selectSwitching();
+      await checkBoth();
+      await page.screenshot({
+        path: `test-results/formula-transcription/two-equations-${language}.png`,
+      });
+      const beforeCached = ocr().length;
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      assert.equal(ocr().length, beforeCached);
+      await checkBoth();
+      await mutateCache(false);
+      mode = "mixed";
+      await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
+      await expect(copy).toBeEnabled();
+      await expect(result.locator(".katex-display annotation")).toHaveText(
+        switchingFormulas["p2-display-3766-3831"],
+      );
+      await expect(resultImages).toHaveCount(1);
+      await expect(resultImages).toHaveAttribute("data-formula-id", "p2-display-3990-4051");
+      await page.screenshot({
+        path: `test-results/formula-transcription/mixed-equations-${language}.png`,
+      });
+      await page.getByRole("button", { name: labels.translation.close }).click();
+      mode = "valid";
+      const beforePartial = ocr().length;
+      await selectSwitching(0.78);
+      await expect(result.locator(".katex-display")).toHaveCount(0);
+      await expect(
+        result.locator('[data-ui="preserved-formula"][data-mode="display"]'),
+      ).toHaveCount(2);
+      assert.equal(
+        ocr().length,
+        beforePartial,
+        "partial selections do not use full-formula reconstruction",
+      );
+      await page.getByRole("button", { name: labels.translation.close }).click();
       // Recognition persisted across an app reload; old analysis needed no rerun.
       await page.reload();
       await page.locator('[data-ui="document-card"]').first().click();
       await page.locator('[data-ui="analysis-strip"][data-phase="ready"]').waitFor();
       assert.deepEqual(errors, []);
       console.log(
-        `${language}: native evidence, staged source preview, legacy cache migration, character rejection, null/JSON/503 fallback, recognition reuse and text-model switch passed`,
+        `${language}: native evidence, matching source/translation LaTeX, two equations, mixed/partial image fallback, cache reuse, character/JSON/503 rejection and text-model switch passed`,
       );
     } catch (error) {
       gate.recognition.release();

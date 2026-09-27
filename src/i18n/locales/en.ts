@@ -172,7 +172,7 @@ export const en = {
     originalFormula: "Original PDF equation",
     partialFormula: "Partially selected equation; no completion is inferred",
     formulaPreservation:
-      "{{count}} equation region(s) preserved from the original PDF. LaTeX is an unverified reading aid.",
+      "{{count}} equation region(s). Reconstructed equations use LaTeX; others retain original images. Check against the source.",
     eyebrow: "SELECTION TRANSLATION · PAGE {{page}}",
     title: "Selection translation",
     close: "Close translation",

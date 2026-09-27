@@ -168,7 +168,8 @@ export const zh = {
   translation: {
     originalFormula: "PDF 原始公式",
     partialFormula: "公式仅被部分选中，不推测或补全",
-    formulaPreservation: "已保留 {{count}} 处原始公式区域。LaTeX 仅作为未验证的阅读辅助。",
+    formulaPreservation:
+      "共 {{count}} 处公式；重建成功的使用 LaTeX，其余保留原图。请对照原文核查。",
     eyebrow: "选区翻译 · 第 {{page}} 页",
     title: "选区翻译",
     close: "关闭翻译",

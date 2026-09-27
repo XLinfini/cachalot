@@ -31,9 +31,9 @@
 
 KaTeX 使用其自带样式；`MathMarkdown.tsx` 用 Tailwind 的后代选择器调整段落、列表、代码和公式容器。页面主题重构时需检查文字选择、公式溢出和选区截图。
 
-翻译结果中的 `data-ui="preserved-formula"` 使用无损 PNG 来源，行内公式的 `width` 与 `verticalAlign` 根据原有效字号和基线计算。不要将来源公式替换成 OCR LaTeX 的 KaTeX 输出，也不要用固定高度拉伸公式。行间公式限制最大宽度、保持比例，后续 PDF 导出使用独立的矢量裁剪服务。
+重建原文与翻译结果都显式使用 `MathMarkdown` 的 `latex-candidate` 渲染方式：完整且有可用 LaTeX 的公式由 KaTeX 渲染，未识别或部分选中的公式以 `data-ui="preserved-formula"` 保留无损 PNG 来源。回退图片的行内 `width` 与 `verticalAlign` 根据原有效字号和基线计算，不用固定高度拉伸；行间图片限制最大宽度、保持比例。原始公式资产继续保留，用于核对及后续矢量裁剪导出。
 
-翻译弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，允许以 `latex-candidate` 渲染，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
+翻译弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，与右栏使用同一份重建 LaTeX，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
 
 重建原文与译文的标题来自选区块结构，而不是依靠模型自己选择 Markdown 层级。`MathMarkdown` 为 h1–h6 统一设置粗体、行距和上下间距，并逐级缩小字号。后续更换 UI 时，应保持这些 HTML 标题的语义，不将标题统一改为普通段落。浏览器验证还覆盖示例论文重叠检测的主标题、章节/字母小节、部分选中的标题，以及模型漏掉标题边界时的提示。
 

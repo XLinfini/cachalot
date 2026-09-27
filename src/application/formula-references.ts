@@ -23,7 +23,7 @@ export function finishTranslation(
   return { markdown, formulas };
 }
 
-/** Plain clipboard text is an explicitly semantic export. Reflow uses assets. */
+/** Clipboard text and LaTeX reflow use the same prepared formula candidates. */
 export function formulaClipboard(markdown: string, assets: FormulaAsset[]): string {
   return markdown.replace(FORMULA_PATTERN, (marker, id: string) => {
     const formula = assets.find((a) => a.formula.id === id)?.formula;

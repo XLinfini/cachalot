@@ -238,7 +238,11 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
               </p>
             )}
             {translation && (
-              <MathMarkdown formulas={formulas} className="text-[12px] leading-[1.85]">
+              <MathMarkdown
+                formulas={formulas}
+                formulaRendering="latex-candidate"
+                className="text-[12px] leading-[1.85]"
+              >
                 {previewTranslatedHeadings(translation, selection.blocks)}
               </MathMarkdown>
             )}

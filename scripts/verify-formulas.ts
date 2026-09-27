@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { expect, type Page, type Request, type Route } from "@playwright/test";
 import type { LocaleResource } from "../src/i18n/locales/en";
 
-/** Real selection -> persistent source assets -> model input -> source reflow. */
+/** Real selection -> persistent source assets -> model input -> LaTeX reflow. */
 export async function verifyFormulas(page: Page, labels: LocaleResource, output: string) {
   const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
   const capture = (request: Request) => {
@@ -43,14 +43,14 @@ export async function verifyFormulas(page: Page, labels: LocaleResource, output:
     });
     await page.mouse.up();
     await open();
-    const images = page.locator('[data-ui="preserved-formula"]');
+    const result = page.locator('[data-ui="translation-result"]');
+    const images = result.locator('[data-ui="preserved-formula"][data-mode="display"]');
     assert.ok(
-      (await images.count()) >= 4,
-      "original display formula and inline variables reappear in the translation",
+      (await result.locator(".katex").count()) >= 3,
+      "native inline variables use LaTeX in the translation",
     );
-    assert.ok(
-      (await page.locator('[data-ui="preserved-formula"][data-mode="display"]').count()) > 0,
-    );
+    await expect(images).toHaveCount(1);
+    await expect(images).toHaveAttribute("data-mode", "display");
     const sourceAssets = await images.evaluateAll((nodes) =>
       nodes.map((node) => ({
         id: node.getAttribute("data-formula-id"),
@@ -75,14 +75,14 @@ export async function verifyFormulas(page: Page, labels: LocaleResource, output:
     ).toBeEnabled();
     await open();
     assert.equal(ocrCount(), 1, "only unresolved source formula is transcribed on demand");
-    const again = await images.evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        id: node.getAttribute("data-formula-id"),
-        src: (node as HTMLImageElement).src,
-        width: (node as HTMLImageElement).naturalWidth,
-      })),
+    await expect(images).toHaveCount(0);
+    await expect(result.locator(".katex-display")).toHaveCount(1);
+    const reconstructed = page.locator('[data-ui="translation-reconstructed-source"]');
+    assert.deepEqual(
+      await result.locator(".katex-display annotation").allTextContents(),
+      await reconstructed.locator(".katex-display annotation").allTextContents(),
+      "translation uses the exact source reconstruction",
     );
-    assert.deepEqual(again, sourceAssets, "OCR cannot change a single source-image byte");
     await page.getByRole("button", { name: labels.common.retry, exact: true }).click();
     await expect(
       page.getByRole("button", { name: labels.translation.copy, exact: true }),
@@ -113,6 +113,8 @@ export async function verifyFormulas(page: Page, labels: LocaleResource, output:
       "text models can reuse cached OCR LaTeX without receiving the image",
     );
     assert.ok(!reused.includes('"type":"image_url"'));
+    await expect(images).toHaveCount(0);
+    await expect(result.locator(".katex-display")).toHaveCount(1);
     await page.getByRole("button", { name: labels.translation.close }).click();
     await page.getByTitle(labels.reader.page.replace("{{page}}", "1"), { exact: true }).click();
   } finally {
