@@ -25,12 +25,18 @@ export const services = {
     preview: documentPreview,
     setProgress: platform.setProgress,
     setStarred: platform.setStarred,
+    move: platform.moveDocument,
     async remove(id: string): Promise<void> {
       await platform.deleteDocument(id);
       await analysisRepository.deleteDocument(id);
       await removePreview(id);
       await formulaRepository.removeDocument(id);
     },
+  },
+  categories: {
+    list: platform.listCategories,
+    create: platform.createCategory,
+    remove: platform.deleteCategory,
   },
   settings: { get: platform.getSetting, set: platform.setSetting },
   providers: {

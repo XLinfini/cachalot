@@ -6,8 +6,16 @@ export interface DocumentRecord {
   pageCount: number;
   currentPage: number;
   starred: boolean;
+  /** One ordinary category; favorites are an independent built-in view.
+   * Missing/null values keep older libraries in Uncategorized. */
+  categoryId?: string | null;
   createdAt: number; // Unix seconds; chat message timestamps use milliseconds.
   updatedAt: number;
+}
+export interface CategoryRecord {
+  id: string;
+  name: string;
+  createdAt: number;
 }
 export interface Provider {
   id: string;

@@ -18,6 +18,7 @@ pub struct Document {
     pub page_count: i64,
     pub current_page: i64,
     pub starred: bool,
+    pub category_id: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -120,6 +121,7 @@ pub fn open_database(app: &AppHandle) -> Result<Connection, String> {
     )
     .map_err(|e| e.to_string())?;
     ensure_chat_images_column(&db)?;
+    crate::categories::migrate(&db)?;
     Ok(db)
 }
 
@@ -140,6 +142,7 @@ fn document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Document> {
         page_count: row.get(3)?, current_page: row.get(4)?,
         starred: row.get::<_, i64>(5)? != 0,
         created_at: row.get(6)?, updated_at: row.get(7)?,
+        category_id: row.get(8)?,
     })
 }
 
@@ -154,7 +157,7 @@ fn provider_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
 #[tauri::command]
 pub fn list_documents(state: State<'_, AppState>) -> Result<Vec<Document>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = db.prepare("SELECT id,file_name,title,page_count,current_page,starred,created_at,updated_at FROM documents ORDER BY updated_at DESC")
+    let mut stmt = db.prepare("SELECT id,file_name,title,page_count,current_page,starred,created_at,updated_at,category_id FROM documents ORDER BY updated_at DESC")
         .map_err(|e| e.to_string())?;
     let result = stmt.query_map([], document_from_row).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string());
@@ -184,7 +187,7 @@ pub fn import_pdf(app: AppHandle, state: State<'_, AppState>, file_name: String,
                 VALUES(?1,?2,?3,?4,1,0,?5,?5)
                 ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at",
         params![id, file_name, title, page_count.max(1), timestamp]).map_err(|e| e.to_string())?;
-    db.query_row("SELECT id,file_name,title,page_count,current_page,starred,created_at,updated_at FROM documents WHERE id=?1", [id], document_from_row)
+    db.query_row("SELECT id,file_name,title,page_count,current_page,starred,created_at,updated_at,category_id FROM documents WHERE id=?1", [id], document_from_row)
         .map_err(|e| e.to_string())
 }
 

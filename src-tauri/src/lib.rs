@@ -1,5 +1,6 @@
 mod ai;
 mod analysis;
+mod categories;
 mod db;
 mod provider_error;
 
@@ -25,6 +26,10 @@ pub fn run() {
             db::set_document_progress,
             db::set_document_starred,
             db::delete_document,
+            categories::list_categories,
+            categories::create_category,
+            categories::move_document,
+            categories::delete_category,
             db::list_providers,
             db::save_provider,
             db::get_provider_key,

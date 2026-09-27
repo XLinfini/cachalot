@@ -20,6 +20,14 @@
 | `src/hooks/useDocumentAnalysis.ts` | 服务与 React 生命周期的衔接 | 换框架时替换该桥接层 |
 | `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件 | 可重新设计 |
 
+## 文献分类
+
+`services.categories.list/create/remove` 管理自建分类，`services.library.move(id, categoryId)` 修改归属，`null` 表示未分类。`DocumentRecord.categoryId` 是可选的兼容字段；旧文献自动归入未分类。每篇论文只归属一个普通分类，“我的收藏”按既有 `starred` 标记汇集论文，收藏和移动互不影响。“全部文献”不按分类或收藏过滤。
+
+桌面通过 `categories.rs` 创建 `categories` 表，幂等迁移添加 `documents.category_id` 外键，使用 `ON DELETE SET NULL` 在同一事务中解除归属。浏览器的 `browser-categories.ts` 在单个 `cachalot:categories` localStorage 记录中保存名称及归属映射，删除分类用一次写入完成；它不修改 PDF、对话或分析缓存。内置分类没有持久化记录或删除入口，适配器也拒绝删除不存在的分类。名称去除两端空白、限制 80 个字符，拒绝大小写重复名称及内置分类的中英文名称。
+
+`CategorySidebar`、`LibraryDocumentCard` 和 `CategoryDialogs` 负责展示和事件；弹窗和三点菜单分别使用 `ui/Modal` 与 `ui/ActionMenu`。菜单通过 portal 避免卡片、滚动侧栏裁切，支持键盘和点击外部关闭。界面重构时保留服务契约即可。分类存储测试：`npm run test:categories`；原生迁移及删除保全测试：`cd src-tauri && cargo test --lib categories`；中英文完整交互：先运行 `test:paper`，启动预览后运行 `npm run test:category-ui -- /absolute/path/reference.pdf`。
+
 ## API 密钥显示与编辑
 
 设置中的 `ApiKeyField.tsx` 将密钥显示和编辑草稿分开：`services.providers.keyPreview` 只返回前缀与末四位遮罩，点击眼睛才通过 `revealKey` 读取完整密钥；切换提供商、保存或退出设置都会恢复隐藏。只有实际输入才更新 `ProviderInput.apiKey`，留空保存保留现有密钥。桌面适配器从系统密钥库读取；浏览器适配器 `browser-provider-keys.ts` 使用 AES-GCM 加密后写入 IndexedDB，同时保存不可导出的 Web Crypto 密钥，不向 localStorage 写入原始凭据。浏览器存储属于当前 origin，同源脚本仍可使用加密密钥；它不具备系统密钥库的隔离能力。

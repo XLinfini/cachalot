@@ -6,48 +6,41 @@ import {
   ChevronLeft,
   ChevronRight,
   FilePlus2,
-  FolderOpen,
   LayoutGrid,
   MoreHorizontal,
   Plus,
   Search,
   Settings2,
-  Star,
-  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
 import { services } from "./application/services";
-import type { DocumentRecord, Provider } from "./domain/records";
+import type { CategoryRecord, DocumentRecord, Provider } from "./domain/records";
 import type { SelectedRegion } from "./domain/analysis";
 import PdfReader from "./components/PdfReader";
-import DocumentPreview from "./components/DocumentPreview";
+import { LibraryDocumentCard } from "./components/LibraryDocumentCard";
+import { CategorySidebar } from "./components/CategorySidebar";
+import type { LibraryFilter } from "./domain/categories";
+import { CreateCategoryDialog, MoveCategoryDialog } from "./components/CategoryDialogs";
 import ChatPanel from "./components/ChatPanel";
 import ProviderSettings from "./components/ProviderSettings";
 import TranslationPopup from "./components/TranslationPopup";
 import logo from "../assets/brand/cachalot-icon.png";
 import { cx, ui } from "./components/ui/styles";
 import { useTranslation } from "react-i18next";
-import { dateLocale } from "./i18n";
 import { localizeMessage } from "./i18n/messages";
 import { hasAddedModel } from "./domain/provider-models";
 
 type View = "library" | "reader" | "settings";
-type Filter = "all" | "starred" | "recent";
-
-function dateLabel(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleDateString(dateLocale(), {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 export default function App() {
   const { t } = useTranslation();
   const [view, setView] = useState<View>("library");
   const [lastView, setLastView] = useState<"library" | "reader">("library");
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [movingDocument, setMovingDocument] = useState<DocumentRecord | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<{ providerId: string; modelId: string } | null>(
@@ -56,7 +49,7 @@ export default function App() {
   const [vision, setVision] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(true);
@@ -105,8 +98,9 @@ export default function App() {
       services.providers.list(),
       services.settings.get("activeProviderId"),
       services.settings.get("activeModel"),
+      services.categories.list(),
     ])
-      .then(([docs, modelProviders, providerId, model]) => {
+      .then(([docs, modelProviders, providerId, model, savedCategories]) => {
         let restored: { providerId: string; modelId: string } | null = null;
         try {
           const value = JSON.parse(model || "null");
@@ -126,6 +120,7 @@ export default function App() {
         }
         setActiveModel(restored);
         setDocuments(docs);
+        setCategories(savedCategories);
         setProviders(modelProviders);
         setActiveProviderId(
           restored?.providerId ||
@@ -241,10 +236,56 @@ export default function App() {
     }
   };
 
+  const selectLibrary = (next: LibraryFilter) => {
+    setFilter(next);
+    setView("library");
+    setSelection(null);
+    setTranslationOpen(false);
+  };
+  const createCategory = async (name: string) => {
+    const saved = await services.categories.create(name);
+    setCategories(await services.categories.list());
+    setQuery("");
+    selectLibrary({ categoryId: saved.id });
+  };
+  const deleteCategory = async (category: CategoryRecord) => {
+    if (!window.confirm(t("categories.removeConfirm", { name: category.name }))) return;
+    try {
+      await services.categories.remove(category.id);
+      const [nextCategories, nextDocuments] = await Promise.all([
+        services.categories.list(),
+        services.library.list(),
+      ]);
+      setCategories(nextCategories);
+      setDocuments(nextDocuments);
+      if (typeof filter === "object" && filter.categoryId === category.id)
+        setFilter("uncategorized");
+    } catch (cause) {
+      setNotice(String(cause));
+    }
+  };
+
+  const filterLabel =
+    typeof filter === "object"
+      ? categories.find((category) => category.id === filter.categoryId)?.name || t("nav.papers")
+      : t(
+          (
+            {
+              all: "nav.all",
+              recent: "nav.recent",
+              starred: "nav.starred",
+              uncategorized: "nav.papers",
+            } as const
+          )[filter],
+        );
+
+  // All papers deliberately ignores both category membership and favorites.
   const visible = documents
     .filter(
       (document) =>
         (filter !== "starred" || document.starred) &&
+        (filter !== "uncategorized" || !document.categoryId) &&
+        (typeof filter !== "object" || document.categoryId === filter.categoryId) &&
         (filter !== "recent" || Date.now() / 1000 - document.updatedAt < 30 * 24 * 3600) &&
         `${document.title} ${document.fileName}`.toLowerCase().includes(query.toLowerCase()),
     )
@@ -287,7 +328,7 @@ export default function App() {
         <>
           <aside
             data-ui="app-nav"
-            className="flex w-[204px] flex-none flex-col border-r border-[#e6ecf4] bg-panel px-[13px] pt-[25px] pb-[14px] max-desktop:w-[170px] max-compact:w-[150px]"
+            className="flex min-h-0 w-[204px] flex-none flex-col border-r border-[#e6ecf4] bg-panel px-[13px] pt-[25px] pb-[14px] max-desktop:w-[170px] max-compact:w-[150px]"
           >
             <button
               className="flex h-[61px] items-center justify-start gap-[2px] border-0 bg-transparent pb-[30px]"
@@ -309,10 +350,7 @@ export default function App() {
               <button
                 className={ui.navButton}
                 aria-pressed={view === "library" && filter === "all"}
-                onClick={() => {
-                  setFilter("all");
-                  setView("library");
-                }}
+                onClick={() => selectLibrary("all")}
               >
                 <LayoutGrid size={18} />
                 {t("nav.all")}
@@ -320,37 +358,20 @@ export default function App() {
               <button
                 className={ui.navButton}
                 aria-pressed={view === "library" && filter === "recent"}
-                onClick={() => {
-                  setFilter("recent");
-                  setView("library");
-                }}
+                onClick={() => selectLibrary("recent")}
               >
                 <BookOpen size={18} />
                 {t("nav.recent")}
               </button>
-              <button
-                className={ui.navButton}
-                aria-pressed={view === "library" && filter === "starred"}
-                onClick={() => {
-                  setFilter("starred");
-                  setView("library");
-                }}
-              >
-                <Star size={18} />
-                {t("nav.starred")}
-              </button>
             </div>
-            <div className="mt-[25px] border-t border-[#e4eaf1] pt-5">
-              <div className={cx(ui.eyebrow, "flex items-center justify-between px-[13px] pb-3")}>
-                {t("nav.collections")} <Plus size={14} />
-              </div>
-              <span className="flex items-center gap-3 px-[13px] py-[9px] text-[12px] text-[#74859a]">
-                <FolderOpen size={17} />
-                {t("nav.papers")}
-              </span>
-            </div>
-            <div className="flex-1" />
-            <div className="border-t border-[#e4eaf1] pt-[9px]">
+            <CategorySidebar
+              categories={categories}
+              selected={view === "library" ? filter : null}
+              onSelect={selectLibrary}
+              onCreate={() => setCreatingCategory(true)}
+              onRemove={(category) => void deleteCategory(category)}
+            />
+            <div className="flex-none border-t border-[#e4eaf1] pt-[9px]">
               <button className={ui.navButton} onClick={openSettings}>
                 <Settings2 size={18} />
                 {t("common.settings")}
@@ -373,14 +394,10 @@ export default function App() {
             {view === "library" || !activeDocument ? (
               <div className="w-full overflow-y-auto">
                 <header className="flex h-[58px] items-center border-b border-[#edf0f5] px-[38px] text-[11px] text-[#99a8ba]">
-                  <div className="flex items-center gap-[9px]">
+                  <div className="flex min-w-0 items-center gap-[9px]">
                     {t("common.library")} <ChevronRight size={15} />{" "}
-                    <strong className="text-[#3b4f68]">
-                      {filter === "starred"
-                        ? t("nav.starred")
-                        : filter === "recent"
-                          ? t("nav.recent")
-                          : t("nav.all")}
+                    <strong className="min-w-0 truncate text-[#3b4f68]" title={filterLabel}>
+                      {filterLabel}
                     </strong>
                   </div>
                 </header>
@@ -422,13 +439,6 @@ export default function App() {
                       >
                         {t("nav.recent")}
                       </button>
-                      <button
-                        className={ui.tabButton}
-                        aria-pressed={filter === "starred"}
-                        onClick={() => setFilter("starred")}
-                      >
-                        {t("common.starred")}
-                      </button>
                     </div>
                     <label className={cx(ui.searchBox, "mb-[9px] h-[34px] w-[220px]")}>
                       <Search size={17} />
@@ -449,65 +459,15 @@ export default function App() {
                   {visible.length ? (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(235px,1fr))] gap-[22px] pt-[26px]">
                       {visible.map((document, index) => (
-                        <article
+                        <LibraryDocumentCard
                           key={document.id}
-                          data-ui="document-card"
-                          className="group/document relative cursor-pointer overflow-hidden rounded-card border border-[#e7edf5] bg-white shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-[3px] hover:shadow-card-hover"
-                          onClick={() => openDocument(document)}
-                        >
-                          <div
-                            className={cx(
-                              "grid h-[190px] place-items-center",
-                              ["bg-[#e9f1fb]", "bg-[#eaf2f5]", "bg-[#eff0fb]", "bg-[#f0f4ed]"][
-                                index % 4
-                              ],
-                            )}
-                          >
-                            <DocumentPreview document={document} />
-                          </div>
-                          <div className="px-4 pt-[14px] pb-4">
-                            <div className="flex gap-[7px] text-[10px] text-[#899aae]">
-                              <span className="font-bold text-[#3e75c5]">PDF</span>
-                              <span>{t("common.pages", { count: document.pageCount })}</span>
-                            </div>
-                            <h3
-                              className="mt-2 mb-[7px] line-clamp-2 h-[38px] text-[13px] leading-[1.45]"
-                              title={document.title}
-                            >
-                              {document.title}
-                            </h3>
-                            <p className="truncate text-[10px] text-subtle">{document.fileName}</p>
-                            <div className="mt-[17px] flex justify-between gap-[5px] text-[9px] text-[#9aa8ba]">
-                              <span>{dateLabel(document.updatedAt)}</span>
-                              <span>
-                                {t("library.progress", {
-                                  page: document.currentPage,
-                                  total: document.pageCount,
-                                })}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="absolute top-[9px] right-[9px] flex gap-1 opacity-0 group-focus-within/document:opacity-100 group-hover/document:opacity-100 [&>button]:rounded-[6px] [&>button]:border-0 [&>button]:bg-white/87 [&>button]:p-[5px] [&>button]:text-[#5780b7] [&>button:hover]:text-[#c53a44]">
-                            <button
-                              title={document.starred ? t("common.unstar") : t("common.star")}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void toggleStar(document);
-                              }}
-                            >
-                              <Star size={17} fill={document.starred ? "currentColor" : "none"} />
-                            </button>
-                            <button
-                              title={t("library.delete")}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void deleteDocument(document);
-                              }}
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </div>
-                        </article>
+                          document={document}
+                          index={index}
+                          onOpen={() => openDocument(document)}
+                          onStar={() => void toggleStar(document)}
+                          onMove={() => setMovingDocument(document)}
+                          onDelete={() => void deleteDocument(document)}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -623,6 +583,23 @@ export default function App() {
           selection={selection}
           provider={activeProvider}
           onClose={() => setTranslationOpen(false)}
+        />
+      )}
+      {creatingCategory && (
+        <CreateCategoryDialog
+          onCreate={createCategory}
+          onClose={() => setCreatingCategory(false)}
+        />
+      )}
+      {movingDocument && (
+        <MoveCategoryDialog
+          document={movingDocument}
+          categories={categories}
+          onMove={async (categoryId) => {
+            await services.library.move(movingDocument.id, categoryId);
+            await refreshDocuments();
+          }}
+          onClose={() => setMovingDocument(null)}
         />
       )}
     </div>

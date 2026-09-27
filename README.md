@@ -44,6 +44,7 @@ npm run test:formulas
 npm run test:formula-sources -- /absolute/path/reference.pdf
 npm run test:i18n
 npm run test:reader
+npm run test:categories
 cd src-tauri && cargo check
 npx tauri build --debug --no-bundle
 ```
@@ -51,5 +52,7 @@ npx tauri build --debug --no-bundle
 分层接口、模型输入输出、缓存版本和界面重构约定见 [开发交接文档](docs/architecture.md)。Tailwind 主题、通用控件、格式化与样式验证见 [样式维护指南](docs/styles.md)。实际论文解析验证：`npm run test:paper -- /absolute/path/paper.pdf`。
 
 阅读器返回文献库的浏览器回归：先运行 `test:paper` 生成示例论文的分析缓存，再启动开发预览，运行 `npm run test:reader-navigation -- /absolute/path/reference.pdf`。通过 `CACHALOT_URL` 和 `CACHALOT_CHROMIUM` 可指定预览地址和浏览器。测试使用隔离文献库，覆盖中文/英文、两个返回入口、加载及缩放时退出、重新打开；不请求模型服务商。
+
+分类交互回归使用同样的分析缓存和预览：`npm run test:category-ui -- /absolute/path/reference.pdf`，覆盖全部文献、内置收藏保护、创建、移动、刷新恢复和删除分类后保留论文。
 
 界面文案、语言偏好、消息代码和多语言验证见 [i18n 维护指南](docs/i18n.md)。

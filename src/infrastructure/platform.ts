@@ -5,8 +5,10 @@ import { maskApiKey } from "../domain/api-key";
 import { apiEndpoint } from "../domain/api-endpoint";
 import { providerErrorDetails } from "./provider-error";
 import { browserProviderKeys as keys } from "./browser-provider-keys";
+import { browserCategories } from "./browser-categories";
 import type {
   DocumentRecord,
+  CategoryRecord,
   Provider,
   ProviderInput,
   ModelInfo,
@@ -80,9 +82,28 @@ export const platform = {
   native,
 
   async listDocuments(): Promise<DocumentRecord[]> {
-    return native
-      ? invoke("list_documents")
-      : readList<DocumentRecord>("documents").sort((a, b) => b.updatedAt - a.updatedAt);
+    if (native) return invoke("list_documents");
+    const assignments = browserCategories.assignments();
+    return readList<DocumentRecord>("documents")
+      .map((document) => ({ ...document, categoryId: assignments[document.id] || null }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+
+  async listCategories(): Promise<CategoryRecord[]> {
+    return native ? invoke("list_categories") : browserCategories.list();
+  },
+  async createCategory(name: string): Promise<CategoryRecord> {
+    return native ? invoke("create_category", { name }) : browserCategories.create(name);
+  },
+  async deleteCategory(id: string): Promise<void> {
+    if (native) return invoke("delete_category", { id });
+    browserCategories.remove(id);
+  },
+  async moveDocument(id: string, categoryId: string | null): Promise<void> {
+    if (native) return invoke("move_document", { id, categoryId });
+    if (!readList<DocumentRecord>("documents").some((document) => document.id === id))
+      throw new Error(message("pdfNotFound"));
+    browserCategories.move(id, categoryId);
   },
 
   async importPdf(
@@ -160,6 +181,7 @@ export const platform = {
       "documents",
       readList<DocumentRecord>("documents").filter((doc) => doc.id !== id),
     );
+    browserCategories.forgetDocument(id);
     const removed = new Set(
       readList<ChatThread>("threads")
         .filter((thread) => thread.documentId === id)
