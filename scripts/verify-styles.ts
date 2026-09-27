@@ -202,7 +202,10 @@ try {
       await page.locator(selector("document-card")).first().waitFor();
       // Switch through the actual settings UI; reload must restore the preference.
       // Unsaved form content must survive the language switch within settings.
-      await page.getByRole("button", { name: zh.library.modelSettings, exact: true }).click();
+      await page
+        .locator(selector("app-nav"))
+        .getByRole("button", { name: zh.common.settings, exact: true })
+        .click();
       await page
         .getByRole("textbox", { name: zh.settings.providerName, exact: true })
         .fill("Unsaved provider draft");

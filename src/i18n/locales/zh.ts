@@ -41,7 +41,6 @@ export const zh = {
     previewLoading: "正在生成预览…",
     previewUnavailable: "预览不可用",
 
-    modelSettings: "模型设置",
     eyebrow: "你的研究空间",
     title: "让阅读，流向更深处",
     punctuation: "。",

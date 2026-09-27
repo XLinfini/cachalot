@@ -372,7 +372,7 @@ export default function App() {
           <main className="flex min-w-0 flex-1 bg-white">
             {view === "library" || !activeDocument ? (
               <div className="w-full overflow-y-auto">
-                <header className="flex h-[58px] items-center justify-between border-b border-[#edf0f5] px-[38px] text-[11px] text-[#99a8ba]">
+                <header className="flex h-[58px] items-center border-b border-[#edf0f5] px-[38px] text-[11px] text-[#99a8ba]">
                   <div className="flex items-center gap-[9px]">
                     {t("common.library")} <ChevronRight size={15} />{" "}
                     <strong className="text-[#3b4f68]">
@@ -383,13 +383,6 @@ export default function App() {
                           : t("nav.all")}
                     </strong>
                   </div>
-                  <button
-                    className="flex items-center gap-2 border-0 bg-transparent text-[11px] text-[#6e8198]"
-                    onClick={openSettings}
-                  >
-                    <Settings2 size={17} />
-                    {t("library.modelSettings")}
-                  </button>
                 </header>
                 <div className="mx-auto max-w-[1310px] px-[52px] py-[50px] max-desktop:px-[30px] max-desktop:py-10">
                   <div className="flex items-end justify-between">

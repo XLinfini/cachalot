@@ -41,7 +41,6 @@ export const en = {
     previewLoading: "Generating preview…",
     previewUnavailable: "Preview unavailable",
 
-    modelSettings: "Model settings",
     eyebrow: "YOUR RESEARCH SPACE",
     title: "Read. Translate. Think deeper",
     punctuation: ".",
