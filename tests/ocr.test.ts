@@ -9,7 +9,12 @@ import {
   validateOcrImage,
   GLM_OCR_MODEL,
 } from "../src/domain/ocr";
-import { chatModels, normalizeModels, ocrModels } from "../src/domain/provider-models";
+import {
+  chatModels,
+  normalizeModels,
+  ocrModels,
+  providerPurpose,
+} from "../src/domain/provider-models";
 import { platform } from "../src/infrastructure/platform";
 import {
   listConfiguredProviders,
@@ -63,6 +68,27 @@ test("OCR normalization preserves a single formula without merging ambiguous blo
   assert.equal(glmFormulaLatex({ error: "failure" }), null);
   assert.equal(glmFormulaLatex({ md_results: "Recognition failed" }), null);
   assert.throws(() => validateOcrImage("https://example.com/paper.png"));
+});
+test("dedicated and legacy OCR providers stay out of the chat model list", () => {
+  const legacy = { modelId: "glm-ocr", addedModels: [GLM_OCR_MODEL] };
+  assert.equal(providerPurpose(legacy), "ocr");
+  assert.equal(
+    providerPurpose({ ...legacy, addedModels: [...legacy.addedModels, { id: "translate" }] }),
+    "llm",
+  );
+  assert.deepEqual(chatModels({ ...legacy, purpose: "ocr" }), []);
+  assert.deepEqual(
+    ocrModels({ ...legacy, purpose: "ocr" }).map((model) => model.id),
+    ["glm-ocr"],
+  );
+  assert.deepEqual(
+    chatModels({
+      purpose: "ocr",
+      modelId: "vision",
+      addedModels: [{ id: "vision", formulaOcr: "vision-llm" }],
+    }),
+    [],
+  );
 });
 test("OCR provider/model settings are shared, independently selected and safely transported", async () => {
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -213,6 +239,40 @@ test("OCR provider/model settings are shared, independently selected and safely 
       ]),
       [{ id: "x" }, { id: "glm", formulaOcr: "glm-layout" }],
     );
+    const legacy = await saveConfiguredProvider({
+      id: "legacy-ocr-fixture",
+      name: "Existing GLM-OCR",
+      baseUrl: "https://ocr.invalid",
+      modelId: "glm-ocr",
+      enabled: true,
+      apiKey: secret,
+      addedModels: [GLM_OCR_MODEL],
+    });
+    await platform.setSetting(`providerPurpose:${legacy.id}`, "");
+    const migrated = (await listConfiguredProviders()).find((item) => item.id === legacy.id)!;
+    assert.equal(migrated.purpose, "ocr", "old GLM provider appears in Formula OCR settings");
+    assert.equal(
+      await platform.revealProviderKey(legacy.id),
+      secret,
+      "classification keeps the existing key",
+    );
+    await platform.deleteProvider(legacy.id);
+    const custom = await saveConfiguredProvider({
+      id: "custom-ocr-fixture",
+      purpose: "ocr",
+      name: "Custom formula service",
+      baseUrl: "https://ocr.invalid",
+      modelId: "formula-model",
+      enabled: true,
+      addedModels: [],
+    });
+    assert.deepEqual(ocrModels(custom), [{ id: "formula-model", formulaOcr: "formula-chat" }]);
+    assert.deepEqual(chatModels(custom), []);
+    assert.equal(
+      (await listConfiguredProviders()).find((item) => item.id === custom.id)?.purpose,
+      "ocr",
+    );
+    await platform.deleteProvider(custom.id);
   } finally {
     await platform.deleteProvider("ocr-fixture");
     globalThis.fetch = previousFetch;

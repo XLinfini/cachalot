@@ -29,7 +29,7 @@ npm run tauri dev
 
 ## 配置远端公式 OCR（优先 GLM-OCR）
 
-1. 在「设置 → 模型服务」点击「添加 GLM-OCR 预设」，填写自己的智谱 API Key 并保存。默认地址为 `https://open.bigmodel.cn/api/paas/v4`，模型 ID 为 `glm-ocr`，接口类型为「GLM 专用版面接口」。Z.AI 用户可改为 `https://api.z.ai/api/paas/v4`。密钥应与对应平台的 API 地址配套。
+1. 在「设置 → 公式 OCR」点击「添加 GLM-OCR 预设」，填写自己的智谱 API Key 并保存。默认地址为 `https://open.bigmodel.cn/api/paas/v4`，模型 ID 为 `glm-ocr`，接口类型为「GLM 专用版面接口」。Z.AI 用户可改为 `https://api.z.ai/api/paas/v4`。密钥应与对应平台的 API 地址配套。
 2. 在「设置 → 公式 OCR」选择「使用独立的 OCR 模型」，展开服务商并选择已添加的 `glm-ocr`。选择自动保存。翻译/问答模型仍在聊天框选择，可使用文字模型。
 3. 框选后先识别复杂公式，再翻译。中间原文栏和右侧译文栏使用同一份通过检查的 LaTeX；识别失败或只框选了一部分公式时保留原图。
 

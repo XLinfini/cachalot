@@ -143,6 +143,8 @@
 
 `ModelInfo.formulaOcr` 是已添加模型的接口类型（`glm-layout` / `formula-chat` / `vision-llm`），与 `addedModels:<providerId>` 一起保存，不增加第二份模型目录或 SQL 表。`chatModels/ocrModels` 为两个菜单提供派生列表；专用 OCR 不进入翻译或问答默认模型。`OcrSettings.tsx` 复用分组 `ModelPicker`，独立选择立即持久化；未完成的新选择仍使用此前保存的方式。
 
+`ProviderEditor.tsx` 为「模型服务」和「公式 OCR」复用表单，但根据 `providerPurpose:<providerId>` 仅展示各自的服务商和操作。OCR 页管理 GLM 预设、密钥、模型接口类型及识别连接测试；模型服务页管理翻译/问答服务。用途标记与已添加模型同在设置存储中，原有服务商 ID 与凭据存储不变。旧版仅包含专用 OCR 模型的服务商按模型类型归入公式 OCR；混合用途服务商仍保留翻译/问答角色，其已配置的 OCR 模型也可在公式 OCR 页维护。
+
 GLM 公有版面 API 为 `POST /api/paas/v4/layout_parsing`，JSON 包含 `model` 和 `file`（公式 PNG data URI），Bearer 鉴权。`domain/ocr.ts` 的端点解析与 Rust `glm_endpoint` 由同一组夹具约束，界面展示实际请求地址。`platform.glmOcr` / `ai::glm_ocr` 复用既有凭据存储，桌面不会为 OCR 向 JavaScript 暴露 keyring 密钥。HTTP 错误和 HTTP 200 的业务错误均保留脱敏正文和 request ID。120 秒超时，不自动重试；遇到请求失败后停止当前选区剩余 OCR 请求。
 
 `infrastructure/ocr/formula-ocr.ts` 按接口类型调用模型并返回单一 LaTeX 候选。GLM 先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。多模态 LLM 仍接收裁剪及字符坐标。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。

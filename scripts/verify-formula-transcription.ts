@@ -477,6 +477,8 @@ try {
       // Exercise the new settings and a dedicated OCR service while keeping a
       // text-only translation model. All responses stay local fixtures.
       await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      await expect(page.locator('[data-ui="add-glm-ocr"]')).toHaveCount(0);
+      await page.getByRole("button", { name: labels.ocr.title, exact: true }).click();
       await page.locator('[data-ui="add-glm-ocr"]').click();
       await expect(page.locator('[data-ui="ocr-endpoint"]')).toHaveText(
         "https://open.bigmodel.cn/api/paas/v4/layout_parsing",

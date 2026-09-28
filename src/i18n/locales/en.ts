@@ -283,8 +283,15 @@ export const en = {
     off: "Skip remote recognition; retain formula images",
     flowHint:
       "Complex formulas are recognized after selection and before translation. Results pass LaTeX syntax and native PDFium character checks. Failed or partial formulas retain their source images.",
-    modelsHint:
-      "This menu reads enabled providers and added models marked for OCR directly from provider settings.",
+    modelsHint: "This menu reads added, enabled models directly from Formula OCR settings.",
+    providersEyebrow: "OCR PROVIDERS",
+    providersTitle: "Configure formula recognition.",
+    providersDescription:
+      "Manage formula OCR providers, keys, models, and connection tests here. Existing GLM-OCR configurations appear automatically.",
+    customProvider: "Custom OCR provider",
+    chatEndpoint: "OCR Chat request",
+    manualModel: "Enter an OCR model ID manually or choose one from the model list.",
+    addHint: "Add an OCR provider and model to recognize complex formulas.",
     selectionRequired:
       "Choose an OCR model to save. Until then, the previously saved recognition method still applies.",
     manageProviders: "Manage providers and models",
@@ -309,7 +316,7 @@ export const en = {
     ocrResponseError: "The OCR service returned an error or invalid response.\n{{details}}",
     ocrImageInvalid: "Formula OCR requires a PNG or JPEG image up to 10 MB.",
     configureOcr:
-      "The selected OCR model is missing, disabled or has an incompatible interface. Check formula OCR and provider settings.",
+      "The selected OCR model is missing, disabled or has an incompatible interface. Check Formula OCR settings.",
     ocrTestFailed:
       "The OCR test did not return a renderable formula. Check the model and interface.",
 

@@ -5,15 +5,20 @@ import type { OcrSelection } from "../application/ocr-settings";
 import type { Provider } from "../domain/records";
 import { ocrModels } from "../domain/provider-models";
 import ModelPicker from "./ModelPicker";
+import ProviderEditor from "./ProviderEditor";
 import { cx, ui } from "./ui/styles";
 
 export default function OcrSettings({
   providers,
-  onOpenProviders,
+  activeProviderId,
+  onProvidersChange,
+  onActiveProviderChange,
   onError,
 }: {
   providers: Provider[];
-  onOpenProviders: () => void;
+  activeProviderId: string | null;
+  onProvidersChange: (providers: Provider[]) => void;
+  onActiveProviderChange: (id: string | null) => void;
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
@@ -59,6 +64,8 @@ export default function OcrSettings({
       setBusy(false);
     }
   };
+  const openProviders = () =>
+    document.getElementById("ocr-provider-editor")?.scrollIntoView({ behavior: "smooth" });
   return (
     <main
       data-ui="ocr-settings"
@@ -99,7 +106,7 @@ export default function OcrSettings({
               <p className="text-[11px] text-amber-700">{t("ocr.selectionRequired")}</p>
             )}
             <div className="flex items-center gap-4 pt-3">
-              <button className={ui.secondaryButton} onClick={onOpenProviders}>
+              <button className={ui.secondaryButton} onClick={openProviders}>
                 {t("ocr.manageProviders")}
               </button>
               <ModelPicker
@@ -109,13 +116,22 @@ export default function OcrSettings({
                 vision={false}
                 disabled={busy || !ready}
                 onSelect={(providerId, modelId) => void save({ providerId, modelId })}
-                onOpenSettings={onOpenProviders}
+                onOpenSettings={openProviders}
               />
             </div>
           </>
         )}
         <p className="text-[11px] leading-6 text-muted">{t("ocr.savedAutomatically")}</p>
       </section>
+      <ProviderEditor
+        purpose="ocr"
+        embedded
+        providers={providers}
+        activeProviderId={activeProviderId}
+        onProvidersChange={onProvidersChange}
+        onActiveProviderChange={onActiveProviderChange}
+        onError={onError}
+      />
     </main>
   );
 }

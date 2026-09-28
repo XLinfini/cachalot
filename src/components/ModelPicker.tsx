@@ -102,6 +102,7 @@ export default function ModelPicker({
               .filter(
                 (provider) =>
                   provider.enabled &&
+                  (purpose !== "chat" || provider.purpose !== "ocr") &&
                   (modelsFor(provider).length > 0 ||
                     (purpose === "chat" && !ocrModels(provider).length)),
               )

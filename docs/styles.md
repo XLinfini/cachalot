@@ -25,7 +25,7 @@
 
 ## PDF 和公式样式
 
-独立 OCR 设置页在 `OcrSettings.tsx`，通过 `services.ocr` 保存选择，复用 `ModelPicker` 的提供商分组和向上展开行为。`ProviderSettings.tsx` 负责 GLM 预设、每个已添加模型的接口类型及实际请求地址；接口类型不应由样式或模型名字推断。重设计时保留 `ocr-settings`、`selected-ocr-model`、`add-glm-ocr`、`model-ocr-profile`、`ocr-endpoint` 标记。OCR 菜单和聊天菜单共享已添加模型数据，但由不同用途筛选；不要让 OCR 设置改变聊天模型选择。
+独立 OCR 设置页在 `OcrSettings.tsx`，通过 `services.ocr` 保存选择，复用 `ModelPicker` 的提供商分组和向上展开行为。`ProviderEditor.tsx` 在模型服务和公式 OCR 页面复用表单，但按服务商用途分别展示：GLM 预设、OCR 模型接口类型及 OCR 连接测试只在公式 OCR 页面。接口类型不应由样式或模型名字推断。重设计时保留 `ocr-settings`、`ocr-provider-editor`、`selected-ocr-model`、`add-glm-ocr`、`model-ocr-profile`、`ocr-endpoint` 标记。现有专用 OCR 服务商由已添加模型识别并归入公式 OCR，密钥和服务商 ID 不变。OCR 菜单和聊天菜单共享已添加模型数据，但由不同用途筛选；不要让 OCR 设置改变聊天模型选择。
 
 `src/styles/pdf-text-layer.css` 是 PDF.js 自动生成的文字层所需的兼容样式。这里的绝对定位、字体变换和选择规则用于对齐 PDF 字形，单独保留并标注了原因。文字层的指针事件由阅读器的 Tailwind 类控制。
 

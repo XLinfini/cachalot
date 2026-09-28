@@ -24,6 +24,8 @@ export interface Provider {
   modelId: string;
   enabled: boolean;
   hasKey: boolean;
+  /** UI ownership, stored with model metadata rather than in the credential row. */
+  purpose?: "llm" | "ocr";
   // Enriched by application services; persisted separately from API credentials.
   addedModels?: ModelInfo[];
 }

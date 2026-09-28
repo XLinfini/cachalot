@@ -273,7 +273,15 @@ export const zh = {
     off: "不进行远端识别，保留公式原图",
     flowHint:
       "框选后先识别复杂公式，再翻译。识别结果经过 LaTeX 语法和 PDFium 原生字符检查；失败或不完整的公式保留原图。",
-    modelsHint: "菜单直接读取服务商设置中已添加、已启用并标记为 OCR 的模型。",
+    modelsHint: "菜单直接读取公式 OCR 中已添加、已启用的模型。",
+    providersEyebrow: "OCR 服务商",
+    providersTitle: "配置公式识别服务。",
+    providersDescription:
+      "在这里单独管理公式 OCR 的服务商、密钥、模型和连接测试。已有的 GLM-OCR 配置会自动显示。",
+    customProvider: "自定义 OCR 服务商",
+    chatEndpoint: "OCR Chat 请求",
+    manualModel: "添加服务商后可手动填写 OCR 模型 ID，或从模型列表中选择。",
+    addHint: "添加 OCR 服务商并选择模型，以识别复杂公式。",
     selectionRequired: "请选择并保存一个 OCR 模型；未完成选择时仍使用之前保存的识别方式。",
     manageProviders: "管理服务商与模型",
     chooseModel: "选择 OCR 模型",
@@ -294,7 +302,7 @@ export const zh = {
     ocrHttpDetails: "公式 OCR 请求失败（HTTP {{status}}）。\n{{details}}",
     ocrResponseError: "公式 OCR 服务返回错误或无效响应。\n{{details}}",
     ocrImageInvalid: "公式 OCR 需要不超过 10 MB 的 PNG 或 JPEG 图片。",
-    configureOcr: "所选 OCR 模型不存在、已停用或接口类型不正确，请检查公式 OCR 和服务商设置。",
+    configureOcr: "所选 OCR 模型不存在、已停用或接口类型不正确，请检查公式 OCR 设置。",
     ocrTestFailed: "OCR 测试未返回可渲染的公式，请检查模型及接口类型。",
 
     formulaSourceFailed: "无法保留原始公式区域。",

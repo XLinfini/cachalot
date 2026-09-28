@@ -1,5 +1,5 @@
 import type { ModelInfo, Provider, ProviderInput } from "../domain/records";
-import { addedModels, normalizeModels } from "../domain/provider-models";
+import { addedModels, normalizeModels, providerPurpose } from "../domain/provider-models";
 import { platform } from "../infrastructure/platform";
 import { GLM_OCR_MODEL } from "../domain/ocr";
 
@@ -34,10 +34,18 @@ async function configuredModels(provider: Provider): Promise<ModelInfo[]> {
 
 export async function listConfiguredProviders(): Promise<Provider[]> {
   return Promise.all(
-    (await platform.listProviders()).map(async (provider) => ({
-      ...provider,
-      addedModels: await configuredModels(provider),
-    })),
+    (await platform.listProviders()).map(async (provider) => {
+      const added = await configuredModels(provider);
+      const stored = await platform.getSetting(`providerPurpose:${provider.id}`);
+      return {
+        ...provider,
+        addedModels: added,
+        purpose:
+          stored === "ocr" || stored === "llm"
+            ? stored
+            : providerPurpose({ ...provider, addedModels: added }),
+      };
+    }),
   );
 }
 
@@ -48,10 +56,16 @@ export async function saveConfiguredProvider(input: ProviderInput): Promise<Prov
       : normalizeModels(input.addedModels);
   // Saving a manually entered default ID explicitly adds it to the user's list.
   const modelId = input.modelId.trim();
-  if (modelId && !models.some((model) => model.id === modelId)) models.push({ id: modelId });
+  if (modelId && !models.some((model) => model.id === modelId))
+    models.push({
+      id: modelId,
+      ...(input.purpose === "ocr" ? { formulaOcr: "formula-chat" as const } : {}),
+    });
   const saved = await platform.saveProvider({ ...input, modelId });
   await platform.setSetting(`addedModels:${saved.id}`, JSON.stringify(models));
-  return { ...saved, addedModels: models };
+  const purpose = input.purpose || providerPurpose({ ...input, modelId, addedModels: models });
+  await platform.setSetting(`providerPurpose:${saved.id}`, purpose);
+  return { ...saved, addedModels: models, purpose };
 }
 
 export async function listModels(
