@@ -4,6 +4,7 @@ src-tauri/target/
 public/models/*.onnx
 public/models/*.part
 test-results/
+.test-cache/
 src-tauri/gen/schemas/
 
 # Machine-local credentials and runtime data.

@@ -49,18 +49,13 @@ npm run build
 
 Prettier 配置了 Tailwind 插件，自动排序 TSX 的类名和 `cx()` 中的字面量。格式化脚本覆盖界面文件、样式、i18n 词典、React 入口和 Vite 配置。
 
-浏览器样式检查使用独立浏览器上下文和模拟模型接口，不读取用户的 API Key，也不改变正在使用的文献库。首次需要准备论文解析结果和 Playwright Chromium：
+浏览器样式检查使用独立浏览器上下文和模拟模型接口，不读取用户的 API Key，也不改变正在使用的文献库。以用户提供的论文检查两种横屏宽度与中英文布局：
 
 ```bash
-npm run test:paper -- /absolute/path/reference.pdf
-npx playwright install chromium
-# 先在另一个终端运行 npm run dev
 npm run test:styles -- /absolute/path/reference.pdf
 ```
 
-已有 Chromium 时可设置 `CACHALOT_CHROMIUM`；测试生产预览时可设置 `CACHALOT_URL=http://127.0.0.1:1421/`。
-
-脚本在 1440×1000 和 1194×834 两个尺寸下，分别使用中文和英语检查文献库、阅读器、翻译弹窗、模型服务、模型选择、翻译提示词和界面语言设置，也检查 PDF 文字拖选、框选翻译、服务商开关的键盘操作，以及语言恢复和草稿保留。`verify-model-composer.ts` 检查菜单向上展开、实际请求的提供商与模型、上传提示、图片持久化、发图后切换文字模型继续问答、切回图像模型，以及不兼容草稿的按钮/回车保护。`verify-formulas.ts` 在两种语言的桌面视口检查公式原图重排、LaTeX 请求、按需识别、缓存复用、切回文字模型和标记丢失保护，模型接口为模拟响应。连续阅读检查覆盖原生滚轮、上下页同时可见、页码同步、缩放位置、远页画布释放、第 2 页框选、跨页文字提示、50% 缩放下的末页导航和阅读页码恢复。生成 56 张截图，中文位于 `test-results/styles-after/`，英文位于 `test-results/styles-en/`。参考论文的解析结果来自 `test-results/paper-analysis.json`，解析质量由单独的解析测试验证。
+用例在 1440×1000 和 1194×834 两个尺寸下检查文献库、阅读器、翻译弹窗、模型设置、连续阅读、文字选择与公式来源重排。截图在 `test-results/styles-after/` 和 `test-results/styles-en/`，作为人工审阅材料；行为由独立断言检查。测试运行方式及夹具缓存见 [测试维护指南](../tests/README.md)。
 
 2026-09-26：连续阅读、多语言、问答图片模型切换和公式原图重排的生产构建检查通过，生成 56 张截图，无未捕获的浏览器错误。这些桌面浏览器检查不能代替 iPad 真机验证。
 

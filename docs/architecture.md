@@ -26,7 +26,7 @@
 
 桌面通过 `categories.rs` 创建 `categories` 表，幂等迁移添加 `documents.category_id` 外键，使用 `ON DELETE SET NULL` 在同一事务中解除归属。浏览器的 `browser-categories.ts` 在单个 `cachalot:categories` localStorage 记录中保存名称及归属映射，删除分类用一次写入完成；它不修改 PDF、对话或分析缓存。内置分类没有持久化记录或删除入口，适配器也拒绝删除不存在的分类。名称去除两端空白、限制 80 个字符，拒绝大小写重复名称及内置分类的中英文名称。
 
-`CategorySidebar`、`LibraryDocumentCard` 和 `CategoryDialogs` 负责展示和事件；弹窗和三点菜单分别使用 `ui/Modal` 与 `ui/ActionMenu`。菜单通过 portal 避免卡片、滚动侧栏裁切，支持键盘和点击外部关闭。界面重构时保留服务契约即可。分类存储测试：`npm run test:categories`；原生迁移及删除保全测试：`cd src-tauri && cargo test --lib categories`；中英文完整交互：先运行 `test:paper`，启动预览后运行 `npm run test:category-ui -- /absolute/path/reference.pdf`。
+`CategorySidebar`、`LibraryDocumentCard` 和 `CategoryDialogs` 负责展示和事件；弹窗和三点菜单分别使用 `ui/Modal` 与 `ui/ActionMenu`。菜单通过 portal 避免卡片、滚动侧栏裁切，支持键盘和点击外部关闭。界面重构时保留服务契约即可。分类存储测试：`npm run test:categories`；原生迁移及删除保全测试：`cd src-tauri && cargo test --lib categories`；中英文完整交互：`npm run test:category-ui -- /absolute/path/reference.pdf`，论文分析会按需准备。
 
 ## 文献排序
 
@@ -179,19 +179,14 @@ session.dispose();
 ## 验证与当前边界
 
 ```bash
-npm run test:analysis
-npm run test:formulas
-npm run test:headings
-npm run test:formula-transcription
-npm run test:formula-transcription-ui -- /absolute/path/reference.pdf
-npm run test:formula-sources -- /absolute/path/reference.pdf
-npm run test:reader
-npm run test:paper -- /absolute/path/reference.pdf
-# 首次需要安装 Playwright Chromium；也可用 CACHALOT_CHROMIUM 指定已安装可执行文件。
-npm run test:browser -- /absolute/path/reference.pdf
+npm run test:types
+npm run test:all
+npm run test:e2e:paper -- /absolute/path/reference.pdf
 npm run build
 cd src-tauri && cargo check
 ```
+
+测试的分层、单项命令、夹具与浏览器环境说明集中在 [测试维护指南](../tests/README.md)。
 
 参考论文：`Design_Control_and_Performance_of_Tracking_Power_Supply_for_a_Linear_Power_Amplifier.pdf`（用户提供，7 页）。检查双栏、矢量电路/曲线、位图波形、公式、说明、第 7 页表格。脚本将结构和截图保存到忽略 Git 的 `test-results/`；论文不打包、不提交。
 

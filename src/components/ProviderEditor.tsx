@@ -76,6 +76,9 @@ export default function ProviderEditor({
       ? selectedId
       : visibleProviders[0]?.id || null;
     if (!id) return;
+    // The selected provider effect runs once more after setting selectedId.
+    // Do not overwrite edits made while that follow-up render is pending.
+    if (selectedId === id && draft?.id === id) return;
     const provider = visibleProviders.find((item) => item.id === id);
     if (!provider) return;
     setSelectedId(id);

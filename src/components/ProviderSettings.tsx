@@ -182,7 +182,8 @@ export default function ProviderSettings({
           onActiveProviderChange={onActiveProviderChange}
           onError={onError}
         />
-      ) : (
+      ) : null}
+      <div className={cx("flex min-w-0 flex-1", section !== "providers" && "hidden")}>
         <ProviderEditor
           purpose="llm"
           providers={providers}
@@ -191,7 +192,7 @@ export default function ProviderSettings({
           onActiveProviderChange={onActiveProviderChange}
           onError={onError}
         />
-      )}
+      </div>
     </div>
   );
 }

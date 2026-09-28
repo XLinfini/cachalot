@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { dirname } from "node:path";
 import { PdfiumDocument } from "../src/infrastructure/analysis/pdfium";
 import { DoclingLayout } from "../src/infrastructure/analysis/docling";
 import { assemblePage } from "../src/application/assemble-page";
@@ -12,10 +13,18 @@ const path = process.argv[2];
 if (!path) throw new Error("用法：npm run test:paper -- /absolute/path/paper.pdf");
 const bytes = new Uint8Array(await readFile(path));
 const documentId = createHash("sha256").update(bytes).digest("hex");
-const wasm = await readFile(new URL("../node_modules/@embedpdf/pdfium/dist/pdfium.wasm", import.meta.url));
-const pdf = await PdfiumDocument.create(wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength));
+const wasm = await readFile(
+  new URL("../node_modules/@embedpdf/pdfium/dist/pdfium.wasm", import.meta.url),
+);
+const pdf = await PdfiumDocument.create(
+  wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength),
+);
 const start = performance.now();
-const layout = await DoclingLayout.create(new Uint8Array(await readFile(new URL(`../public/models/${LAYOUT_MODEL.fileName}`, import.meta.url))));
+const layout = await DoclingLayout.create(
+  new Uint8Array(
+    await readFile(new URL(`../public/models/${LAYOUT_MODEL.fileName}`, import.meta.url)),
+  ),
+);
 const pages: PageAnalysis[] = [];
 try {
   const count = pdf.open(bytes);
@@ -26,12 +35,31 @@ try {
     const page = assemblePage(documentId, native, detections, ANALYSIS_CACHE_KEY);
     assert.ok(page.characters.length, `第 ${number} 页应有原生文字`);
     assert.ok(page.blocks.length, `第 ${number} 页应有内容块`);
-    const kinds = Object.fromEntries([...new Set(page.blocks.map(b => b.kind))].map(kind => [kind, page.blocks.filter(b => b.kind === kind).length]));
-    console.log(JSON.stringify({ page: number, ms: Math.round(performance.now() - tick), characters: page.characters.length,
-      objects: page.objects.length, kinds, warnings: page.warnings }));
+    const kinds = Object.fromEntries(
+      [...new Set(page.blocks.map((b) => b.kind))].map((kind) => [
+        kind,
+        page.blocks.filter((b) => b.kind === kind).length,
+      ]),
+    );
+    console.log(
+      JSON.stringify({
+        page: number,
+        ms: Math.round(performance.now() - tick),
+        characters: page.characters.length,
+        objects: page.objects.length,
+        kinds,
+        warnings: page.warnings,
+      }),
+    );
     pages.push(page);
   }
-  await mkdir("test-results", { recursive: true });
-  await writeFile("test-results/paper-analysis.json", JSON.stringify(pages, null, 2));
-  console.log(`完成 ${count} 页，含模型初始化共 ${Math.round(performance.now() - start)} ms。结构数据：test-results/paper-analysis.json`);
-} finally { pdf.close(); await layout.dispose(); }
+  const output = process.env.CACHALOT_ANALYSIS_OUTPUT || "test-results/paper-analysis.json";
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(pages, null, 2));
+  console.log(
+    `完成 ${count} 页，含模型初始化共 ${Math.round(performance.now() - start)} ms。结构数据：${output}`,
+  );
+} finally {
+  pdf.close();
+  await layout.dispose();
+}
