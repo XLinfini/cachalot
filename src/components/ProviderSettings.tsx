@@ -183,7 +183,7 @@ export default function ProviderSettings({
           onError={onError}
         />
       ) : null}
-      <div className={cx("flex min-w-0 flex-1", section !== "providers" && "hidden")}>
+      <div className={section === "providers" ? "flex min-w-0 flex-1" : "hidden"}>
         <ProviderEditor
           purpose="llm"
           providers={providers}

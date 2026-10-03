@@ -21,7 +21,7 @@ npm run test:e2e         # 自备数据的浏览器用例；真实论文用例�
 npm run test:all         # 类型检查和上述三个运行组
 ```
 
-Playwright 默认在 `127.0.0.1:1420` 启动或复用开发预览。已有预览可通过 `CACHALOT_URL` 指定；已有 Chromium 可通过 `CACHALOT_CHROMIUM` 指定可执行文件。首次使用 Playwright 自带浏览器时运行 `npx playwright install chromium`。`test:all` 不下载模型，也不使用用户文献库或 API Key。
+Playwright 默认在 `127.0.0.1:1420` 启动或复用开发预览。已有预览可通过 `CACHALOT_URL` 指定；已有 Chromium 可通过 `CACHALOT_CHROMIUM` 指定可执行文件。首次使用 Playwright 自带浏览器时运行 `npx playwright install chromium`。`test:all` 不下载模型，也不使用用户文献库或 API Key。Vite 忽略 `test-results/` 和 `.test-cache/` 的文件变化，避免导出 trace 中的 HTML 时触发整页刷新；新增输出目录时也要维护这一排除规则。
 
 用户提供的七页电源论文是**可选的真实论文回归**，用于检验复杂双栏、公式和图表。论文文件不提交到仓库。运行全部论文用例：
 

@@ -464,10 +464,11 @@ for (const language of ["zh", "en"] as const) {
         await expect(page.locator('[data-ui="ocr-endpoint"]')).toHaveText(
           "https://open.bigmodel.cn/api/paas/v4/layout_parsing",
         );
-        await page
+        const ocrEditor = page.locator('[data-ui="ocr-provider-editor"]');
+        await ocrEditor
           .getByLabel(labels.settings.apiUrl, { exact: true })
           .fill(`${new URL(page.url()).origin}/api/paas/v4`);
-        await page.locator('[data-ui="api-key-input"]').fill(fixtureKey);
+        await ocrEditor.locator('[data-ui="api-key-input"]').fill(fixtureKey);
         await page.getByRole("button", { name: labels.settings.fetchModels, exact: true }).click();
         await expect(page.locator('[data-ui="available-model"]')).toHaveCount(1);
         await expect(page.locator('[data-ui="available-model"]')).toHaveAttribute(
