@@ -13,12 +13,14 @@ import { documentPreview, removePreview } from "../infrastructure/pdf/document-p
 import { formulaRepository } from "../infrastructure/formula-repository";
 import { exportFormulaPdf } from "../infrastructure/pdf/formula-source";
 import { getOcrSelection, saveOcrSelection, testOcrProvider } from "./ocr-settings";
+import { cacheManagement } from "./cache-management";
 
 /**
  * Public facade for presentation code. UI replacements depend on these methods
  * and domain DTOs, never on Tauri commands, SQL, IndexedDB or model tensors.
  */
 export const services = {
+  cache: cacheManagement,
   library: {
     list: platform.listDocuments,
     importPaper,

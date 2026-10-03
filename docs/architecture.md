@@ -112,7 +112,27 @@
 - 中断后重新打开，只处理当前版本缺失的页。
 - 缓存键包含 schema、PDFium 包版本、模型 SHA、规则版本、阈值。换模型、坐标、字符归属、阅读顺序或阈值时必须更新相应键，旧缓存不复用。
 - 删除论文时清理 PDF、页面文字、分析和会话；桌面通过外键级联，浏览器通过服务协调。浏览器站点数据被系统/用户清理后需要重新导入及分析。
-- 当前尚未提供自动清理旧模型版本缓存的维护界面。
+- 「设置 → 缓存管理」按类别统计并清理所有论文、所有缓存版本；不自动淘汰旧模型版本。
+
+### 缓存管理
+
+UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-management.ts`；浏览器适配器为 `infrastructure/cache-management.ts`，桌面适配器为 Rust `cache.rs`。类别契约在 `domain/cache.ts`，浏览器缓存 schema 集中在 `infrastructure/cache-stores.ts`。
+
+| 类别 | 浏览器 | 桌面 | 清除后的恢复 |
+| --- | --- | --- | --- |
+| PDF 原生提取 | `cachalot-analysis/pages` 中原生版本 | `page_analysis` 的原生版本 | 重新打开时由 PDFium 提取；完整版面结果也可供复用 |
+| 版面分析 | 同一 store 中的完整版面版本 | `page_analysis` 的版面版本 | 重新运行 Heron，可复用原生数据 |
+| 问答文字索引 | localStorage `cachalot:page:` | `page_text` | 重新打开时从已有解析或新提取结果建立 |
+| 论文首页预览 | `cachalot-previews/previews`，兼容旧 `setting:preview:` | `settings` 中 `preview:` 项 | 返回文献库后由 PDF.js 渲染 |
+| 公式裁图与 OCR | `cachalot-formulas/assets` | `page_analysis` 中 `formula-assets:` 项 | 框选时重新裁图；复杂公式按设置请求远端识别 |
+
+公式原图与 OCR 候选是同一条记录，作为一组清除，界面单独展示候选数量，并提示重新识别的服务商费用。桌面公式记录写入时带有 `schemaVersion/documentId/page/cacheKey` 包装，符合共享 SQLite 保存接口的身份校验。
+
+统计的是已保存内容的 UTF-8 字节数，不包含主键、SQLite 页、索引、IndexedDB 结构化存储等额外开销；图像按实际保存的 Base64 字符串计数，而不是解码后的图片大小。原生与完整版面中重复保存的字符数据分别计入各自记录。清除释放逻辑内容，数据库可复用空闲空间，不承诺数据库文件立即缩小。所有旧解析/模型版本也在统计和清除范围内。
+
+原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好和密钥属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
+
+`cache-writes.ts` 按类别串行提交写入与清除。分析、预览和 OCR 在工作开始时捕获清除代次；清除先使旧代次失效，等待已开始的写事务，然后删除记录。旧后台任务稍后完成不会重新写回已清除类别，新工作仍可生成缓存。此协调作用于当前应用实例；另一个独立浏览器标签页使用论文时可能正常重建共享站点缓存。
 
 ## 模型选择与问答图片
 

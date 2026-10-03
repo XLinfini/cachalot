@@ -5,6 +5,7 @@ import { ANALYSIS_CACHE_KEY, NATIVE_CACHE_KEY } from "../domain/model";
 import { AnalysisClient } from "../infrastructure/analysis/client";
 import { analysisRepository } from "../infrastructure/analysis/repository";
 import { platform } from "../infrastructure/platform";
+import { cacheGeneration } from "../infrastructure/cache-writes";
 
 /** Per-document lifecycle. Replacing React does not change this service. */
 export class DocumentAnalysisSession {
@@ -15,6 +16,7 @@ export class DocumentAnalysisSession {
   private native = new Map<number, Promise<PageAnalysis>>();
   private full = new Map<number, Promise<PageAnalysis>>();
   private progress: AnalysisProgress;
+  private generations = { native: cacheGeneration("native"), layout: cacheGeneration("layout"), pageText: cacheGeneration("pageText") };
 
   constructor(private readonly document: DocumentRecord, private readonly bytes: Uint8Array,
     private readonly onPage: (page: PageAnalysis) => void, private readonly onProgress: (progress: AnalysisProgress) => void) {
@@ -50,8 +52,8 @@ export class DocumentAnalysisSession {
           || await analysisRepository.get(this.document.id, page, NATIVE_CACHE_KEY);
         const result = cached || await (await this.engine()).extract(page);
         if (this.disposed) throw new DOMException(message("analysisStopped"), "AbortError");
-        if (!cached) await analysisRepository.put(result);
-        await platform.savePageText(this.document.id, page, result.plainText);
+        if (!cached) await analysisRepository.put(result, this.generations.native);
+        await platform.savePageText(this.document.id, page, result.plainText, this.generations.pageText);
         if (!this.disposed) this.onPage(result);
         return result;
       })();
@@ -67,8 +69,8 @@ export class DocumentAnalysisSession {
         const cached = await analysisRepository.get(this.document.id, page, ANALYSIS_CACHE_KEY);
         const result = cached || await (await this.engine()).analyze(page, await this.getNativePage(page));
         if (this.disposed) throw new DOMException(message("analysisStopped"), "AbortError");
-        if (!cached) await analysisRepository.put(result);
-        await platform.savePageText(this.document.id, page, result.plainText);
+        if (!cached) await analysisRepository.put(result, this.generations.layout);
+        await platform.savePageText(this.document.id, page, result.plainText, this.generations.pageText);
         this.completed.add(page);
         if (!this.disposed) this.onPage(result);
         return result;

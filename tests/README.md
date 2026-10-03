@@ -41,3 +41,5 @@ npm run test:e2e:paper -- /absolute/path/reference.pdf
 5. 改动测试基础设施时运行 `test:types` 和受影响的测试组；改动真实论文流程时至少运行对应单项回归。更新本文件中的命令或夹具约定，避免在其他文档复制长段测试步骤。
 
 原有的 `test:*` 单项命令暂时保留为兼容入口，主要维护入口是上面的四个测试组。`e2e/visual-layout.spec.ts` 和 `e2e/formulas-transcription.spec.ts` 包含既有的长链路回归；新增行为应优先写成独立用例，而不是继续延长这两个流程。Rust 测试仍在 `src-tauri/` 通过 Cargo 运行。桌面 Chromium 回归不等于 iPad 真机验证。
+
+缓存管理用例集中在 `integration/cache-management.test.ts`（分类统计、独立清除、用户数据隔离及异步写入代次）、`integration/native-cache.test.ts`（Tauri 路由与公式记录契约）及 `e2e/settings-cache.spec.ts`（中英文清除确认、统计刷新及预览重建）。共用 `fixtures/cache.ts` 的小型 PDF 与旧版本缓存，`support/seed-caches.ts` 同时供 IndexedDB 适配器和隔离浏览器使用。SQLite 真正的分类查询/删除由 Rust `cache::tests` 覆盖；Tauri 调用模拟不能代替 SQL 验证。

@@ -1,6 +1,7 @@
 mod ai;
 mod analysis;
 mod categories;
+mod cache;
 mod db;
 mod provider_error;
 
@@ -40,6 +41,8 @@ pub fn run() {
             db::list_page_text,
             analysis::get_page_analysis,
             analysis::save_page_analysis,
+            cache::cache_usage,
+            cache::clear_cache,
             db::create_chat_thread,
             db::list_chat_threads,
             db::rename_chat_thread,

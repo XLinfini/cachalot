@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { platform } from "./platform";
 import type { FormulaAsset, FormulaFragment } from "../domain/analysis";
+import { openCacheStore } from "./cache-stores";
+import { cacheGeneration, writeCache } from "./cache-writes";
 
 export interface FormulaRecord {
   documentId: string;
@@ -11,15 +13,7 @@ export interface FormulaRecord {
 }
 const key = (f: FormulaFragment) => `formula-assets:v1:${f.id}`;
 async function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("cachalot-formulas", 1);
-    request.onupgradeneeded = () => {
-      const store = request.result.createObjectStore("assets", { keyPath: ["documentId", "id"] });
-      store.createIndex("documentId", "documentId");
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  return (await openCacheStore("formulas")).db;
 }
 async function transaction<T>(
   mode: IDBTransactionMode,
@@ -60,15 +54,17 @@ export const formulaRepository = {
       return null;
     }
   },
-  async put(record: FormulaRecord): Promise<void> {
-    if (platform.native)
-      return invoke("save_page_analysis", {
+  async put(record: FormulaRecord, generation = cacheGeneration("formulas")): Promise<void> {
+    await writeCache("formulas", generation, async () => {
+      if (platform.native) return invoke("save_page_analysis", {
         documentId: record.documentId,
         page: record.asset.formula.page,
         cacheKey: key(record.asset.formula),
-        content: JSON.stringify(record),
+        // The shared SQLite endpoint validates this versioned envelope too.
+        content: JSON.stringify({ ...record, schemaVersion: 1, page: record.asset.formula.page, cacheKey: key(record.asset.formula) }),
       });
-    await transaction("readwrite", (store) => store.put(record));
+      await transaction("readwrite", (store) => store.put(record));
+    });
   },
   async removeDocument(id: string): Promise<void> {
     if (platform.native) return; // page_analysis foreign key cascades.

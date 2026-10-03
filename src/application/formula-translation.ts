@@ -5,6 +5,7 @@ import { formulaRepository } from "../infrastructure/formula-repository";
 import { platform } from "../infrastructure/platform";
 import { getOcrSelection, selectedOcrModel } from "./ocr-settings";
 import { OCR_ADAPTER_VERSION, recognizeFormula } from "../infrastructure/ocr/formula-ocr";
+import { cacheGeneration } from "../infrastructure/cache-writes";
 
 import { formulaMarker } from "./formula-references";
 import {
@@ -24,6 +25,7 @@ export async function prepareFormulas(
   provider: Provider,
   vision: boolean,
 ): Promise<{ assets: FormulaAsset[]; glossary: string; issues: FormulaPreparationIssue[] }> {
+  const generation = cacheGeneration("formulas");
   const records = await formulaSources(selection.formulas || []);
   let protocol: FormulaOcrProtocol = "vision-llm";
   let legacy = true;
@@ -86,7 +88,7 @@ export async function prepareFormulas(
           issues.push({ formulaId: record.id, reason: "characters" });
         else {
           record.candidates[key] = latex;
-          await formulaRepository.put(record);
+          await formulaRepository.put(record, generation);
         }
       } catch (error) {
         for (const pending of unresolved.slice(offset))
@@ -142,7 +144,7 @@ export async function prepareFormulas(
             issues.push({ formulaId: record.id, reason: "characters" });
           } else {
             record.candidates[key] = latex;
-            await formulaRepository.put(record);
+            await formulaRepository.put(record, generation);
           }
         }
       } catch (error) {

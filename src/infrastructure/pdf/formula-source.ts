@@ -4,6 +4,7 @@ import { platform } from "../platform";
 import { formulaRepository, type FormulaRecord } from "../formula-repository";
 import type { FormulaFragment } from "../../domain/analysis";
 import { AnalysisClient } from "../analysis/client";
+import { cacheGeneration } from "../cache-writes";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 let queue: Promise<unknown> = Promise.resolve();
@@ -11,6 +12,7 @@ let queue: Promise<unknown> = Promise.resolve();
 /** Lossless, zoom-independent previews. Source PDF plus normalized crop remains
  * canonical; these PNGs are only for browser layout and recognition input. */
 export function formulaSources(formulas: FormulaFragment[]): Promise<FormulaRecord[]> {
+  const generation = cacheGeneration("formulas");
   const work = queue.then(async () => {
     const records = await Promise.all(
       formulas.map(async (f) => {
@@ -63,7 +65,7 @@ export function formulaSources(formulas: FormulaFragment[]): Promise<FormulaReco
               scale,
             },
           };
-          await formulaRepository.put(record);
+          await formulaRepository.put(record, generation);
           records[i] = record;
         } finally {
           canvas.width = canvas.height = 0;

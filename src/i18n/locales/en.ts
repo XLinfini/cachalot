@@ -272,6 +272,64 @@ export const en = {
     selectedModels_other: "{{count}} models added",
     manualModelHint: "You can still enter a model ID manually.",
   },
+  cache: {
+    eyebrow: "Local storage",
+    title: "Cache management",
+    description:
+      "View regenerable paper caches on this device. Cleared data is rebuilt the next time the relevant feature is used.",
+    refresh: "Refresh sizes",
+    total: "Total cached content",
+    groups: "{{count}} persistent cache types · includes older versions",
+    entries_one: "{{count}} record",
+    entries_other: "{{count}} records",
+    candidates_one: "{{count}} OCR result",
+    candidates_other: "{{count}} OCR results",
+    clear: "Clear",
+    clearKind: "Clear {{name}}",
+    clearing: "Clearing…",
+    cleared: "Cleared {{name}}.",
+    failed: "Cache operation failed:",
+    scope:
+      "Clear this cache type for every paper, including older versions. Original PDFs, categories, favorites, reading progress, chats, uploaded images, settings and API keys are kept.",
+    measurement:
+      "Sizes estimate the UTF-8 bytes of saved content (including Base64 image encoding), excluding storage-engine overhead. Cleared database space can be reused; the database file may not shrink immediately.",
+    runtime:
+      "Heron weights, PDFium and PDF.js are shared application resources. Browser-managed download caches are not included here. Temporary reader pages, images and model memory are released when the document closes; they are not persistent caches.",
+    kinds: {
+      native: {
+        name: "Native PDF extraction",
+        description:
+          "Characters, coordinates, font information and drawing objects extracted by PDFium.",
+        effect:
+          "Missing data is extracted again with PDFium when a paper is reopened. Existing layout analysis can also supply native data.",
+      },
+      layout: {
+        name: "Layout analysis",
+        description:
+          "Paragraphs, headings, figures, tables, equation regions and reading order detected by Docling Heron, including native data.",
+        effect:
+          "Layout is analyzed again when a paper is reopened, which may take some time. Existing native extraction can be reused.",
+      },
+      pageText: {
+        name: "Q&A text index",
+        description: "Plain-text copies used to retrieve relevant paper pages.",
+        effect:
+          "The text index is rebuilt from layout analysis or native extraction when a paper is reopened. Q&A has less paper context until indexing finishes.",
+      },
+      previews: {
+        name: "First-page previews",
+        description: "First-page thumbnails displayed on library cards.",
+        effect: "Previews are rendered again from the PDFs when you return to the library.",
+      },
+      formulas: {
+        name: "Formula crops and OCR",
+        description:
+          "Original formula crops and LaTeX candidates saved per provider, model and recognition rules.",
+        effect:
+          "Formula crops are regenerated on the next selection translation. Complex equations may require new remote OCR or vision-model requests and incur provider charges.",
+      },
+    },
+  },
   ocr: {
     eyebrow: "Formula recognition",
     title: "Formula OCR",
@@ -339,6 +397,7 @@ export const en = {
     analysisLoading: "The paper is still loading. Please try again shortly.",
     analysisEngineError: "The local PDF analysis engine encountered an error. Please retry.",
     cacheWriteFailed: "Could not save the analysis cache.",
+    cacheBlocked: "Cache storage is busy in another window. Close that window and refresh sizes.",
     pdfMemory: "PDFium could not allocate memory for the paper.",
     pdfOpen: "PDFium could not open this PDF. Check the file or password protection.",
     pdfNotOpen: "The paper has not been opened.",
@@ -410,10 +469,5 @@ export const en = {
     cacheIdentity: "Page analysis ID does not match the cache key.",
   },
 } as const;
-export type LocaleResource = {
-  [K in keyof typeof en]: {
-    [P in keyof (typeof en)[K]]: (typeof en)[K][P] extends string
-      ? string
-      : { [Q in keyof (typeof en)[K][P]]: string };
-  };
-};
+type LocaleShape<T> = { [K in keyof T]: T[K] extends string ? string : LocaleShape<T[K]> };
+export type LocaleResource = LocaleShape<typeof en>;

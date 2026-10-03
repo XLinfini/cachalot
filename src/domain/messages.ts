@@ -11,6 +11,7 @@ export const MESSAGE_CODES = [
   "analysisLoading",
   "analysisEngineError",
   "cacheWriteFailed",
+  "cacheBlocked",
   "pdfMemory",
   "pdfOpen",
   "pdfNotOpen",

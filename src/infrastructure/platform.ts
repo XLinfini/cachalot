@@ -8,6 +8,7 @@ import type { GlmOcrInput } from "../domain/records";
 import { providerErrorDetails } from "./provider-error";
 import { browserProviderKeys as keys } from "./browser-provider-keys";
 import { browserCategories } from "./browser-categories";
+import { cacheGeneration, writeCache } from "./cache-writes";
 import type {
   DocumentRecord,
   CategoryRecord,
@@ -340,9 +341,11 @@ export const platform = {
     localStorage.setItem(`cachalot:setting:${key}`, value);
   },
 
-  async savePageText(documentId: string, page: number, content: string): Promise<void> {
-    if (native) return invoke("save_page_text", { documentId, page, content });
-    localStorage.setItem(`cachalot:page:${documentId}:${page}`, content);
+  async savePageText(documentId: string, page: number, content: string, generation = cacheGeneration("pageText")): Promise<void> {
+    await writeCache("pageText", generation, async () => {
+      if (native) return invoke("save_page_text", { documentId, page, content });
+      localStorage.setItem(`cachalot:page:${documentId}:${page}`, content);
+    });
   },
 
   async listPageText(documentId: string, pageCount: number): Promise<Array<[number, string]>> {

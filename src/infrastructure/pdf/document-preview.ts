@@ -1,6 +1,8 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { platform } from "../platform";
+import { openCacheStore } from "../cache-stores";
+import { cacheGeneration, writeCache } from "../cache-writes";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const pending = new Map<string, Promise<string>>();
@@ -19,12 +21,7 @@ async function previewCache(
     await platform.setSetting(key(id), action === "put" ? image! : "");
     return undefined;
   }
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("cachalot-previews", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("previews");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  const { db } = await openCacheStore("previews");
   try {
     return await new Promise((resolve, reject) => {
       const tx = db.transaction("previews", action === "get" ? "readonly" : "readwrite");
@@ -53,6 +50,7 @@ async function previewCache(
 export function documentPreview(id: string): Promise<string> {
   const existing = pending.get(id);
   if (existing) return existing;
+  const generation = cacheGeneration("previews");
   const work = queue.then(async () => {
     const stored = await previewCache("get", id);
     if (stored?.startsWith("data:image/")) return stored;
@@ -68,7 +66,7 @@ export function documentPreview(id: string): Promise<string> {
       await page.render({ canvas, viewport }).promise;
       const image = canvas.toDataURL("image/webp", 0.85);
       canvas.width = canvas.height = 0;
-      await previewCache("put", id, image);
+      await writeCache("previews", generation, async () => { await previewCache("put", id, image); });
       return image;
     } finally {
       await task.destroy();

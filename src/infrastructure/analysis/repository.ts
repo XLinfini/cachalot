@@ -1,19 +1,14 @@
 import { message } from "../../domain/messages";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { PageAnalysis } from "../../domain/analysis";
+import { analysisCacheKind } from "../../domain/cache";
+import { openCacheStore } from "../cache-stores";
+import { cacheGeneration, writeCache } from "../cache-writes";
 
 const native = isTauri();
 
 async function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("cachalot-analysis", 1);
-    request.onupgradeneeded = () => {
-      const pages = request.result.createObjectStore("pages", { keyPath: ["documentId", "cacheKey", "page"] });
-      pages.createIndex("documentId", "documentId");
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  return (await openCacheStore("analysis")).db;
 }
 
 async function transaction<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
@@ -40,9 +35,11 @@ export const analysisRepository = {
         && Array.isArray(parsed.characters) && Array.isArray(parsed.blocks) && Array.isArray(parsed.readingOrder) ? parsed : null;
     } catch { return null; }
   },
-  async put(analysis: PageAnalysis): Promise<void> {
-    if (native) return invoke("save_page_analysis", { documentId: analysis.documentId, page: analysis.page, cacheKey: analysis.cacheKey, content: JSON.stringify(analysis) });
-    await transaction("readwrite", store => store.put(analysis));
+  async put(analysis: PageAnalysis, generation = cacheGeneration(analysisCacheKind(analysis.cacheKey))): Promise<void> {
+    await writeCache(analysisCacheKind(analysis.cacheKey), generation, async () => {
+      if (native) return invoke("save_page_analysis", { documentId: analysis.documentId, page: analysis.page, cacheKey: analysis.cacheKey, content: JSON.stringify(analysis) });
+      await transaction("readwrite", store => store.put(analysis));
+    });
   },
   async deleteDocument(documentId: string): Promise<void> {
     if (native) return; // SQLite foreign-key cascade deletes all versions.

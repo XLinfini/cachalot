@@ -263,6 +263,58 @@ export const zh = {
     selectedModels_other: "已添加 {{count}} 个模型",
     manualModelHint: "仍可手动填写模型 ID。",
   },
+  cache: {
+    eyebrow: "本地存储",
+    title: "缓存管理",
+    description: "查看此设备上可重新生成的论文缓存。清除后，下次使用相应功能时会重新生成。",
+    refresh: "刷新统计",
+    total: "缓存内容合计",
+    groups: "{{count}} 类持久缓存 · 包含旧版本",
+    entries_one: "{{count}} 条记录",
+    entries_other: "{{count}} 条记录",
+    candidates_one: "{{count}} 个 OCR 结果",
+    candidates_other: "{{count}} 个 OCR 结果",
+    clear: "清除",
+    clearKind: "清除{{name}}",
+    clearing: "正在清除…",
+    cleared: "已清除{{name}}。",
+    failed: "缓存操作失败：",
+    scope:
+      "清除此类别下所有论文的缓存，包括旧版本。论文原文件、分类、收藏、阅读进度、聊天记录、上传的图片、设置和 API 密钥均保留。",
+    measurement:
+      "大小按已保存内容的 UTF-8 字节数估算（图像包含 Base64 编码），不含存储引擎的额外开销。清除后的数据库空间可复用，数据库文件不一定立即变小。",
+    runtime:
+      "Heron 权重、PDFium 和 PDF.js 属于共享应用资源；浏览器下载缓存由浏览器管理，不计入此处。阅读器的临时页面、图像和模型内存在关闭文档后释放，不属于持久缓存。",
+    kinds: {
+      native: {
+        name: "PDF 原生提取",
+        description: "PDFium 提取的字符、坐标、字体信息及绘图对象。",
+        effect: "下次打开论文时，缺失的数据会由 PDFium 重新提取；已有版面分析也可提供原生数据。",
+      },
+      layout: {
+        name: "版面分析",
+        description: "Docling Heron 识别的段落、标题、图表、公式区域及阅读顺序，含对应的原生数据。",
+        effect: "下次打开论文时会重新分析版面，可能需要较长时间。已有原生提取数据可复用。",
+      },
+      pageText: {
+        name: "问答文字索引",
+        description: "用于检索论文相关页面的纯文字副本。",
+        effect:
+          "下次打开论文时会从页面分析或原生提取结果重新建立文字索引。索引完成前，问答可用的论文上下文会减少。",
+      },
+      previews: {
+        name: "论文首页预览",
+        description: "文献库卡片使用的第一页缩略图。",
+        effect: "返回文献库后会从 PDF 重新生成首页预览。",
+      },
+      formulas: {
+        name: "公式裁图与 OCR",
+        description: "公式原图裁剪，以及按服务商、模型和识别规则保存的 LaTeX 候选。",
+        effect:
+          "下次框选翻译时会重新裁剪公式。复杂公式可能需要重新请求远端 OCR 或图像模型，并产生服务商费用。",
+      },
+    },
+  },
   ocr: {
     eyebrow: "公式识别",
     title: "公式 OCR",
@@ -322,6 +374,7 @@ export const zh = {
     analysisLoading: "论文仍在加载，请稍后重试。",
     analysisEngineError: "本地 PDF 分析引擎发生错误，请重试。",
     cacheWriteFailed: "分析缓存写入失败。",
+    cacheBlocked: "其他窗口正在使用缓存存储，请关闭该窗口后刷新统计。",
     pdfMemory: "PDFium 无法分配论文内存。",
     pdfOpen: "PDFium 无法打开 PDF；请检查文件或密码保护。",
     pdfNotOpen: "论文尚未打开。",

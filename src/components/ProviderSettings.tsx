@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, Database, Layers3, Languages, Settings2 } from "lucide-react";
+import { ChevronLeft, Database, HardDrive, Layers3, Languages, Settings2 } from "lucide-react";
 import { services } from "../application/services";
 import type { Provider } from "../domain/records";
 import { DEFAULT_TRANSLATION_PROMPT } from "../application/prompts";
@@ -10,6 +10,7 @@ import { localizeMessage } from "../i18n/messages";
 import { message } from "../domain/messages";
 import OcrSettings from "./OcrSettings";
 import ProviderEditor from "./ProviderEditor";
+import CacheSettings from "./CacheSettings";
 
 interface Props {
   providers: Provider[];
@@ -30,7 +31,7 @@ export default function ProviderSettings({
 }: Props) {
   const { t, i18n } = useTranslation();
   const [languageBusy, setLanguageBusy] = useState(false);
-  const [section, setSection] = useState<"general" | "providers" | "translation" | "ocr">(
+  const [section, setSection] = useState<"general" | "providers" | "translation" | "ocr" | "cache">(
     "providers",
   );
   const [prompt, setPrompt] = useState(DEFAULT_TRANSLATION_PROMPT);
@@ -94,6 +95,14 @@ export default function ProviderSettings({
           >
             <Database size={18} />
             {t("ocr.title")}
+          </button>
+          <button
+            className={ui.settingsNavButton}
+            aria-pressed={section === "cache"}
+            onClick={() => setSection("cache")}
+          >
+            <HardDrive size={18} />
+            {t("cache.title")}
           </button>
         </div>
       </aside>
@@ -182,6 +191,8 @@ export default function ProviderSettings({
           onActiveProviderChange={onActiveProviderChange}
           onError={onError}
         />
+      ) : section === "cache" ? (
+        <CacheSettings />
       ) : null}
       <div className={section === "providers" ? "flex min-w-0 flex-1" : "hidden"}>
         <ProviderEditor
