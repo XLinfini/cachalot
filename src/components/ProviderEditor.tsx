@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
 import type { FormulaOcrProtocol, ModelInfo, Provider, ProviderInput } from "../domain/records";
 import { addedModels, chatModels, ocrModels } from "../domain/provider-models";
-import { GLM_OCR_BASE_URL, GLM_OCR_MODEL, glmOcrEndpoint } from "../domain/ocr";
 import { apiEndpoint } from "../domain/api-endpoint";
 import { message } from "../domain/messages";
 import { visionKey } from "../application/model-catalog";
@@ -33,7 +32,11 @@ export default function ProviderEditor({
   onError,
   embedded = false,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const adapters = services.ocr.adapters();
+  const presets = services.ocr.presets();
+  const label = (value: { zh: string; en: string }) =>
+    value[i18n.resolvedLanguage === "en" ? "en" : "zh"];
   const visibleProviders = providers.filter((provider) =>
     purpose === "llm"
       ? provider.purpose !== "ocr"
@@ -55,13 +58,17 @@ export default function ProviderEditor({
       ? draftModels.filter((model) => draft?.purpose === "ocr" || !!model.formulaOcr)
       : draftModels.filter((model) => !model.formulaOcr || model.formulaOcr === "vision-llm");
   const draftProtocol = draftModels.find((m) => m.id === draft?.modelId)?.formulaOcr;
+  const draftAdapter = adapters.find((adapter) => adapter.id === draftProtocol);
   const requestUrls = (() => {
     if (!draft) return null;
     try {
       return {
         models: apiEndpoint(draft.baseUrl, "models"),
         chat: apiEndpoint(draft.baseUrl, "chat/completions"),
-        ocr: glmOcrEndpoint(draft.baseUrl),
+        ocr:
+          purpose === "ocr" && draftProtocol
+            ? services.ocr.endpoint(draftProtocol, draft.baseUrl)
+            : undefined,
       };
     } catch {
       return null;
@@ -121,19 +128,10 @@ export default function ProviderEditor({
     setNotice(message("providerDraft"));
   };
 
-  const createGlmProvider = () => {
-    const id = crypto.randomUUID();
-    setSelectedId(id);
-    setDraft({
-      id,
-      purpose: "ocr",
-      name: "GLM-OCR",
-      baseUrl: GLM_OCR_BASE_URL,
-      modelId: GLM_OCR_MODEL.id,
-      enabled: true,
-      apiKey: "",
-      addedModels: [{ ...GLM_OCR_MODEL }],
-    });
+  const createPreset = (presetId: string) => {
+    const draft = services.ocr.createPreset(presetId);
+    setSelectedId(draft.id);
+    setDraft(draft);
     setNotice(message("providerDraft"));
   };
   const setOcrProfile = (modelId: string, protocol: string) => {
@@ -145,14 +143,23 @@ export default function ProviderEditor({
       ...(protocol ? { formulaOcr: protocol as FormulaOcrProtocol } : {}),
     };
     setDraft({ ...draft, addedModels: [...draftModels.filter((m) => m.id !== model.id), model] });
-    if (model.id === draft.modelId && protocol === "vision-llm") setVision(true);
+    if (
+      model.id === draft.modelId &&
+      adapters.find((adapter) => adapter.id === protocol)?.requiresVision
+    )
+      setVision(true);
   };
-  const profileOptions = (
+  const profileOptions = (current?: string) => (
     <>
       <option value="">{t("ocr.profileNone")}</option>
-      <option value="glm-layout">{t("ocr.profileGlm")}</option>
-      <option value="formula-chat">{t("ocr.profileChat")}</option>
-      <option value="vision-llm">{t("ocr.profileVision")}</option>
+      {adapters.map((adapter) => (
+        <option key={adapter.id} value={adapter.id}>
+          {label(adapter.label)}
+        </option>
+      ))}
+      {current && !adapters.some((adapter) => adapter.id === current) && (
+        <option value={current}>{t("ocr.profileUnavailable", { adapter: current })}</option>
+      )}
     </>
   );
 
@@ -165,7 +172,7 @@ export default function ProviderEditor({
         : [
             ...models,
             purpose === "ocr" && !model.formulaOcr
-              ? { ...model, formulaOcr: "formula-chat" as const }
+              ? { ...model, formulaOcr: draftProtocol || "formula-chat" }
               : model,
           ];
       return {
@@ -315,15 +322,18 @@ export default function ProviderEditor({
               <Plus size={17} />
               {t("settings.addProvider")}
             </button>
-            {purpose === "ocr" && (
-              <button
-                data-ui="add-glm-ocr"
-                className="mt-2 w-full rounded-lg border border-[#c9d9ec] bg-white p-[9px] text-[11px] text-brand"
-                onClick={createGlmProvider}
-              >
-                {t("ocr.addGlm")}
-              </button>
-            )}
+            {purpose === "ocr" &&
+              presets.map((preset) => (
+                <button
+                  key={preset.id}
+                  data-ui={`add-${preset.id}`}
+                  data-ocr-preset={preset.id}
+                  className="mt-2 w-full rounded-lg border border-[#c9d9ec] bg-white p-[9px] text-[11px] text-brand"
+                  onClick={() => createPreset(preset.id)}
+                >
+                  {label(preset.buttonLabel)}
+                </button>
+              ))}
           </section>
           <section className={cx(ui.surface, "overflow-hidden")}>
             {draft ? (
@@ -337,11 +347,9 @@ export default function ProviderEditor({
                   <div>
                     <h2>{draft.name}</h2>
                     <p>
-                      {t(
-                        purpose === "ocr" && draftProtocol === "glm-layout"
-                          ? "ocr.profileGlm"
-                          : "settings.compatibleApi",
-                      )}
+                      {purpose === "ocr" && draftAdapter
+                        ? label(draftAdapter.label)
+                        : t("settings.compatibleApi")}
                     </p>
                   </div>
                   <label className="relative inline-flex cursor-pointer">
@@ -385,12 +393,14 @@ export default function ProviderEditor({
                     className="mt-3 rounded-lg bg-[#f7fafd] px-3 py-[10px] text-[10px] leading-[1.7] text-[#7890aa]"
                   >
                     <p className="mb-1 font-semibold text-[#607590]">{t("settings.requestUrls")}</p>
-                    {purpose === "ocr" && requestUrls && draftProtocol === "glm-layout" ? (
+                    {purpose === "ocr" && draftProtocol && !draftAdapter ? (
+                      <p>{t("ocr.profileUnavailable", { adapter: draftProtocol })}</p>
+                    ) : purpose === "ocr" && requestUrls?.ocr ? (
                       <>
                         <p data-ui="ocr-endpoint" className="font-mono break-all">
                           {requestUrls.ocr}
                         </p>
-                        <p>{t("ocr.glmHint")}</p>
+                        {draftAdapter?.description && <p>{label(draftAdapter.description)}</p>}
                       </>
                     ) : requestUrls ? (
                       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
@@ -434,7 +444,7 @@ export default function ProviderEditor({
                         <input
                           className="accent-brand"
                           type="checkbox"
-                          checked={draftProtocol === "vision-llm" || (!draftProtocol && vision)}
+                          checked={!!draftAdapter?.requiresVision || (!draftProtocol && vision)}
                           disabled={
                             !!draftProtocol || visionModel !== visionKey(draft.id, draft.modelId)
                           }
@@ -456,9 +466,9 @@ export default function ProviderEditor({
                         disabled={!draft.modelId.trim()}
                         onChange={(e) => setOcrProfile(draft.modelId, e.target.value)}
                       >
-                        {profileOptions}
+                        {profileOptions(draftProtocol)}
                       </select>
-                      {draftProtocol && draftProtocol !== "vision-llm" && (
+                      {draftProtocol && (
                         <p className="text-[10px] leading-5 text-muted">{t("ocr.testHint")}</p>
                       )}
                     </>
@@ -523,7 +533,7 @@ export default function ProviderEditor({
                           value={model.formulaOcr || ""}
                           onChange={(e) => setOcrProfile(model.id, e.target.value)}
                         >
-                          {profileOptions}
+                          {profileOptions(model.formulaOcr)}
                         </select>
                       )}
                       {draft.modelId === model.id ? (

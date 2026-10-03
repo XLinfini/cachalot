@@ -6,13 +6,14 @@ import { listConfiguredProviders, supportsImages } from "./model-catalog";
 import { recognizeFormula } from "../infrastructure/ocr/formula-ocr";
 import { validLatex } from "./formula-transcription";
 import { ocrTestImage } from "../infrastructure/ocr/test-formula";
+import { ocrAdapters } from "../infrastructure/ocr/registry";
 
 /** Explicit connection check sends one locally rendered test formula. It does
  * not upload a paper or call /models on a fixed-engine OCR API. */
 export async function testOcrProvider(provider: Provider): Promise<string> {
   const model = addedModels(provider).find((m) => m.id === provider.modelId);
-  if (!model?.formulaOcr || model.formulaOcr === "vision-llm")
-    return platform.testProvider(provider.id);
+  if (!model?.formulaOcr) return platform.testProvider(provider.id);
+  ocrAdapters.require(model.formulaOcr);
   const latex = await recognizeFormula(model.formulaOcr, provider, {
     imageDataUrl: ocrTestImage(),
   });
@@ -52,11 +53,9 @@ export async function selectedOcrModel(
     (p) => p.id === selection.providerId && p.enabled,
   );
   const model = provider && addedModels(provider).find((m) => m.id === selection.modelId);
-  if (
-    !provider ||
-    !model?.formulaOcr ||
-    (model.formulaOcr === "vision-llm" && !(await supportsImages(provider, model.id)))
-  )
+  if (!provider || !model?.formulaOcr) throw new Error(message("configureOcr"));
+  const adapter = ocrAdapters.require(model.formulaOcr);
+  if (adapter.requiresVision && !(await supportsImages(provider, model.id)))
     throw new Error(message("configureOcr"));
   return { provider: { ...provider, modelId: model.id }, protocol: model.formulaOcr };
 }

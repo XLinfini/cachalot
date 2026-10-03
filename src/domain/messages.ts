@@ -12,6 +12,8 @@ export const MESSAGE_CODES = [
   "analysisEngineError",
   "cacheWriteFailed",
   "cacheBlocked",
+  "ocrAdapterUnavailable",
+  "ocrRequestInvalid",
   "pdfMemory",
   "pdfOpen",
   "pdfNotOpen",

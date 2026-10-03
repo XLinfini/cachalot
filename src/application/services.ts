@@ -14,6 +14,7 @@ import { formulaRepository } from "../infrastructure/formula-repository";
 import { exportFormulaPdf } from "../infrastructure/pdf/formula-source";
 import { getOcrSelection, saveOcrSelection, testOcrProvider } from "./ocr-settings";
 import { cacheManagement } from "./cache-management";
+import { listOcrAdapters, listOcrPresets, ocrRequestEndpoint, createOcrPreset } from "./ocr-catalog";
 
 /**
  * Public facade for presentation code. UI replacements depend on these methods
@@ -42,7 +43,7 @@ export const services = {
     remove: platform.deleteCategory,
   },
   settings: { get: platform.getSetting, set: platform.setSetting },
-  ocr: { getSelection: getOcrSelection, select: saveOcrSelection, test: testOcrProvider },
+  ocr: { getSelection: getOcrSelection, select: saveOcrSelection, test: testOcrProvider, adapters: listOcrAdapters, presets: listOcrPresets, endpoint: ocrRequestEndpoint, createPreset: createOcrPreset },
   providers: {
     list: listConfiguredProviders,
     save: saveConfiguredProvider,

@@ -1,46 +1,30 @@
 import type { FormulaAsset } from "../../domain/analysis";
-import type { FormulaOcrProtocol, Provider } from "../../domain/records";
-import { formulaLatex, glmFormulaLatex } from "../../domain/ocr";
-import { platform } from "../platform";
+import type { OcrFormulaInput, OcrCandidate } from "../../domain/ocr-adapter";
+import type { Provider } from "../../domain/records";
+import { validateOcrImage } from "../../domain/ocr";
+import { message } from "../../domain/messages";
+import { ocrAdapters } from "./registry";
+import { ocrContext } from "./transport";
 
-export const OCR_ADAPTER_VERSION = "formula-ocr-v1";
-
-/** Dedicated OCR inputs are single image crops and fixed task prompts.
- * Native PDF characters are checked by the application after recognition;
- * they are not forced into an OCR endpoint that cannot consume them. */
+export async function recognizeFormulas(
+  adapterId: string,
+  provider: Provider,
+  formulas: OcrFormulaInput[],
+): Promise<OcrCandidate[]> {
+  const adapter = ocrAdapters.require(adapterId);
+  if (!formulas.length || formulas.length > adapter.batchSize)
+    throw new Error(message("ocrRequestInvalid"));
+  for (const formula of formulas) validateOcrImage(formula.imageDataUrl);
+  return adapter.recognize(ocrContext(provider), formulas);
+}
 export async function recognizeFormula(
-  protocol: Exclude<FormulaOcrProtocol, "vision-llm">,
+  adapterId: string,
   provider: Provider,
   asset: Pick<FormulaAsset, "imageDataUrl">,
 ): Promise<string | null> {
-  if (protocol === "glm-layout") {
-    return glmFormulaLatex(
-      await platform.glmOcr({
-        providerId: provider.id,
-        modelId: provider.modelId,
-        imageDataUrl: asset.imageDataUrl,
-      }),
-    );
-  }
-  let output = "";
-  await platform.complete(
-    {
-      providerId: provider.id,
-      modelId: provider.modelId,
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: asset.imageDataUrl } },
-            { type: "text", text: "Formula Recognition:" },
-          ],
-        },
-      ],
-    },
-    (delta) => {
-      output += delta;
-    },
-  );
-  return formulaLatex(output);
+  const candidates = await recognizeFormulas(adapterId, provider, [
+    { id: "connection-check", imageDataUrl: asset.imageDataUrl },
+  ]);
+  const entries = candidates.filter((candidate) => candidate.id === "connection-check");
+  return entries.length === 1 ? entries[0].latex : null;
 }

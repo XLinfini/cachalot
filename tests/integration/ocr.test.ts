@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import "fake-indexeddb/auto";
+import "../support/register-ocr";
 import {
   formulaLatex,
-  glmFormulaLatex,
-  glmOcrEndpoint,
   validateOcrImage,
-  GLM_OCR_MODEL,
 } from "../../src/domain/ocr";
+import { glmFormulaLatex, glmOcrEndpoint, GLM_OCR_MODEL } from "../../src/infrastructure/ocr/providers/glm";
 import {
   chatModels,
   normalizeModels,
@@ -155,12 +154,8 @@ test("OCR provider/model settings are shared, independently selected and safely 
     );
     assert.equal(JSON.parse((await platform.getSetting("activeModel"))!).modelId, "translate");
     assert.deepEqual(
-      await platform.glmOcr({
-        providerId: provider.id,
-        modelId: "glm-ocr",
-        imageDataUrl: "data:image/png;base64,AAAA",
-      }),
-      { layout_details: [[{ label: "formula", content: "$$x^2+1=0$$" }]] },
+      await recognizeFormula("glm-layout", provider, { imageDataUrl: "data:image/png;base64,AAAA" }),
+      "x^2+1=0",
     );
     for (const status of [503, 200]) {
       answer = Response.json(
@@ -169,11 +164,7 @@ test("OCR provider/model settings are shared, independently selected and safely 
       );
       await assert.rejects(
         () =>
-          platform.glmOcr({
-            providerId: provider.id,
-            modelId: "glm-ocr",
-            imageDataUrl: "data:image/png;base64,AAAA",
-          }),
+          recognizeFormula("glm-layout", provider, { imageDataUrl: "data:image/png;base64,AAAA" }),
         (error: unknown) => {
           const text = String(error);
           assert(!text.includes(secret));
@@ -189,11 +180,7 @@ test("OCR provider/model settings are shared, independently selected and safely 
     }
     answer = Response.json({ code: 1301, message: "rate limited" });
     await assert.rejects(() =>
-      platform.glmOcr({
-        providerId: provider.id,
-        modelId: "glm-ocr",
-        imageDataUrl: "data:image/png;base64,AAAA",
-      }),
+      recognizeFormula("glm-layout", provider, { imageDataUrl: "data:image/png;base64,AAAA" }),
     );
     await saveConfiguredProvider({ ...provider, enabled: false });
     await assert.rejects(() => selectedOcrModel({ providerId: provider.id, modelId: "glm-ocr" }));
@@ -237,7 +224,7 @@ test("OCR provider/model settings are shared, independently selected and safely 
         { id: "x", formulaOcr: "invalid" },
         { id: "glm", formulaOcr: "glm-layout" },
       ]),
-      [{ id: "x" }, { id: "glm", formulaOcr: "glm-layout" }],
+      [{ id: "x", formulaOcr: "invalid" }, { id: "glm", formulaOcr: "glm-layout" }],
     );
     const legacy = await saveConfiguredProvider({
       id: "legacy-ocr-fixture",

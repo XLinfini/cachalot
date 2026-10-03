@@ -4,6 +4,7 @@ mod categories;
 mod cache;
 mod db;
 mod provider_error;
+mod ocr_http;
 
 use db::AppState;
 use std::sync::Mutex;
@@ -53,7 +54,7 @@ pub fn run() {
             ai::list_models,
             ai::test_provider,
             ai::stream_completion,
-            ai::glm_ocr,
+            ocr_http::ocr_http,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Cachalot");

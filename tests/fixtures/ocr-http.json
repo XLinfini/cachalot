@@ -1,0 +1,125 @@
+[
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/formula",
+      "headers": { "authorization": "old", "content-type": "application/custom+json" },
+      "body": null
+    },
+    "expected": {
+      "url": "https://ocr.invalid/formula",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer fixture-key-1234",
+        "content-type": "application/custom+json"
+      },
+      "body": null
+    }
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": { "url": "https://ocr.invalid/formula", "method": "GET", "body": null },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/formula",
+      "headers": { "x-version": "one", "X-Version": "two" }
+    },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/formula?tenant=one#preview",
+      "body": { "image": "fixture" }
+    },
+    "expected": {
+      "url": "https://ocr.invalid/formula?tenant=one",
+      "method": "POST",
+      "headers": { "Authorization": "Bearer fixture-key-1234" },
+      "body": { "image": "fixture" }
+    }
+  },
+  {
+    "baseUrl": "https://ocr.invalid/api",
+    "request": {
+      "url": "https://ocr.invalid/custom",
+      "body": {},
+      "headers": { "x-version": "2" },
+      "auth": { "type": "header", "name": "x-api-key" }
+    },
+    "expected": {
+      "url": "https://ocr.invalid/custom",
+      "method": "POST",
+      "headers": { "x-api-key": "fixture-key-1234", "x-version": "2" },
+      "body": {}
+    }
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/job?key=old&tenant=one",
+      "method": "GET",
+      "auth": { "type": "query", "name": "key" }
+    },
+    "expected": {
+      "url": "https://ocr.invalid/job?tenant=one&key=fixture-key-1234",
+      "method": "GET",
+      "headers": {}
+    }
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/formula",
+      "body": { "image": "fixture" },
+      "auth": { "type": "json", "name": "access_token" }
+    },
+    "expected": {
+      "url": "https://ocr.invalid/formula",
+      "method": "POST",
+      "headers": {},
+      "body": { "image": "fixture", "access_token": "fixture-key-1234" }
+    }
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://upload.invalid/file",
+      "method": "GET",
+      "auth": { "type": "none" }
+    },
+    "expected": { "url": "https://upload.invalid/file", "method": "GET", "headers": {} }
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": { "url": "https://other.invalid/formula" },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": { "url": "file:///tmp/formula" },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": { "url": "https://user:password@ocr.invalid/formula" },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": {
+      "url": "https://ocr.invalid/formula",
+      "method": "GET",
+      "body": { "unexpected": true }
+    },
+    "invalid": true
+  },
+  {
+    "baseUrl": "https://ocr.invalid",
+    "request": { "url": "https://ocr.invalid/formula", "auth": { "type": "json", "name": "key" } },
+    "invalid": true
+  }
+]

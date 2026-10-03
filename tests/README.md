@@ -43,3 +43,7 @@ npm run test:e2e:paper -- /absolute/path/reference.pdf
 原有的 `test:*` 单项命令暂时保留为兼容入口，主要维护入口是上面的四个测试组。`e2e/visual-layout.spec.ts` 和 `e2e/formulas-transcription.spec.ts` 包含既有的长链路回归；新增行为应优先写成独立用例，而不是继续延长这两个流程。Rust 测试仍在 `src-tauri/` 通过 Cargo 运行。桌面 Chromium 回归不等于 iPad 真机验证。
 
 缓存管理用例集中在 `integration/cache-management.test.ts`（分类统计、独立清除、用户数据隔离及异步写入代次）、`integration/native-cache.test.ts`（Tauri 路由与公式记录契约）及 `e2e/settings-cache.spec.ts`（中英文清除确认、统计刷新及预览重建）。共用 `fixtures/cache.ts` 的小型 PDF 与旧版本缓存，`support/seed-caches.ts` 同时供 IndexedDB 适配器和隔离浏览器使用。SQLite 真正的分类查询/删除由 Rust `cache::tests` 覆盖；Tauri 调用模拟不能代替 SQL 验证。
+
+OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协议/响应夹具，`integration/ocr-adapters.test.ts` 验证第三方适配器的元数据、模型目录、调用及缺失适配器行为。Node 测试通过 `support/register-ocr.ts` 自动发现生产代码的 `ocr/providers/*.ts`，不维护第二份注册名单。浏览器与 Rust 的通用传输共用 `fixtures/ocr-http.json`；TypeScript 在 `unit/ocr-http.test.ts` 验证，Rust 在 `ocr_http::tests` 验证。已有真实论文 `e2e/formulas-transcription.spec.ts` 覆盖 GLM 设置、独立选择、错误显示、字符校验、图片回退和缓存复用。添加厂商时先补它自己的接口夹具，再按影响范围选择回归，不调用用户的真实服务商。
+
+`integration/native-ocr.test.ts` 仅验证 Tauri 命令路由、请求信封和 TypeScript 厂商响应解析；鉴权注入、地址校验及脱敏由 Rust 共享契约测试验证，不用命令模拟代替原生实现。

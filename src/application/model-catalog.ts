@@ -1,7 +1,9 @@
 import type { ModelInfo, Provider, ProviderInput } from "../domain/records";
 import { addedModels, normalizeModels, providerPurpose } from "../domain/provider-models";
 import { platform } from "../infrastructure/platform";
-import { GLM_OCR_MODEL } from "../domain/ocr";
+import { ocrAdapters } from "../infrastructure/ocr/registry";
+import { ocrContext } from "../infrastructure/ocr/transport";
+import { message } from "../domain/messages";
 
 export const visionKey = (providerId: string, modelId: string) =>
   `vision:model:${providerId}:${encodeURIComponent(modelId)}`;
@@ -12,7 +14,11 @@ export async function supportsImages(
   provider: Provider,
   modelId = provider.modelId,
 ): Promise<boolean> {
-  if (addedModels(provider).some((m) => m.id === modelId && m.formulaOcr === "vision-llm"))
+  if (
+    addedModels(provider).some(
+      (m) => m.id === modelId && !!m.formulaOcr && ocrAdapters.get(m.formulaOcr)?.requiresVision,
+    )
+  )
     return true;
   const explicit = await platform.getSetting(visionKey(provider.id, modelId));
   if (explicit !== null && explicit !== "") return explicit === "true";
@@ -77,6 +83,15 @@ export async function listModels(
     const provider = (await listConfiguredProviders()).find((p) => p.id === providerId);
     protocol = provider && addedModels(provider).find((m) => m.id === provider.modelId)?.formulaOcr;
   }
-  if (protocol === "glm-layout") return [{ ...GLM_OCR_MODEL }];
+  if (protocol) {
+    const adapter = ocrAdapters.require(protocol);
+    const provider = (await listConfiguredProviders()).find((p) => p.id === providerId);
+    if (!provider) throw new Error(message("providerNotFound"));
+    const context = ocrContext(provider);
+    const models = adapter.listModels
+      ? await adapter.listModels(context)
+      : await context.transport.models();
+    return models.map((model) => ({ ...model, formulaOcr: protocol }));
+  }
   return platform.listModels(providerId);
 }

@@ -37,6 +37,8 @@ npm run tauri dev
 
 每个已添加模型可配置 OCR 接口类型：GLM 版面 API、专用公式 OCR 的 Chat 兼容接口（固定任务 `Formula Recognition:`，适用于兼容的远端 GLM/PaddleOCR 部署），或多模态 LLM 字符证据方案。前两类专用 OCR 模型不会出现在聊天模型菜单中。GLM 官方版面 API 的模型列表使用固定预设，不请求 `/models`。其他未支持的私有协议需增加适配器，不能只改模型 ID。
 
+厂商支持集中在 `src/infrastructure/ocr/providers/`，通过 `OcrAdapter` 统一调用并自动注册。常规 JSON / Chat API 新增一个 TypeScript 文件即可扩展接口、模型预设和中英文设置选项，无需修改应用流程或 Rust 厂商逻辑。详见 [OCR 适配器开发指南](src/infrastructure/ocr/providers/README.md)。
+
 「检查连接」对专用 OCR 发送一张本地生成的测试公式，可能产生服务商费用。浏览器预览还受提供商 CORS 限制；Tauri 桌面请求由 Rust 发起。真实密钥复用原有存储（桌面 keyring / 浏览器 IndexedDB），没有额外 OCR 密钥副本。自动化验证使用本地响应夹具，未调用用户的真实服务商。
 
 协议依据：[GLM-OCR 官方 SDK](https://github.com/zai-org/GLM-OCR)、[Z.AI 版面 API](https://docs.z.ai/api-reference/tools/layout-parsing)。

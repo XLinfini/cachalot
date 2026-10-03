@@ -39,13 +39,10 @@ export interface ModelInfo {
    * Dedicated OCR models are excluded from chat and translation choices. */
   formulaOcr?: FormulaOcrProtocol;
 }
-export type FormulaOcrProtocol = "glm-layout" | "formula-chat" | "vision-llm";
+export type FormulaOcrProtocol = string;
 export interface ModelSelection {
   providerId: string;
   modelId: string;
-}
-export interface GlmOcrInput extends ModelSelection {
-  imageDataUrl: string;
 }
 export interface ChatThread {
   id: string;

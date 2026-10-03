@@ -2,21 +2,19 @@ import type { FormulaAsset, FormulaPreparationIssue, SelectedRegion } from "../d
 import type { FormulaOcrProtocol, Provider } from "../domain/records";
 import { formulaSources } from "../infrastructure/pdf/formula-source";
 import { formulaRepository } from "../infrastructure/formula-repository";
-import { platform } from "../infrastructure/platform";
 import { getOcrSelection, selectedOcrModel } from "./ocr-settings";
-import { OCR_ADAPTER_VERSION, recognizeFormula } from "../infrastructure/ocr/formula-ocr";
+import { recognizeFormulas } from "../infrastructure/ocr/formula-ocr";
+import { ocrAdapters } from "../infrastructure/ocr/registry";
+import { message } from "../domain/messages";
 import { cacheGeneration } from "../infrastructure/cache-writes";
 
 import { formulaMarker } from "./formula-references";
 import {
-  FORMULA_TRANSCRIPTION_PROMPT,
   TRANSCRIPTION_VERSION,
   formulaEvidence,
   preservesNativeCharacters,
   validLatex,
 } from "./formula-transcription";
-const candidateKey = (provider: Provider) =>
-  `${TRANSCRIPTION_VERSION}:${provider.id}:${provider.modelId}`;
 
 /** Formula recognition runs on demand with the independently selected OCR
  * service (or the legacy vision LLM). Checks do not prove mathematical correctness. */
@@ -53,10 +51,13 @@ export async function prepareFormulas(
     cacheAllowed = false;
     configurationError = String(error);
   }
-  const key =
-    protocol === "vision-llm"
-      ? candidateKey(provider)
-      : `${OCR_ADAPTER_VERSION}:${protocol}:${provider.id}:${provider.modelId}`;
+  const adapter = ocrAdapters.get(protocol);
+  if (!adapter && !recognitionDisabled) {
+    vision = false;
+    cacheAllowed = false;
+    configurationError ||= message("ocrAdapterUnavailable", { adapter: protocol });
+  }
+  const key = `${adapter?.cachePrefix || "unavailable"}:${provider.id}:${provider.modelId}`;
   const issues: FormulaPreparationIssue[] = [];
   const acceptable = (formula: FormulaAsset["formula"], value: unknown): value is string =>
     validLatex(value) && preservesNativeCharacters(formula, value);
@@ -78,86 +79,35 @@ export async function prepareFormulas(
       !validLatex(r.asset.formula.latex) &&
       (!cacheAllowed || !acceptable(r.asset.formula, r.candidates[key])),
   );
-  if (vision && protocol !== "vision-llm") {
-    for (let offset = 0; offset < unresolved.length; offset++) {
-      const record = unresolved[offset];
+  if (vision && adapter)
+    for (let offset = 0; offset < unresolved.length; offset += adapter.batchSize) {
+      const batch = unresolved.slice(offset, offset + adapter.batchSize);
       try {
-        const latex = await recognizeFormula(protocol, provider, record.asset);
-        if (!validLatex(latex)) issues.push({ formulaId: record.id, reason: "invalid" });
-        else if (!preservesNativeCharacters(record.asset.formula, latex))
-          issues.push({ formulaId: record.id, reason: "characters" });
-        else {
-          record.candidates[key] = latex;
-          await formulaRepository.put(record, generation);
-        }
-      } catch (error) {
-        for (const pending of unresolved.slice(offset))
-          issues.push({ formulaId: pending.id, reason: "request", details: String(error) });
-        break; // One failed request stops this selection; never auto-retry.
-      }
-    }
-  }
-  if (vision && protocol === "vision-llm")
-    for (let offset = 0; offset < unresolved.length; offset += 12) {
-      const batch = unresolved.slice(offset, offset + 12);
-      let output = "";
-      let received = false;
-      try {
-        await platform.complete(
-          {
-            providerId: provider.id,
-            modelId: provider.modelId,
-            temperature: 0,
-            messages: [
-              {
-                role: "system",
-                content: FORMULA_TRANSCRIPTION_PROMPT,
-              },
-              {
-                role: "user",
-                content: batch.flatMap((r) => [
-                  { type: "text", text: JSON.stringify(formulaEvidence(r.asset.formula)) },
-                  { type: "image_url", image_url: { url: r.asset.imageDataUrl } },
-                ]),
-              },
-            ],
-          },
-          (delta) => {
-            output += delta;
-          },
-        );
-        received = true;
-        const values: unknown = JSON.parse(
-          output
-            .trim()
-            .replace(/^```(?:json)?\s*/i, "")
-            .replace(/\s*```$/, ""),
+        const candidates = await recognizeFormulas(
+          protocol,
+          provider,
+          batch.map((record) => ({
+            id: record.id,
+            imageDataUrl: record.asset.imageDataUrl,
+            evidence: formulaEvidence(record.asset.formula),
+          })),
         );
         for (const record of batch) {
-          const entries = Array.isArray(values)
-            ? values.filter((item) => item?.id === record.id)
-            : [];
-          const latex: unknown = entries.length === 1 ? entries[0].latex : null;
-          if (!validLatex(latex)) {
-            issues.push({ formulaId: record.id, reason: "invalid" });
-          } else if (!preservesNativeCharacters(record.asset.formula, latex)) {
+          const entries = candidates.filter((candidate) => candidate.id === record.id);
+          const latex = entries.length === 1 ? entries[0].latex : null;
+          if (!validLatex(latex)) issues.push({ formulaId: record.id, reason: "invalid" });
+          else if (!preservesNativeCharacters(record.asset.formula, latex))
             issues.push({ formulaId: record.id, reason: "characters" });
-          } else {
+          else {
             record.candidates[key] = latex;
             await formulaRepository.put(record, generation);
           }
         }
       } catch (error) {
-        // Failed candidates never enter the cache. Retain source assets and
-        // report failure instead of silently hiding the provider's diagnostic.
-        for (const record of received ? batch : unresolved.slice(offset))
+        for (const record of unresolved.slice(offset))
           if (!acceptable(record.asset.formula, record.candidates[key]))
-            issues.push({
-              formulaId: record.id,
-              reason: received ? "invalid" : "request",
-              ...(received ? {} : { details: String(error) }),
-            });
-        if (!received) break; // Do not repeat a failed provider request for later batches.
+            issues.push({ formulaId: record.id, reason: "request", details: String(error) });
+        break; // Never automatically repeat a failed provider request.
       }
     }
   if (!vision && !recognitionDisabled)

@@ -3,8 +3,8 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { chatImages } from "./chat-images";
 import { maskApiKey } from "../domain/api-key";
 import { apiEndpoint } from "../domain/api-endpoint";
-import { glmOcrEndpoint, validateOcrImage } from "../domain/ocr";
-import type { GlmOcrInput } from "../domain/records";
+import type { OcrHttpInput, OcrJsonResponse } from "../domain/ocr-adapter";
+import { browserOcrJson } from "./ocr/http";
 import { providerErrorDetails } from "./provider-error";
 import { browserProviderKeys as keys } from "./browser-provider-keys";
 import { browserCategories } from "./browser-categories";
@@ -287,47 +287,12 @@ export const platform = {
     return message("connectionSucceeded");
   },
 
-  /** Credentials stay in keyring on desktop. The web adapter uses the same
-   * IndexedDB key store as chat, without a second OCR credential copy. */
-  async glmOcr(input: GlmOcrInput): Promise<unknown> {
-    validateOcrImage(input.imageDataUrl);
-    if (native) return invoke("glm_ocr", { input });
-    const provider = readList<Provider>("providers").find((item) => item.id === input.providerId);
+  /** Generic OCR JSON transport; credentials are injected by the platform. */
+  async ocrJson(input: OcrHttpInput): Promise<OcrJsonResponse> {
+    if (native) return invoke("ocr_http", { input });
+    const provider = readList<Provider>("providers").find(item => item.id === input.providerId);
     if (!provider || !provider.enabled) throw new Error(message("configureOcr"));
-    const key = await keys.get(provider.id);
-    const response = await fetch(glmOcrEndpoint(provider.baseUrl), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(key ? { Authorization: `Bearer ${key}` } : {}),
-      },
-      body: JSON.stringify({
-        model: input.modelId,
-        file: input.imageDataUrl,
-        return_crop_images: false,
-        need_layout_visualization: false,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    const text = await response.text();
-    const details = () => providerErrorDetails(text, response.headers, key || undefined);
-    if (!response.ok)
-      throw new Error(message("ocrHttpDetails", { status: response.status, details: details() }));
-    let body: { error?: unknown; code?: unknown; message?: unknown };
-    try {
-      body = JSON.parse(text);
-    } catch {
-      throw new Error(message("ocrResponseError", { details: details() }));
-    }
-    if (
-      !body ||
-      typeof body !== "object" ||
-      Array.isArray(body) ||
-      (body.error && body.error !== false) ||
-      (body.code !== undefined && ![0, "0", 200, "200"].includes(body.code as string | number))
-    )
-      throw new Error(message("ocrResponseError", { details: details() }));
-    return body;
+    return browserOcrJson(provider, input);
   },
 
   async getSetting(key: string): Promise<string | null> {

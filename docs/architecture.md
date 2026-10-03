@@ -161,15 +161,17 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 ### 远端 OCR 服务与模型管理
 
-`ModelInfo.formulaOcr` 是已添加模型的接口类型（`glm-layout` / `formula-chat` / `vision-llm`），与 `addedModels:<providerId>` 一起保存，不增加第二份模型目录或 SQL 表。`chatModels/ocrModels` 为两个菜单提供派生列表；专用 OCR 不进入翻译或问答默认模型。`OcrSettings.tsx` 复用分组 `ModelPicker`，独立选择立即持久化；未完成的新选择仍使用此前保存的方式。
+`ModelInfo.formulaOcr` 是已添加模型的适配器 ID（内置 `glm-layout` / `formula-chat` / `vision-llm`），与 `addedModels:<providerId>` 一起保存，不增加第二份模型目录或 SQL 表。ID 采用可扩展字符串，不使用封闭的厂商联合类型；移除适配器时保留配置并提示不可用，不静默回退。`chatModels/ocrModels` 为两个菜单提供派生列表；专用 OCR 不进入翻译或问答默认模型。`OcrSettings.tsx` 复用分组 `ModelPicker`，独立选择立即持久化；未完成的新选择仍使用此前保存的方式。
 
 `ProviderEditor.tsx` 为「模型服务」和「公式 OCR」复用表单，但根据 `providerPurpose:<providerId>` 仅展示各自的服务商和操作。OCR 页管理 GLM 预设、密钥、模型接口类型及识别连接测试；模型服务页管理翻译/问答服务。用途标记与已添加模型同在设置存储中，原有服务商 ID 与凭据存储不变。旧版仅包含专用 OCR 模型的服务商按模型类型归入公式 OCR；混合用途服务商仍保留翻译/问答角色，其已配置的 OCR 模型也可在公式 OCR 页维护。
 
-GLM 公有版面 API 为 `POST /api/paas/v4/layout_parsing`，JSON 包含 `model` 和 `file`（公式 PNG data URI），Bearer 鉴权。`domain/ocr.ts` 的端点解析与 Rust `glm_endpoint` 由同一组夹具约束，界面展示实际请求地址。`platform.glmOcr` / `ai::glm_ocr` 复用既有凭据存储，桌面不会为 OCR 向 JavaScript 暴露 keyring 密钥。HTTP 错误和 HTTP 200 的业务错误均保留脱敏正文和 request ID。120 秒超时，不自动重试；遇到请求失败后停止当前选区剩余 OCR 请求。
+`domain/ocr-adapter.ts` 定义识别输入/候选、模型预设、双语元数据和传输契约。`infrastructure/ocr/providers/*.ts` 每个文件默认导出一个实现，应用启动时由 `register-providers.ts` 自动发现并注册。`application/ocr-catalog.ts` 为设置页提供派生选项；`formula-translation.ts` 按适配器批次调用统一识别入口，负责候选校验、图片回退和缓存。厂商地址规则、任务 prompt、模型目录及业务响应解析只存在于对应文件。扩展流程见 [OCR 适配器开发指南](../src/infrastructure/ocr/providers/README.md)。
 
-`infrastructure/ocr/formula-ocr.ts` 按接口类型调用模型并返回单一 LaTeX 候选。GLM 先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。多模态 LLM 仍接收裁剪及字符坐标。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。
+`ocr/transport.ts` 将提供商绑定到通用 JSON、Chat 和模型目录传输。JSON 请求由浏览器 `ocr/http.ts` 或桌面 `ocr_http.rs` 执行，适配器声明凭据位置（header/query/JSON/none），共享层注入密钥；带密钥请求限于已配置 origin，不跟随重定向。桌面不会为 OCR 向 JavaScript 暴露 keyring 密钥。HTTP 错误及适配器抛出的业务错误保留脱敏正文/request ID；成功 JSON 中回显的密钥也会脱敏。120 秒超时，不自动重试；遇到请求失败后停止当前选区剩余 OCR 请求。两端鉴权与请求验证使用同一组 `tests/fixtures/ocr-http.json`，Rust 不包含厂商端点或响应分支。
 
-GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或 Z.AI 地址 `https://api.z.ai/api/paas/v4`；固定模型列表只提供 `glm-ocr`，不调用 `/models`。检查连接发送一张应用生成的测试公式；浏览器预览要求服务商支持 CORS，桌面使用 Rust HTTP 客户端。兼容 Chat 传输的远端公式模型可复用另一个适配器，其他鉴权/私有协议需单独实现。
+`infrastructure/ocr/formula-ocr.ts` 校验图像和批次大小后调用适配器，返回与输入 ID 对应的 LaTeX 候选。GLM 公有版面 API 的 `POST /api/paas/v4/layout_parsing`、`model/file` 字段、Bearer 鉴权和响应规则封装在 `providers/glm.ts`：先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。`domain/formula-evidence.ts` 提供图像 LLM 的裁剪及字符坐标证据，`application/formula-transcription.ts` 负责语法与字符保留检查。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。
+
+GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或 Z.AI 地址 `https://api.z.ai/api/paas/v4`；固定模型列表只提供 `glm-ocr`，不调用 `/models`。检查连接发送一张应用生成的测试公式；浏览器预览要求服务商支持 CORS，桌面使用 Rust HTTP 客户端。常规 JSON / Chat API 新增一个适配器文件即可；multipart、二进制返回和签名鉴权需先扩展共享传输契约。新增文件在重新构建时加载，不是运行时插件系统。
 
 ### 标题结构的翻译与重排
 

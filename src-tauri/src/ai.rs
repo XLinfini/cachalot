@@ -73,59 +73,9 @@ fn endpoint(base_url: &str, leaf: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-// Shared fixtures cover the GLM preview and native request independently of /v1.
-fn glm_endpoint(base_url: &str) -> Result<String, String> {
-    let mut url = reqwest::Url::parse(base_url.trim()).map_err(|_| "API 地址无效")?;
-    if !matches!(url.scheme(), "http" | "https") { return Err("API 地址必须使用 HTTP 或 HTTPS".into()); }
-    let path = url.path().trim_end_matches('/');
-    let path = path.strip_suffix("/layout_parsing").or_else(|| path.strip_suffix("/chat/completions"))
-        .or_else(|| path.strip_suffix("/models")).unwrap_or(path);
-    let root = if path.is_empty() { "/api/paas/v4" } else { path };
-    let path = format!("{root}/layout_parsing");
-    url.set_path(&path);
-    url.set_fragment(None);
-    Ok(url.to_string())
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GlmOcrInput {
-    provider_id: String,
-    model_id: String,
-    image_data_url: String,
-}
-
-#[tauri::command]
-pub async fn glm_ocr(state: State<'_, AppState>, input: GlmOcrInput) -> Result<Value, String> {
-    let provider = get_provider(&state, &input.provider_id)?;
-    if !provider.enabled { return Err("该服务商已停用".into()); }
-    let image = &input.image_data_url;
-    let valid_image = image.strip_prefix("data:image/png;base64,").or_else(|| image.strip_prefix("data:image/jpeg;base64,"))
-        .is_some_and(|data| !data.is_empty() && data.len() <= 13_981_016 && data.bytes().all(|b| b.is_ascii_alphanumeric() || b"+/=".contains(&b)));
-    if !valid_image || input.model_id.trim().is_empty() {
-        return Err("cachalot-message:{\"code\":\"ocrImageInvalid\",\"values\":{}}".into());
-    }
-    let headers = auth_headers(&provider)?;
-    let secret = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
-    let response = state.http.post(glm_endpoint(&provider.base_url)?)
-        .headers(headers.clone()).json(&json!({"model":input.model_id,"file":image,"return_crop_images":false,"need_layout_visualization":false}))
-        .send().await.map_err(|e| e.to_string())?;
-    let status = response.status();
-    let response_headers = response.headers().clone();
-    let text = response.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() { return Err(provider_error::http_error("ocrHttp", status.as_u16(), &text, &response_headers, secret)); }
-    let body: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
-    let bad_code = body.get("code").is_some_and(|code| ![json!(0),json!("0"),json!(200),json!("200")].contains(code));
-    if !body.is_object() || bad_code || body.get("error").is_some_and(|e| !e.is_null() && e != &Value::Bool(false)) {
-        let details = provider_error::response_details(&text, &response_headers, secret);
-        return Err(format!("cachalot-message:{}", json!({"code":"ocrResponseError","values":{"details":details}})));
-    }
-    Ok(body)
-}
-
 #[cfg(test)]
 mod endpoint_tests {
-    use super::{endpoint, glm_endpoint};
+    use super::endpoint;
 
     #[test]
     fn native_requests_match_the_settings_preview() {
@@ -137,14 +87,6 @@ mod endpoint_tests {
         }
         for invalid in ["", "infai.cc", "ftp://infai.cc", "not a URL"] {
             assert!(endpoint(invalid, "models").is_err());
-        }
-    }
-
-    #[test]
-    fn glm_requests_match_the_settings_preview() {
-        let cases: serde_json::Value = serde_json::from_str(include_str!("../../tests/fixtures/ocr-endpoints.json")).unwrap();
-        for fixture in cases.as_array().unwrap() {
-            assert_eq!(glm_endpoint(fixture["baseUrl"].as_str().unwrap()).unwrap(), fixture["endpoint"].as_str().unwrap());
         }
     }
 }

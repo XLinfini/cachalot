@@ -9,7 +9,7 @@ export function normalizeModels(value: unknown): ModelInfo[] {
     unique.set(id, {
       id,
       ...(typeof model.ownedBy === "string" ? { ownedBy: model.ownedBy } : {}),
-      ...(["glm-layout", "formula-chat", "vision-llm"].includes(model.formulaOcr)
+      ...(typeof model.formulaOcr === "string" && /^[a-z][a-z0-9-]*$/.test(model.formulaOcr)
         ? { formulaOcr: model.formulaOcr }
         : {}),
     });
@@ -50,7 +50,7 @@ export function providerPurpose(
   const models = addedModels(provider);
   return models.length &&
     models.every(
-      (model) => model.formulaOcr === "glm-layout" || model.formulaOcr === "formula-chat",
+      (model) => !!model.formulaOcr && model.formulaOcr !== "vision-llm",
     )
     ? "ocr"
     : "llm";

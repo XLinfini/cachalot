@@ -356,19 +356,17 @@ export const en = {
     chooseModel: "Choose OCR model",
     savedAutomatically:
       "Successful choices are saved automatically. Changing OCR models does not change the translation model.",
-    addGlm: "Add GLM-OCR preset",
     profile: "OCR interface for this model",
     modelProfile: "OCR interface for {{model}}",
     profileNone: "Not used for OCR",
-    profileGlm: "GLM layout API",
-    profileChat: "Dedicated formula OCR · Chat compatible",
-    profileVision: "Vision LLM · character evidence",
-    glmHint:
-      "The official layout API currently supports glm-ocr only. Its preset supplies the model list without calling /models. You can use a Z.AI or compatible gateway address.",
+    profileUnavailable: "Unavailable adapter: {{adapter}}",
     testHint:
       "Checking the connection sends a locally generated test formula and may incur provider charges.",
   },
   messages: {
+    ocrAdapterUnavailable:
+      "The OCR adapter {{adapter}} is unavailable. Choose an installed adapter in Formula OCR settings.",
+    ocrRequestInvalid: "The OCR adapter produced an invalid request.",
     ocrHttp: "Formula OCR request failed (HTTP {{status}}).",
     ocrHttpDetails: "Formula OCR request failed (HTTP {{status}}).\n{{details}}",
     ocrResponseError: "The OCR service returned an error or invalid response.\n{{details}}",
