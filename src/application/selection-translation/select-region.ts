@@ -1,7 +1,13 @@
-import type { Box, FormulaFragment, SelectedRegion, SelectedTextBlock } from "../domain/analysis";
-import { area, characterText, containsCenter, intersection } from "../domain/geometry";
-import type { SemanticPageView } from "../domain/document-semantics";
-import { translationContext } from "./translation-context";
+import type {
+  Box,
+  FormulaFragment,
+  SelectedRegion,
+  SelectedTextBlock,
+} from "../../domain/analysis";
+import { area, characterText, containsCenter, intersection } from "../../domain/geometry";
+import type { SemanticPageView } from "../../domain/document-semantics";
+import { formulaMarker } from "./formula-slots";
+import { translationContext } from "./context";
 
 /** A glyph is selected when its centre lies in the rectangle. No text-run expansion. */
 export function selectRegion(
@@ -74,7 +80,7 @@ export function selectRegion(
             {
               id,
               kind: block.kind,
-              text: own.map((f) => `[[formula:${f.id}]]`).join("\n\n"),
+              text: own.map((f) => formulaMarker(f.id)).join("\n\n"),
               partial: own.some((f) => f.partial),
             },
           ]
@@ -90,7 +96,7 @@ export function selectRegion(
       const before = new Set([...remaining].filter((index) => index < first));
       const prefix = characterText(page.facts.characters, before);
       const previous = page.facts.characters.find((c) => c.index === first - 1)?.text || "";
-      text += prefix + (prefix && /\s/u.test(previous) ? " " : "") + `[[formula:${formula.id}]]`;
+      text += prefix + (prefix && /\s/u.test(previous) ? " " : "") + formulaMarker(formula.id);
       const last = formula.characterIndices.at(-1)!;
       const next = page.facts.characters.find((c) => c.index === last + 1)?.text || "";
       if (/\s/u.test(next)) text += " ";

@@ -10,9 +10,9 @@ import {
   listOcrPresets,
   createOcrPreset,
   ocrRequestEndpoint,
-} from "../../src/application/ocr-catalog";
+} from "../../src/application/ocr/catalog";
 import { saveConfiguredProvider, listModels } from "../../src/application/model-catalog";
-import { selectedOcrModel } from "../../src/application/ocr-settings";
+import { selectedOcrModel } from "../../src/application/ocr/settings";
 import { platform } from "../../src/infrastructure/platform";
 import { normalizeModels, providerPurpose } from "../../src/domain/provider-models";
 import { parseMessage } from "../../src/domain/messages";

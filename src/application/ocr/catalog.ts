@@ -1,16 +1,14 @@
-import { ocrAdapters } from "../infrastructure/ocr/registry";
-import type { ProviderInput } from "../domain/records";
+import { ocrAdapters } from "../../infrastructure/ocr/registry";
+import type { ProviderInput } from "../../domain/records";
 
 /** Settings consumes adapter metadata through the same facade as recognition. */
 export const listOcrAdapters = () =>
-  ocrAdapters
-    .list()
-    .map(({ id, label, description, requiresVision }) => ({
-      id,
-      label,
-      description,
-      requiresVision: !!requiresVision,
-    }));
+  ocrAdapters.list().map(({ id, label, description, requiresVision }) => ({
+    id,
+    label,
+    description,
+    requiresVision: !!requiresVision,
+  }));
 export const listOcrPresets = () =>
   ocrAdapters
     .list()

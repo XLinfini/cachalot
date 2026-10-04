@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Box, ContentBlock, NativePage } from "../../src/domain/analysis";
-import { readingOrder } from "../../src/application/assemble-page-semantics";
+import { readingOrder } from "../../src/application/document-analysis/page-semantics";
 import { fixturePage } from "../support/analysis";
-import { selectRegion } from "../../src/application/select-region";
+import { selectRegion } from "../../src/application/selection-translation/select-region";
 
 const block = (id: string, box: Box): ContentBlock => ({
   id,

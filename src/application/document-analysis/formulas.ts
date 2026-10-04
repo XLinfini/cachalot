@@ -1,6 +1,6 @@
-import type { Box, ContentBlock, PageFacts, PdfCharacter } from "../domain/analysis";
-import type { SemanticFormula } from "../domain/document-semantics";
-import { intersection, union } from "../domain/geometry";
+import type { Box, ContentBlock, PageFacts, PdfCharacter } from "../../domain/analysis";
+import type { SemanticFormula } from "../../domain/document-semantics";
+import { intersection, union } from "../../domain/geometry";
 
 const symbols: Record<string, string> = {
   α: "\\alpha",

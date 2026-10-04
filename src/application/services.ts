@@ -1,8 +1,10 @@
 import { platform } from "../infrastructure/platform";
+import type { FormulaFragment } from "../domain/analysis";
 import { analysisRepository } from "../infrastructure/analysis/repository";
 import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
 import { DocumentAnalysisSession } from "./document-analysis";
-import { askPaper, translateRegion } from "./paper-assistant";
+import { askPaper } from "./paper-assistant";
+import { translateRegion } from "./selection-translation";
 import { importPaper } from "./import-paper";
 import {
   listConfiguredProviders,
@@ -12,15 +14,16 @@ import {
 } from "./model-catalog";
 import { documentPreview, removePreview } from "../infrastructure/pdf/document-preview";
 import { formulaRepository } from "../infrastructure/formula-repository";
-import { exportFormulaPdf } from "../infrastructure/pdf/formula-source";
-import { getOcrSelection, saveOcrSelection, testOcrProvider } from "./ocr-settings";
 import { cacheManagement } from "./cache-management";
 import {
+  getOcrSelection,
+  saveOcrSelection,
+  testOcrProvider,
   listOcrAdapters,
   listOcrPresets,
   ocrRequestEndpoint,
   createOcrPreset,
-} from "./ocr-catalog";
+} from "./ocr";
 
 /**
  * Public facade for presentation code. UI replacements depend on these methods
@@ -84,5 +87,8 @@ export const services = {
       new DocumentAnalysisSession(...args),
   },
   assistant: { askPaper, translateRegion },
-  formulas: { exportPdf: exportFormulaPdf },
+  formulas: {
+    exportPdf: async (fragment: FormulaFragment) =>
+      (await import("../infrastructure/pdf/formula-source")).exportFormulaPdf(fragment),
+  },
 };

@@ -24,7 +24,7 @@ import {
   getOcrSelection,
   saveOcrSelection,
   selectedOcrModel,
-} from "../../src/application/ocr-settings";
+} from "../../src/application/ocr/settings";
 import { parseMessage } from "../../src/domain/messages";
 import { recognizeFormula } from "../../src/infrastructure/ocr/formula-ocr";
 

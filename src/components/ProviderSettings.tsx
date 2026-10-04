@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, Database, HardDrive, Layers3, Languages, Settings2 } from "lucide-react";
 import { services } from "../application/services";
 import type { Provider } from "../domain/records";
-import { DEFAULT_TRANSLATION_PROMPT } from "../application/prompts";
+import { DEFAULT_TRANSLATION_PROMPT } from "../application/selection-translation";
 import { cx, ui } from "./ui/styles";
 import { useTranslation } from "react-i18next";
 import { changeUiLanguage, type UiLanguage } from "../i18n";

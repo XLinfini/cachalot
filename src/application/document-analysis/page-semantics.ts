@@ -1,5 +1,10 @@
-import { message } from "../domain/messages";
-import type { ContentBlock, LayoutObservations, PageFacts, PdfCharacter } from "../domain/analysis";
+import { message } from "../../domain/messages";
+import type {
+  ContentBlock,
+  LayoutObservations,
+  PageFacts,
+  PdfCharacter,
+} from "../../domain/analysis";
 import type {
   ContentSpan,
   SemanticFormula,
@@ -7,9 +12,9 @@ import type {
   SemanticPageInput,
   SemanticRelation,
   SourceRef,
-} from "../domain/document-semantics";
-import { area, characterText, containsCenter, intersection, union } from "../domain/geometry";
-import { analyzeFormulas } from "./formula-analysis";
+} from "../../domain/document-semantics";
+import { area, characterText, containsCenter, intersection, union } from "../../domain/geometry";
+import { analyzeFormulas } from "./formulas";
 
 /** Column-aware heuristic. Full-width headings/figures divide the page into bands. */
 export function readingOrder(blocks: ContentBlock[]): string[] {

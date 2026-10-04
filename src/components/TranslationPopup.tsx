@@ -8,8 +8,12 @@ import type {
   SelectedRegion,
   TranslationPhase,
 } from "../domain/analysis";
-import { FORMULA_PATTERN, formulaClipboard } from "../application/formula-references";
-import { previewTranslatedHeadings, sourceMarkdown } from "../application/heading-translation";
+import {
+  FORMULA_PATTERN,
+  formulaClipboard,
+  previewTranslatedHeadings,
+  sourceMarkdown,
+} from "../application/selection-translation";
 import MathMarkdown from "./MathMarkdown";
 import { ui } from "./ui/styles";
 import { useTranslation } from "react-i18next";

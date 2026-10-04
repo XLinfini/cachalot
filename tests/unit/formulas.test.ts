@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Box, FormulaAsset, NativePage, PdfCharacter } from "../../src/domain/analysis";
 import { fixturePage } from "../support/analysis";
-import { nativeLatex } from "../../src/application/formula-analysis";
-import { selectRegion } from "../../src/application/select-region";
-import { finishTranslation, formulaClipboard } from "../../src/application/formula-references";
+import { nativeLatex } from "../../src/application/document-analysis/formulas";
+import { selectRegion } from "../../src/application/selection-translation/select-region";
+import { finishTranslation, formulaClipboard } from "../../src/application/selection-translation/formula-slots";
 
 const glyph = (index: number, text: string, x: number, y = 0.2, size = 10): PdfCharacter => ({
   index,

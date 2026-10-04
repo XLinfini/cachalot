@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect, test } from "@playwright/test";
-import { TRANSCRIPTION_VERSION } from "../../src/application/formula-transcription";
+import { TRANSCRIPTION_VERSION } from "../../src/domain/formula-evidence";
 import { zh } from "../../src/i18n/locales/zh";
 import { en } from "../../src/i18n/locales/en";
 import { fixtureTranslation } from "../fixtures/translation";

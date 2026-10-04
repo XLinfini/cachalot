@@ -1,11 +1,11 @@
 import type { LayoutDetection, LayoutObservations, NativePage } from "../../src/domain/analysis";
 import { createPageFacts } from "../../src/domain/page-facts";
 import { LAYOUT_OBSERVATIONS_KEY } from "../../src/domain/model";
-import { assemblePageSemantics } from "../../src/application/assemble-page-semantics";
+import { assemblePageSemantics } from "../../src/application/document-analysis/page-semantics";
 import {
   buildDocumentSemantics,
   projectSemanticPage,
-} from "../../src/application/document-semantics";
+} from "../../src/application/document-analysis/document-semantics";
 
 /** The real two-layer pipeline, with deterministic source/model timestamps. */
 export function fixtureSources(

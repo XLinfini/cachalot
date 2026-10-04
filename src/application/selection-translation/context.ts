@@ -1,5 +1,5 @@
-import type { TranslationContext } from "../domain/analysis";
-import type { DocumentSemantics, SemanticNode } from "../domain/document-semantics";
+import type { TranslationContext } from "../../domain/analysis";
+import type { DocumentSemantics, SemanticNode } from "../../domain/document-semantics";
 
 /** Bounded source excerpts, not translated text or an enforced terminology map. */
 export function translationContext(

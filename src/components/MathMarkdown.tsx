@@ -4,7 +4,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { cx } from "./ui/styles";
 import type { FormulaAsset } from "../domain/analysis";
-import { FORMULA_PATTERN } from "../application/formula-references";
+import { FORMULA_PATTERN } from "../application/selection-translation";
 import { useTranslation } from "react-i18next";
 
 export default function MathMarkdown({

@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Box, ContentBlock, SelectedRegion } from "../../src/domain/analysis";
 import { fixturePage } from "../support/analysis";
-import { inferHeadingLevel } from "../../src/application/document-semantics";
-import { selectRegion } from "../../src/application/select-region";
-import { finishTranslation } from "../../src/application/formula-references";
+import { inferHeadingLevel } from "../../src/application/document-analysis/document-semantics";
+import { selectRegion } from "../../src/application/selection-translation/select-region";
+import { finishTranslation } from "../../src/application/selection-translation/formula-slots";
 import {
   finishTranslatedHeadings,
   markedTranslationSource,
   sourceMarkdown,
-} from "../../src/application/heading-translation";
+} from "../../src/application/selection-translation/headings";
 
 const selection = (blocks: NonNullable<SelectedRegion["blocks"]>): SelectedRegion => ({
   documentId: "paper",

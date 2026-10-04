@@ -1,8 +1,18 @@
-import type { FormulaAsset, TranslationResult } from "../domain/analysis";
-import { message } from "../domain/messages";
+import type { FormulaAsset, TranslationResult } from "../../domain/analysis";
+import { message } from "../../domain/messages";
 
 export const FORMULA_PATTERN = /\[\[formula:([a-zA-Z0-9-]+)\]\]/g;
 export const formulaMarker = (id: string) => `[[formula:${id}]]`;
+/** OCR supplies validated candidates and original crops. Translation alone owns
+ * their position markers and the prose instructions sent with the selected text. */
+export function formulaGlossary(assets: FormulaAsset[]): string {
+  return assets
+    .map(
+      ({ formula }) =>
+        `${formulaMarker(formula.id)}：${formula.partial ? "选区只包含公式的一部分，禁止补全" : formula.latex ? `LaTeX 阅读候选（未验证）：$${formula.latex}$` : "公式原图，尚无可靠 LaTeX，不要猜测或补写"}`,
+    )
+    .join("\n");
+}
 export const FORMULA_TRANSLATION_POLICY =
   "正文里的 [[formula:ID]] 是原公式的位置标记。翻译时必须将每个标记原样保留一次，保持它们的顺序及行内/行间位置，不能用 LaTeX、文字或占位词替换，不能新增标记。公式阅读候选只用于理解上下文，不得据此改写、补全或重建公式。";
 

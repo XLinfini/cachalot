@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import "fake-indexeddb/auto";
-import { DocumentAnalysisSession } from "../../src/application/document-analysis";
+import { DocumentAnalysisSession } from "../../src/application/document-analysis/session";
 import type { AnalysisSnapshot } from "../../src/domain/document-semantics";
 import type { AnalysisEngine } from "../../src/infrastructure/analysis/protocol";
 import type { DocumentRecord } from "../../src/domain/records";

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, test, type Page } from "@playwright/test";
 import type { PageFacts, LayoutObservations } from "../../src/domain/analysis";
 import type { DocumentSemantics } from "../../src/domain/document-semantics";
-import { projectSemanticPage } from "../../src/application/document-semantics";
+import { projectSemanticPage } from "../../src/application/document-analysis/document-semantics";
 interface CacheBundle {
   facts: PageFacts[];
   observations: LayoutObservations[];

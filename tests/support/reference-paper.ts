@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LayoutObservations, PageFacts } from "../../src/domain/analysis";
 import type { DocumentSemantics, SemanticPageView } from "../../src/domain/document-semantics";
-import { projectSemanticPage } from "../../src/application/document-semantics";
+import { projectSemanticPage } from "../../src/application/document-analysis/document-semantics";
 import {
   validDocumentSemantics,
   validPageFacts,

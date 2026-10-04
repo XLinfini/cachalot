@@ -1,14 +1,14 @@
-import type { ContentBlock, HeadingLevel, PageFacts } from "../domain/analysis";
+import type { ContentBlock, HeadingLevel, PageFacts } from "../../domain/analysis";
 import type {
   DocumentSection,
   DocumentSemantics,
   SemanticNode,
   SemanticPageView,
-} from "../domain/document-semantics";
-import { area, characterText, intersection, union } from "../domain/geometry";
-import { DOCUMENT_SEMANTICS_KEY } from "../domain/model";
-import type { PageSemanticFragment } from "./assemble-page-semantics";
-import { nativeLatex } from "./formula-analysis";
+} from "../../domain/document-semantics";
+import { area, characterText, intersection, union } from "../../domain/geometry";
+import { DOCUMENT_SEMANTICS_KEY } from "../../domain/model";
+import type { PageSemanticFragment } from "./page-semantics";
+import { nativeLatex } from "./formulas";
 
 const romanSection = /^[IVX]+[.)]?\s+\S/u;
 const singleLine = (text: string) => text.replace(/\s+/gu, " ").trim();

@@ -1,5 +1,5 @@
-import type { SelectedRegion, SelectedTextBlock } from "../domain/analysis";
-import { message } from "../domain/messages";
+import type { SelectedRegion, SelectedTextBlock } from "../../domain/analysis";
+import { message } from "../../domain/messages";
 
 const HEADING_TOKEN = /\[\[(\/?)heading:([a-zA-Z0-9-]+)\]\]/g;
 const singleLine = (text: string) => text.replace(/\s+/gu, " ").trim();

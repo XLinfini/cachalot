@@ -1,19 +1,19 @@
-import { message } from "../domain/messages";
-import type { AnalysisProgress, LayoutObservations, PageFacts } from "../domain/analysis";
+import { message } from "../../domain/messages";
+import type { AnalysisProgress, LayoutObservations, PageFacts } from "../../domain/analysis";
 import type {
   AnalysisSnapshot,
   DocumentSemantics,
   SemanticPageView,
-} from "../domain/document-semantics";
-import type { DocumentRecord } from "../domain/records";
-import { nativeText } from "../domain/page-facts";
-import type { AnalysisEngine } from "../infrastructure/analysis/protocol";
-import { analysisRepository } from "../infrastructure/analysis/repository";
-import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
-import { platform } from "../infrastructure/platform";
-import { cacheGeneration } from "../infrastructure/cache-writes";
-import { semanticSourcesResolve } from "../infrastructure/analysis/validation";
-import { assemblePageSemantics, type PageSemanticFragment } from "./assemble-page-semantics";
+} from "../../domain/document-semantics";
+import type { DocumentRecord } from "../../domain/records";
+import { nativeText } from "../../domain/page-facts";
+import type { AnalysisEngine } from "../../infrastructure/analysis/protocol";
+import { analysisRepository } from "../../infrastructure/analysis/repository";
+import { semanticsRepository } from "../../infrastructure/analysis/semantics-repository";
+import { platform } from "../../infrastructure/platform";
+import { cacheGeneration } from "../../infrastructure/cache-writes";
+import { semanticSourcesResolve } from "../../infrastructure/analysis/validation";
+import { assemblePageSemantics, type PageSemanticFragment } from "./page-semantics";
 import { buildDocumentSemantics, projectSemanticPage } from "./document-semantics";
 
 /** Owns one document's source facts and authoritative semantic snapshots.
@@ -94,7 +94,7 @@ export class DocumentAnalysisSession {
         const progress = (text: string) => this.publish("analyzing", text);
         const engine = this.createEngine
           ? await this.createEngine(progress)
-          : new (await import("../infrastructure/analysis/client")).AnalysisClient(progress);
+          : new (await import("../../infrastructure/analysis/client")).AnalysisClient(progress);
         this.client = engine;
         if (this.disposed) {
           engine.dispose();

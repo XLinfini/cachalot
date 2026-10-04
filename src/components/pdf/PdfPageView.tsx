@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { ChevronRight } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import { useTranslation } from "react-i18next";
-import { selectRegion } from "../../application/select-region";
+import { selectRegion } from "../../application/selection-translation";
 import { area, containsCenter } from "../../domain/geometry";
 import type { SelectedRegion } from "../../domain/analysis";
 import type { SemanticPageView } from "../../domain/document-semantics";

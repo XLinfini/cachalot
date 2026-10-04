@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "@playwright/test";
 import type { SemanticPageView } from "../../../src/domain/document-semantics";
-import { selectRegion } from "../../../src/application/select-region";
+import { selectRegion } from "../../../src/application/selection-translation/select-region";
 import type { LocaleResource } from "../../../src/i18n/locales/en";
 
 export async function verifyContinuousReader(

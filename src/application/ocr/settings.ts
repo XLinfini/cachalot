@@ -1,12 +1,12 @@
-import type { FormulaOcrProtocol, ModelSelection, Provider } from "../domain/records";
-import { addedModels } from "../domain/provider-models";
-import { message } from "../domain/messages";
-import { platform } from "../infrastructure/platform";
-import { listConfiguredProviders, supportsImages } from "./model-catalog";
-import { recognizeFormula } from "../infrastructure/ocr/formula-ocr";
-import { validLatex } from "./formula-transcription";
-import { ocrTestImage } from "../infrastructure/ocr/test-formula";
-import { ocrAdapters } from "../infrastructure/ocr/registry";
+import type { FormulaOcrProtocol, ModelSelection, Provider } from "../../domain/records";
+import { addedModels } from "../../domain/provider-models";
+import { message } from "../../domain/messages";
+import { platform } from "../../infrastructure/platform";
+import { listConfiguredProviders, supportsImages } from "../model-catalog";
+import { recognizeFormula } from "../../infrastructure/ocr/formula-ocr";
+import { validLatex } from "./validate-latex";
+import { ocrTestImage } from "../../infrastructure/ocr/test-formula";
+import { ocrAdapters } from "../../infrastructure/ocr/registry";
 
 /** Explicit connection check sends one locally rendered test formula. It does
  * not upload a paper or call /models on a fixed-engine OCR API. */

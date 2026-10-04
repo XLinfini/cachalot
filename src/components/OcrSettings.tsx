@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
-import type { OcrSelection } from "../application/ocr-settings";
+import type { OcrSelection } from "../application/ocr";
 import type { Provider } from "../domain/records";
 import { ocrModels } from "../domain/provider-models";
 import ModelPicker from "./ModelPicker";

@@ -1,4 +1,4 @@
-import { buildDocumentSemantics } from "../../src/application/document-semantics";
+import { buildDocumentSemantics } from "../../src/application/document-analysis/document-semantics";
 import type { ContentBlock, NativePage } from "../../src/domain/analysis";
 import type { FormulaRecord } from "../../src/infrastructure/formula-repository";
 

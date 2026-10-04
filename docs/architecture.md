@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | `src/domain/` | 文档、会话、版面 DTO；坐标和模型版本约定 | 复用数据契约，保持无 React / Tauri 依赖 |
 | `src/application/services.ts` | 文献库、设置、模型服务、会话、解析、翻译、问答的统一入口 | 新界面调用这里 |
-| `src/application/document-analysis.ts` | 文档分析生命周期、缓存读取、逐页续解析 | 在打开/关闭文档时建立/释放 session |
-| `src/application/assemble-page-semantics.ts`、`document-semantics.ts` | 页内组装、文档阅读顺序、章节与来源关联 | 业务规则修改后更新缓存版本 |
-| `src/application/select-region.ts` | 框选命中与正文提取 | 用归一化选区调用 |
-| `src/application/paper-assistant.ts` | 论文检索、上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
+| `src/application/document-analysis/` | 文档分析生命周期、页内组装、全文语义及公式定位 | 建立/释放 session；规则变化时更新对应缓存版本 |
+| `src/application/ocr/` | 独立 OCR 配置、公式裁图调度、识别、校验及候选缓存 | 通过公式区域 DTO 调用，不依赖翻译协议 |
+| `src/application/selection-translation/` | 精确选区、背景范围、公式位置、标题格式、翻译请求及返回校验 | 使用目录公开入口或 `services.assistant.translateRegion` |
+| `src/application/paper-assistant.ts` | 论文问答检索、会话上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
 | `src/application/model-catalog.ts` | 已添加模型配置、临时模型列表请求、逐模型图像能力 | 通过 services 获取，能力不按模型名称猜测 |
 | `src/infrastructure/pdf/document-preview.ts` | 独立生成并缓存 PDF 第一页预览 | 通过 services.library.preview 调用 |
 | `src/infrastructure/analysis/` | PDFium、ONNX、Worker RPC、缓存适配器 | UI 不直接访问 |
@@ -19,6 +19,18 @@
 | `src-tauri/src/` | SQLite、PDF 文件、密钥库、模型 HTTP 请求 | 可独立演进；命令参数与 DTO 保持一致 |
 | `src/hooks/useDocumentAnalysis.ts` | 服务与 React 生命周期的衔接 | 换框架时替换该桥接层 |
 | `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件 | 可重新设计 |
+
+### 应用层的三个环节
+
+应用层按处理环节组织，而不是把所有公式文件归为同一个功能。目录与文件职责见 [application 维护指南](../src/application/README.md)。
+
+- **文档分析**是底层：`session.ts` 管生命周期与分阶段缓存，`page-semantics.ts`/`document-semantics.ts` 管页内和全文结构，`formulas.ts` 管公式定位及原生简单结构。输出页面事实、文档语义和临时页面投影，不调用远端 OCR 或翻译，也不保存 OCR 候选到语义树。
+- **OCR**是中间层：`reconstruct-formulas.ts` 接收上层明确指定的 `FormulaFragment[]`，通过 infrastructure 的裁图、适配器和仓库取得原图、识别并校验候选，返回 `{ assets, issues }`。它不接收整个 `SelectedRegion`，不产生公式位置标记、翻译提示词或译文。`validate-latex.ts` 管语法与字符检查；`settings.ts`/`catalog.ts` 管独立模型选择与派生设置选项。
+- **框选翻译**是上层：`select-region.ts` 从文档分析投影确定实际覆盖，`context.ts` 从同一语义快照取有限背景；`translate-region.ts` 调用 OCR 公开入口，把候选与正文交给翻译模型；`formula-slots.ts` 管位置标记、候选说明和译文回填，`headings.ts` 管标题协议和格式恢复。
+
+调用方向为框选翻译 → OCR → infrastructure，框选翻译也直接消费文档分析的领域数据。文档分析与 OCR 不反向导入框选翻译；domain/infrastructure 不导入 application。目录 `index.ts` 是受控公开入口，界面用 `services.ts` 调用有副作用的流程，纯选区及预览助手使用相应目录入口。内部单元测试可直接导入被测模块。
+
+`createFormulaReconstructor(ports)` 允许替换裁图、设置、识别、候选保存等副作用；默认实现连接现有 infrastructure。这些端口用于隔离测试和替换运行环境，业务校验仍由 OCR 层统一执行。问答继续在 `paper-assistant.ts`；`services.assistant.askPaper/translateRegion` 的界面契约保持一致。此次目录/API 整理不改变事实、语义或 OCR 缓存版本，已有兼容缓存继续复用。
 
 ## 文献分类
 
@@ -50,7 +62,7 @@
 2. PDFium 原生提取生成 `PageFacts`：页面尺寸、字符、字形属性、对象和归一化坐标。`extract` Worker 请求只做提取，不生成段落或公式。
 3. 原生提取顺序的文字作为临时问答索引。当前页优先，各页可独立完成，不等待全文版面分析。
 4. `detect` Worker 请求把 PDFium 渲染的 640×640 RGB 图像交给固定版本 Heron ONNX，返回 `LayoutObservations`。它保存原始检测框、预测类别、置信度和模型版本，未做字符归属、去重或段落组装。
-5. `assemble-page-semantics.ts` 将页面事实与版面观测组成语义片段；`document-semantics.ts` 汇总为唯一的 `DocumentSemantics`。缺失字符保留为回退块；标题层级、段落、阅读顺序、图注、子图和公式归属全部属于语义层。
+5. `document-analysis/page-semantics.ts` 将页面事实与版面观测组成语义片段；`document-analysis/document-semantics.ts` 汇总为唯一的 `DocumentSemantics`。缺失字符保留为回退块；标题层级、段落、阅读顺序、图注、子图和公式归属全部属于语义层。
 6. 每个新页面生成替换式文档快照。页面结构由 `projectSemanticPage` 投影，选区与翻译输入绑定快照版本；缺少版面分析的页面打断章节和跨页连续性。
 7. 页面事实、模型观测、文档语义分别持久化。关闭文档终止 Worker；重新打开时校验语义输入及字符/对象引用，复用兼容缓存，补齐缺失阶段。
 
@@ -148,12 +160,12 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 ## 公式定位、语义与保真
 
 1. PDFium 提取字形 Unicode、原始字号、字体、字形原点及文字矩阵。`emSize` 包含文字矩阵缩放，不能只使用 PDF 声明的字号（示例论文中常为 1）。基线转换到与版面相同的显示页坐标。
-2. 页面分析在 `formula-analysis.ts` 中建立 `FormulaFragment`：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。保存来源文档、页码、区域、字形索引、行内/行间形式、基线和有效字号。简单单基线与上下标生成 `native-candidate`；分数等二维结构不根据字符顺序猜测。
-3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此兼容的来源与观测缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
-4. `formula-source.ts` 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
-5. 用户框选并启动翻译后，`formula-translation.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，再翻译正文。`ocr-settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`formula-transcription.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
-6. 多模态 LLM 的 JSON/唯一 ID 或专用 OCR 规范化结果通过后，校验 KaTeX 语法，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
-7. 翻译请求包含正文位置标记和 LaTeX 阅读候选。`formula-references.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
+2. `document-analysis/formulas.ts` 在文档语义中建立 `SemanticFormula` 区域：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。来源引用保存文档、页码、区域及字形索引，语义保存行内/行间形式、基线和有效字号。页面投影时生成 `FormulaFragment` 并为简单单基线与上下标恢复 `native-candidate`；分数等二维结构不根据字符顺序猜测。LaTeX 不进入权威语义缓存。
+3. `selection-translation/select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此兼容的来源与观测缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
+4. OCR 调度基础设施中的 [`src/infrastructure/pdf/formula-source.ts`](../src/infrastructure/pdf/formula-source.ts)，使用 PDF.js 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
+5. 用户框选并启动翻译后，`ocr/reconstruct-formulas.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，返回校验候选后，由 `selection-translation/translate-region.ts` 翻译正文。`ocr/settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`domain/formula-evidence.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
+6. 多模态 LLM 的 JSON/唯一 ID 或专用 OCR 规范化结果通过后，`ocr/validate-latex.ts` 校验 KaTeX 语法，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
+7. `selection-translation/formula-slots.ts` 从 OCR 返回资产生成翻译用候选说明；翻译请求包含正文位置标记和 LaTeX 阅读候选。`selection-translation/formula-slots.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
 8. `translateRegion` 经 `onPhase` 回传准备/翻译状态，`onPrepared` 回传这次翻译实际使用的候选与失败原因。翻译弹窗为三栏：PDF 图片、重建原文、译文。中栏与右栏显式使用 `MathMarkdown` 的 `latex-candidate` 显示方式，中栏可切换到 LaTeX 源文本；识别完成立即更新，不等待正文翻译结束，翻译失败后也能继续核对原文。取消旧的折叠“查看提取的文字”入口。
 
 公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；多模态 LLM 候选按 `transcribe-v2-native:<providerId>:<modelId>` 保存，专用 OCR 按 `formula-ocr-v1:<protocol>:<providerId>:<modelId>` 保存。显式 OCR 选择只使用该模型的候选，停用、删除或协议不匹配时报错；旧文字模型的候选兼容路径仅在未配置独立 OCR 时使用。只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。原生提取、版面观测与文档语义分别使用 `PAGE_FACTS_KEY`、`LAYOUT_OBSERVATIONS_KEY`、`DOCUMENT_SEMANTICS_KEY`。公式资产还校验来源提取版本；修改语义规则可复用提取及模型观测，修改转写规则只影响候选。
@@ -166,17 +178,17 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 `ProviderEditor.tsx` 为「模型服务」和「公式 OCR」复用表单，但根据 `providerPurpose:<providerId>` 仅展示各自的服务商和操作。OCR 页管理 GLM 预设、密钥、模型接口类型及识别连接测试；模型服务页管理翻译/问答服务。用途标记与已添加模型同在设置存储中，原有服务商 ID 与凭据存储不变。旧版仅包含专用 OCR 模型的服务商按模型类型归入公式 OCR；混合用途服务商仍保留翻译/问答角色，其已配置的 OCR 模型也可在公式 OCR 页维护。
 
-`domain/ocr-adapter.ts` 定义识别输入/候选、模型预设、双语元数据和传输契约。`infrastructure/ocr/providers/*.ts` 每个文件默认导出一个实现，应用启动时由 `register-providers.ts` 自动发现并注册。`application/ocr-catalog.ts` 为设置页提供派生选项；`formula-translation.ts` 按适配器批次调用统一识别入口，负责候选校验、图片回退和缓存。厂商地址规则、任务 prompt、模型目录及业务响应解析只存在于对应文件。扩展流程见 [OCR 适配器开发指南](../src/infrastructure/ocr/providers/README.md)。
+`domain/ocr-adapter.ts` 定义识别输入/候选、模型预设、双语元数据和传输契约。`infrastructure/ocr/providers/*.ts` 每个文件默认导出一个实现，应用启动时由 `register-providers.ts` 自动发现并注册。`application/ocr/catalog.ts` 为设置页提供派生选项；`ocr/reconstruct-formulas.ts` 按适配器批次调用统一识别入口，负责候选校验、图片回退和缓存。厂商地址规则、任务 prompt、模型目录及业务响应解析只存在于对应文件。扩展流程见 [OCR 适配器开发指南](../src/infrastructure/ocr/providers/README.md)。
 
 `ocr/transport.ts` 将提供商绑定到通用 JSON、Chat 和模型目录传输。JSON 请求由浏览器 `ocr/http.ts` 或桌面 `ocr_http.rs` 执行，适配器声明凭据位置（header/query/JSON/none），共享层注入密钥；带密钥请求限于已配置 origin，不跟随重定向。桌面不会为 OCR 向 JavaScript 暴露 keyring 密钥。HTTP 错误及适配器抛出的业务错误保留脱敏正文/request ID；成功 JSON 中回显的密钥也会脱敏。120 秒超时，不自动重试；遇到请求失败后停止当前选区剩余 OCR 请求。两端鉴权与请求验证使用同一组 `tests/fixtures/ocr-http.json`，Rust 不包含厂商端点或响应分支。
 
-`infrastructure/ocr/formula-ocr.ts` 校验图像和批次大小后调用适配器，返回与输入 ID 对应的 LaTeX 候选。GLM 公有版面 API 的 `POST /api/paas/v4/layout_parsing`、`model/file` 字段、Bearer 鉴权和响应规则封装在 `providers/glm.ts`：先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。`domain/formula-evidence.ts` 提供图像 LLM 的裁剪及字符坐标证据，`application/formula-transcription.ts` 负责语法与字符保留检查。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。
+`infrastructure/ocr/formula-ocr.ts` 校验图像和批次大小后调用适配器，返回与输入 ID 对应的 LaTeX 候选。GLM 公有版面 API 的 `POST /api/paas/v4/layout_parsing`、`model/file` 字段、Bearer 鉴权和响应规则封装在 `providers/glm.ts`：先读取唯一的 `layout_details` 公式块，没有公式块时只接收明确包围的 Markdown 数学块；多公式/空白/普通说明文本不能拼接为公式。专用 OCR 无法消费任意 PDFium 证据 prompt，所以字符证据在服务层做返回后校验。`domain/formula-evidence.ts` 提供图像 LLM 的裁剪及字符坐标证据，`application/ocr/validate-latex.ts` 负责语法与字符保留检查。原生简单公式和部分选中的公式不调用远端 OCR。缓存仅写入通过语法与字符检查的结果。
 
 GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或 Z.AI 地址 `https://api.z.ai/api/paas/v4`；固定模型列表只提供 `glm-ocr`，不调用 `/models`。检查连接发送一张应用生成的测试公式；浏览器预览要求服务商支持 CORS，桌面使用 Rust HTTP 客户端。常规 JSON / Chat API 新增一个适配器文件即可；multipart、二进制返回和签名鉴权需先扩展共享传输契约。新增文件在重新构建时加载，不是运行时插件系统。
 
 ### 标题结构的翻译与重排
 
-`select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`heading-translation.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
+`selection-translation/select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`selection-translation/headings.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
 
 Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h1；重叠的 title/heading 预测优先保留标题语义（示例论文存在空 title 与有文字的 heading 重合）。章节标题默认 h2，数字编号深度和罗马章节下的字母小节推为更深层级；未来解析器可通过 `ContentBlock.headingLevel` 直接提供层级。无法判断的标题保留为 h2，识别错误或不常见的编号体系仍可能需要人工核对。依据来自完整原始块，不依赖翻译后的文字或裁剪后的编号。多行标题合并为一个标题；只选中半个标题仍按标题格式显示实际选中的文字，不补回未选中内容。标题层级由文档语义构建器统一推断，选区翻译只读取结果；修改层级规则可复用原始版面观测。
 

@@ -1,46 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { FormulaFragment, PdfCharacter } from "../../src/domain/analysis";
-import {
-  formulaEvidence,
-  preservesNativeCharacters,
-  validLatex,
-} from "../../src/application/formula-transcription";
-
-const glyph = (index: number, text: string, x: number, y = 0.2): PdfCharacter => ({
-  index,
-  text,
-  box: [x, y - 0.01, x + 0.008, y + 0.002],
-  origin: [x, y],
-  fontSize: 1,
-  emSize: 10,
-  generated: false,
-  fontName: "MathFont",
-});
-const formula: FormulaFragment = {
-  id: "equation",
-  documentId: "paper",
-  page: 2,
-  box: [0.05, 0.1, 0.98, 0.3],
-  mode: "display",
-  pageWidth: 600,
-  pageHeight: 1000,
-  blockId: "block",
-  characterIndices: [0, 1, 2, 3, 4, 5, 6, 7],
-  nativeText: "o θ C = 0 (1)",
-  latex: null,
-  recognition: "unrecognized",
-  characters: [
-    glyph(0, "o", 0.2, 0.18),
-    glyph(1, "θ", 0.21, 0.184),
-    glyph(2, "C", 0.1),
-    glyph(3, "=", 0.12),
-    glyph(4, "0", 0.2, 0.22),
-    glyph(5, "(", 0.9),
-    glyph(6, "1", 0.91),
-    glyph(7, ")", 0.92),
-  ],
-};
+import { formulaEvidence } from "../../src/domain/formula-evidence";
+import { evidenceFormula as formula, formulaGlyph as glyph } from "../fixtures/formulas";
+import type { PdfCharacter } from "../../src/domain/analysis";
+import { preservesNativeCharacters, validLatex } from "../../src/application/ocr/validate-latex";
 
 test("evidence preserves extraction order and Unicode with crop-local geometry, not the nominal font size", () => {
   const input = formulaEvidence(formula);

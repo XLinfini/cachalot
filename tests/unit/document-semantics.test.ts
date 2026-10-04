@@ -4,9 +4,9 @@ import { semanticFixture } from "../fixtures/document-semantics";
 import {
   buildDocumentSemantics,
   projectSemanticPage,
-} from "../../src/application/document-semantics";
-import { selectRegion } from "../../src/application/select-region";
-import { translationContext } from "../../src/application/translation-context";
+} from "../../src/application/document-analysis/document-semantics";
+import { selectRegion } from "../../src/application/selection-translation/select-region";
+import { translationContext } from "../../src/application/selection-translation/context";
 import { validDocumentSemantics } from "../../src/infrastructure/analysis/validation";
 import { nativeText } from "../../src/domain/page-facts";
 

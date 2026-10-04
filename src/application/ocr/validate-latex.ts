@@ -1,11 +1,6 @@
 import katex from "katex";
-import type { FormulaFragment } from "../domain/analysis";
-import { formulaEvidence } from "../domain/formula-evidence";
-export {
-  formulaEvidence,
-  FORMULA_TRANSCRIPTION_PROMPT,
-  TRANSCRIPTION_VERSION,
-} from "../domain/formula-evidence";
+import type { FormulaFragment } from "../../domain/analysis";
+import { formulaEvidence } from "../../domain/formula-evidence";
 
 export function validLatex(value: unknown): value is string {
   if (
