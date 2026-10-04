@@ -50,4 +50,4 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 
 文档结构用例集中在 `unit/document-semantics.test.ts`（两层边界、全文标题证据、缺页、跨页来源投影、摘要及精确选区上下文）和 `integration/document-analysis.test.ts`（分阶段缓存、部分覆盖恢复、清除代次、关闭与重试、旧缓存迁移）。小型来源与检测输入共用 `fixtures/document-semantics.ts`；`support/analysis.ts` 通过生产构建器生成测试投影。真实论文缓存保存 `{ facts, observations, semantics }`，页面视图在读取时投影，不再保存混合页面分析。
 
-应用层目录边界由 `unit/application-boundaries.test.ts` 检查，包括静态导入、目录公开入口和动态导入的间接依赖；文档分析不能依赖 OCR/框选翻译，OCR 不能依赖框选翻译，domain/infrastructure 不能反向依赖 application。纯选区、标题、位置标记仍在既有单元模块维护。OCR 流程编排由 `integration/formula-reconstruction.test.ts` 通过生产服务的副作用端口验证精确区域、独立模型、字符校验、模型/版本缓存隔离、失败停止与原图回退；共享 Unicode/公式夹具在 `fixtures/formulas.ts`。厂商协议继续在既有 OCR 适配器测试维护，不为目录迁移新建按任务命名的脚本。
+应用层目录边界由 `unit/application-boundaries.test.ts` 检查，包括静态导入、目录公开入口和动态导入的间接依赖；文档分析不能依赖 OCR/框选翻译，OCR 不能依赖框选翻译，domain/infrastructure 不能反向依赖 application。纯选区、标题、位置标记仍在既有单元模块维护。`unit/analysis.test.ts` 区分完整段落/行间公式框选与文字模式精确选择；`e2e/reader-navigation.spec.ts` 独立验证实时蓝紫覆盖框、未命中时无翻译入口、反向拖动、缩放及中英文行为。OCR 流程编排由 `integration/formula-reconstruction.test.ts` 通过生产服务的副作用端口验证精确区域、独立模型、字符校验、模型/版本缓存隔离、失败停止与原图回退；共享 Unicode/公式夹具在 `fixtures/formulas.ts`。厂商协议继续在既有 OCR 适配器测试维护，不为目录迁移新建按任务命名的脚本。

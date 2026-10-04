@@ -3,8 +3,11 @@ import { test } from "node:test";
 import type { Box, FormulaAsset, NativePage, PdfCharacter } from "../../src/domain/analysis";
 import { fixturePage } from "../support/analysis";
 import { nativeLatex } from "../../src/application/document-analysis/formulas";
-import { selectRegion } from "../../src/application/selection-translation/select-region";
-import { finishTranslation, formulaClipboard } from "../../src/application/selection-translation/formula-slots";
+import { selectTextRegion } from "../../src/application/selection-translation/select-region";
+import {
+  finishTranslation,
+  formulaClipboard,
+} from "../../src/application/selection-translation/formula-slots";
 
 const glyph = (index: number, text: string, x: number, y = 0.2, size = 10): PdfCharacter => ({
   index,
@@ -35,7 +38,7 @@ test("effective em size and origin recover subscripts; nominal PDF font size alo
   assert.equal(nativeLatex(chars, 1000), "I_{op}");
   const page = fixturePage("paper", native(chars), [paragraph]);
   assert.equal(page.formulas?.[0].latex, "I_{op}");
-  const selected = selectRegion(page, [0, 0, 1, 1]);
+  const selected = selectTextRegion(page, [0, 0, 1, 1]);
   assert.equal(selected.formulas.length, 1);
   assert.match(selected.text, /^\[\[formula:/);
 });
@@ -49,7 +52,7 @@ test("Greek symbols and literal inverse-function notation survive; multi-baselin
   assert.equal(nativeLatex([glyph(0, "1", 0.1, 0.19), glyph(1, "2", 0.1, 0.21)], 1000), null);
 });
 
-test("italic prose does not become a formula; partial formula selection never completes an unselected suffix", () => {
+test("italic prose does not become a formula; text mode never completes a partial formula", () => {
   const prose = Array.from("where").map((text, i) => glyph(i, text, 0.1 + i * 0.008));
   assert.equal(fixturePage("paper", native(prose), [paragraph]).formulas?.length, 0);
   const page = fixturePage(
@@ -57,7 +60,7 @@ test("italic prose does not become a formula; partial formula selection never co
     native([glyph(0, "I", 0.1), glyph(1, "o", 0.108, 0.202, 6), glyph(2, "p", 0.116, 0.202, 6)]),
     [paragraph],
   );
-  const selected = selectRegion(page, [0.099, 0.185, 0.109, 0.211]);
+  const selected = selectTextRegion(page, [0.099, 0.185, 0.109, 0.211]);
   assert.equal(selected.formulas[0].partial, true);
   assert.equal(selected.formulas[0].latex, null);
   assert.deepEqual(selected.formulas[0].characterIndices, [0]);
@@ -78,7 +81,7 @@ test("standalone equations stay in source order and retain source geometry even 
     { ...paragraph, box: [0, 0.1, 0.9, 0.18] },
     { kind: "formula", confidence: 0.95, box: [0.1, 0.2, 0.8, 0.25] },
   ]);
-  const selected = selectRegion(page, [0, 0, 1, 1]);
+  const selected = selectTextRegion(page, [0, 0, 1, 1]);
   assert.match(selected.text, /^A\n\n\[\[formula:/);
   assert.equal(selected.formulas[0].mode, "display");
   assert.equal(selected.formulas[0].latex, null);

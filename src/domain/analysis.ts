@@ -166,6 +166,14 @@ export interface SelectedRegion {
   formulas?: FormulaFragment[];
   source?: SelectionSource;
   context?: TranslationContext;
+  /** Complete semantic units accepted by rectangle selection. */
+  units?: SelectionUnit[];
+}
+
+export interface SelectionUnit {
+  id: string;
+  kind: BlockKind;
+  box: Box;
 }
 
 /** Exact output scope, independently of the broader context used to translate. */

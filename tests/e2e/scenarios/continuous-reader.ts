@@ -2,7 +2,10 @@
 import assert from "node:assert/strict";
 import type { Page } from "@playwright/test";
 import type { SemanticPageView } from "../../../src/domain/document-semantics";
-import { selectRegion } from "../../../src/application/selection-translation/select-region";
+import {
+  selectRegion,
+  selectRegionUnits,
+} from "../../../src/application/selection-translation/select-region";
 import type { LocaleResource } from "../../../src/i18n/locales/en";
 
 export async function verifyContinuousReader(
@@ -124,11 +127,12 @@ export async function verifyContinuousReader(
       block.kind === "paragraph" && block.characterIndices.length > 100 && block.box[3] < 0.75,
   )!;
   assert.ok(body);
+  const unit = selectRegionUnits(second, [0, 0, 1, 1]).find((unit) => unit.id === body.id)!;
   const box: [number, number, number, number] = [
-    body.box[0],
-    body.box[1],
-    (body.box[0] + body.box[2]) / 2,
-    body.box[3],
+    unit.box[0] - 0.003,
+    unit.box[1] - 0.003,
+    unit.box[2] + 0.003,
+    unit.box[3] + 0.003,
   ];
   await page.mouse.move(bounds.x + box[0] * bounds.width, bounds.y + box[1] * bounds.height);
   await page.mouse.down();
@@ -140,9 +144,8 @@ export async function verifyContinuousReader(
   await page.locator('[data-ui="translation-source-format"]').click();
   const selected = await page.locator('[data-ui="translation-source-text"]').innerText();
   const expected = selectRegion(second, box).text;
-  assert.ok(selected.length > 30 && selected.length < body.text.length);
-  // Browser pointer coordinates round to pixels; compare the stable text prefix.
-  assert.equal(selected.slice(0, 30), expected.slice(0, 30));
+  assert.ok(selected.length > 30);
+  assert.equal(selected, expected);
   await page
     .getByRole("img", { name: labels.translation.imageAlt.replace("{{page}}", "2") })
     .waitFor();

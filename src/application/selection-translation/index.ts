@@ -1,5 +1,5 @@
 /** Public selection/translation and presentation helpers; request internals stay local. */
-export { selectRegion } from "./select-region";
+export { selectRegion, selectRegionUnits, selectTextRegion } from "./select-region";
 export { translateRegion } from "./translate-region";
 export { FORMULA_PATTERN, formulaClipboard } from "./formula-slots";
 export { previewTranslatedHeadings, sourceMarkdown } from "./headings";

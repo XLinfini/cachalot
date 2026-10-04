@@ -5,7 +5,7 @@ import {
   buildDocumentSemantics,
   projectSemanticPage,
 } from "../../src/application/document-analysis/document-semantics";
-import { selectRegion } from "../../src/application/selection-translation/select-region";
+import { selectTextRegion } from "../../src/application/selection-translation/select-region";
 import { translationContext } from "../../src/application/selection-translation/context";
 import { validDocumentSemantics } from "../../src/infrastructure/analysis/validation";
 import { nativeText } from "../../src/domain/page-facts";
@@ -47,7 +47,7 @@ test("document headings use other pages' evidence and page projections update wi
   assert.equal(partial.nodes[0].headingLevel, 2);
   assert.deepEqual(full.readingOrder, ["p1-b0", "p2-b0"]);
   assert.equal(full.sections[1].parentId, full.sections[0].id);
-  const selected = selectRegion(view, [0.25, 0.09, 0.7, 0.15]);
+  const selected = selectTextRegion(view, [0.25, 0.09, 0.7, 0.15]);
   assert.equal(selected.blocks[0].headingLevel, 3);
   assert.equal(selected.blocks[0].partial, true);
   assert.equal(selected.source?.semanticRevision, 2);
@@ -109,7 +109,7 @@ test("a multi-page paragraph projects local glyphs while translation context kee
   const snapshot = { ...document, nodes: [merged], readingOrder: [merged.id], relations: [] };
   const view = projectSemanticPage(snapshot, second.facts);
   assert.equal(view.blocks[0].text, "FGHIJ");
-  const selected = selectRegion(view, [0.1, 0.1, 0.3, 0.15]);
+  const selected = selectTextRegion(view, [0.1, 0.1, 0.3, 0.15]);
   assert.equal(selected.text, "FG");
   assert.deepEqual(selected.source?.characterIndices, [0, 1]);
   assert.equal(selected.context?.passages[0].text, "ABCDE FGHIJ");
@@ -125,7 +125,7 @@ test("abstract and section context preserve exact half-word scope and bounded ba
     { kind: "paragraph", text: "ABCDE", box: [0.1, 0.35, 0.6, 0.39] },
     { kind: "paragraph", text: "A following paragraph.", box: [0.1, 0.45, 0.9, 0.49] },
   ]);
-  const selection = selectRegion(fixture.view, [0.1, 0.35, 0.3, 0.4]);
+  const selection = selectTextRegion(fixture.view, [0.1, 0.35, 0.3, 0.4]);
   assert.equal(selection.text, "AB");
   assert.equal(selection.context?.title, "A paper title");
   assert.equal(selection.context?.abstract, "Study background.");

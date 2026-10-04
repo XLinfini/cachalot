@@ -259,13 +259,13 @@ test("Layout and visual behavior @paper", async () => {
           (b) => b.kind === "paragraph" && b.characterIndices.length > 200,
         )!;
         await page.mouse.move(
-          geometry.x + body.box[0] * geometry.width,
-          geometry.y + body.box[1] * geometry.height,
+          geometry.x + (body.box[0] - 0.003) * geometry.width,
+          geometry.y + (body.box[1] - 0.003) * geometry.height,
         );
         await page.mouse.down();
         await page.mouse.move(
-          geometry.x + ((body.box[0] + body.box[2]) / 2) * geometry.width,
-          geometry.y + body.box[3] * geometry.height,
+          geometry.x + (body.box[2] + 0.003) * geometry.width,
+          geometry.y + (body.box[3] + 0.003) * geometry.height,
           { steps: 5 },
         );
         await page.mouse.up();

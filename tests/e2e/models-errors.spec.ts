@@ -105,13 +105,13 @@ test("Provider errors @paper", async () => {
           (block) => block.kind === "paragraph" && block.characterIndices.length > 200,
         )!;
         await page.mouse.move(
-          geometry.x + paragraph.box[0] * geometry.width,
-          geometry.y + paragraph.box[1] * geometry.height,
+          geometry.x + (paragraph.box[0] - 0.003) * geometry.width,
+          geometry.y + (paragraph.box[1] - 0.003) * geometry.height,
         );
         await page.mouse.down();
         await page.mouse.move(
-          geometry.x + ((paragraph.box[0] + paragraph.box[2]) / 2) * geometry.width,
-          geometry.y + paragraph.box[3] * geometry.height,
+          geometry.x + (paragraph.box[2] + 0.003) * geometry.width,
+          geometry.y + (paragraph.box[3] + 0.003) * geometry.height,
           { steps: 6 },
         );
         await page.mouse.up();

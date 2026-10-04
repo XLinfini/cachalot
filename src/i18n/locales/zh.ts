@@ -93,7 +93,7 @@ export const zh = {
     previews: "页面预览",
     outline: "目录",
     region: "框选翻译",
-    regionTitle: "框选区域进行翻译",
+    regionTitle: "完整框入段落或行间公式进行翻译",
     text: "文字",
     layout: "版面",
     ask: "问答",

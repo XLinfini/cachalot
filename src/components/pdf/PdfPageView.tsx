@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { ChevronRight } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import { useTranslation } from "react-i18next";
-import { selectRegion } from "../../application/selection-translation";
+import {
+  selectRegion,
+  selectRegionUnits,
+  selectTextRegion,
+} from "../../application/selection-translation";
 import { area, containsCenter } from "../../domain/geometry";
 import type { SelectedRegion } from "../../domain/analysis";
 import type { SemanticPageView } from "../../domain/document-semantics";
@@ -64,10 +68,10 @@ export function PdfPageView({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
-  const pendingGeneration = useRef<number | null>(null);
   const [nearby, setNearby] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [box, setBox] = useState<Rect | null>(null);
+  const [boxGeneration, setBoxGeneration] = useState<number | null>(null);
 
   useEffect(() => {
     if (!scrollRoot || !pageRef.current) return;
@@ -81,8 +85,8 @@ export function PdfPageView({
 
   useEffect(() => {
     dragStart.current = null;
-    pendingGeneration.current = null;
     setBox(null);
+    setBoxGeneration(null);
   }, [mode, zoom]);
 
   useEffect(() => {
@@ -182,6 +186,7 @@ export function PdfPageView({
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStart.current = point(event);
+    setBoxGeneration(selectionGeneration.current);
     setBox({ ...dragStart.current, width: 0, height: 0 });
   };
   const handlePointerCancel = () => {
@@ -189,6 +194,7 @@ export function PdfPageView({
     dragStart.current = null;
     selectionGeneration.current++;
     setBox(null);
+    setBoxGeneration(null);
     onBusy(false);
     onSelection(null);
   };
@@ -209,7 +215,7 @@ export function PdfPageView({
     if (!dragStart.current || !canvasRef.current) return;
     const rect = dragRect(event);
     dragStart.current = null;
-    if (rect.width < 16 || rect.height < 16) {
+    if (rect.width < 3 || rect.height < 3) {
       setBox(null);
       return;
     }
@@ -222,7 +228,7 @@ export function PdfPageView({
     };
     const imageDataUrl = cropImage(rect);
     const generation = ++selectionGeneration.current;
-    pendingGeneration.current = generation;
+    setBoxGeneration(generation);
     onBusy(true);
     void getSemanticPage(number)
       .then((view) => {
@@ -233,14 +239,17 @@ export function PdfPageView({
           normalized.x + normalized.width,
           normalized.y + normalized.height,
         ]);
-        onSelection({ documentId, page: number, ...normalized, ...selected, imageDataUrl });
+        onSelection(
+          selected.units.length
+            ? { documentId, page: number, ...normalized, ...selected, imageDataUrl }
+            : null,
+        );
       })
       .catch((cause: unknown) => {
         if (generation === selectionGeneration.current) onError(String(cause));
       })
       .finally(() => {
         if (generation === selectionGeneration.current) onBusy(false);
-        if (pendingGeneration.current === generation) pendingGeneration.current = null;
       });
   };
   const handleTextSelection = () => {
@@ -306,7 +315,7 @@ export function PdfPageView({
             .filter((c) => area(c.box) > 0 && glyphBoxes.some((b) => containsCenter(b, c.box)))
             .map((c) => c.index),
         );
-        const result = selectRegion(
+        const result = selectTextRegion(
           view,
           [
             normalized.x,
@@ -344,9 +353,21 @@ export function PdfPageView({
         width: ownSelection.width * width,
         height: ownSelection.height * height,
       }
-    : dragStart.current || pendingGeneration.current === selectionGeneration.current
+    : mode === "region" && boxGeneration === selectionGeneration.current
       ? box
       : null;
+  const selectedUnits =
+    mode === "region" && visibleBox
+      ? ownSelection?.units ||
+        (semanticPage
+          ? selectRegionUnits(semanticPage, [
+              visibleBox.x / width,
+              visibleBox.y / height,
+              (visibleBox.x + visibleBox.width) / width,
+              (visibleBox.y + visibleBox.height) / height,
+            ])
+          : [])
+      : [];
 
   return (
     <div
@@ -407,9 +428,25 @@ export function PdfPageView({
             </div>
           ))}
       {mode === "region" && <div className="absolute inset-0 cursor-crosshair" />}
+      {selectedUnits.map((unit) => (
+        <div
+          key={unit.id}
+          data-ui="selected-unit"
+          data-unit-id={unit.id}
+          data-kind={unit.kind}
+          className="pointer-events-none absolute z-[4] border-2 border-[#8b5cf6] bg-[#8b5cf6]/20"
+          style={{
+            left: `${unit.box[0] * 100}%`,
+            top: `${unit.box[1] * 100}%`,
+            width: `${(unit.box[2] - unit.box[0]) * 100}%`,
+            height: `${(unit.box[3] - unit.box[1]) * 100}%`,
+          }}
+        />
+      ))}
       {visibleBox && (
         <div
-          className="pointer-events-none absolute border-2 border-[#2d76d9] bg-[#327be5]/16"
+          data-ui="selection-box"
+          className="pointer-events-none absolute z-[5] border-2 border-[#2d76d9]"
           style={{
             left: visibleBox.x,
             top: visibleBox.y,
@@ -420,7 +457,7 @@ export function PdfPageView({
       )}
       {ownSelection && (
         <button
-          className="absolute z-[2] flex items-center gap-[7px] rounded-lg border border-[#d7e5f6] bg-white px-[10px] py-[7px] text-[11px] whitespace-nowrap text-[#2968c2] shadow-[0_4px_13px_#28446f2a]"
+          className="absolute z-[6] flex items-center gap-[7px] rounded-lg border border-[#d7e5f6] bg-white px-[10px] py-[7px] text-[11px] whitespace-nowrap text-[#2968c2] shadow-[0_4px_13px_#28446f2a]"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={onTranslate}
           style={{

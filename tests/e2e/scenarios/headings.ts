@@ -71,12 +71,16 @@ export async function verifyHeadings(page: Page, labels: LocaleResource, output:
   }
   await close();
 
-  await select(1, [0.105, 0.065, 0.5, 0.148]);
-  await expect(source.locator("h1")).toHaveCount(1);
-  const partial = await source.locator("h1").innerText();
-  assert.ok(partial.length > 10 && partial.length < original.length);
-  await expect(result.locator("h1")).toHaveCount(1);
-  await close();
+  // A partly enclosed title is not a rectangle-selection unit.
+  const bounds = (await page.locator('[data-ui="pdf-page"][data-page="1"]').boundingBox())!;
+  await page.mouse.move(bounds.x + 0.105 * bounds.width, bounds.y + 0.065 * bounds.height);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 0.5 * bounds.width, bounds.y + 0.148 * bounds.height, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  await expect(page.locator('[data-ui="selected-unit"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: labels.reader.translate })).toHaveCount(0);
 
   await gotoPage(2);
   await select(2, [0.055, 0.216, 0.49, 0.282]);

@@ -1,10 +1,14 @@
 /** Integration checks use an isolated browser profile, never the user's library. */
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium, test, type Page } from "@playwright/test";
+import { chromium, expect, test, type Page } from "@playwright/test";
 import type { PageFacts, LayoutObservations } from "../../src/domain/analysis";
 import type { DocumentSemantics } from "../../src/domain/document-semantics";
 import { projectSemanticPage } from "../../src/application/document-analysis/document-semantics";
+import {
+  selectRegion,
+  selectRegionUnits,
+} from "../../src/application/selection-translation/select-region";
 interface CacheBundle {
   facts: PageFacts[];
   observations: LayoutObservations[];
@@ -87,6 +91,15 @@ test("Live paper analysis @paper", async () => {
         route.fulfill({ status: 404, body: "missing model" }),
       );
     await page.locator('input[type="file"]').setInputFiles(paper);
+    // Import normally opens the reader. If initialization leaves the document
+    // in the library, open the saved card explicitly instead of waiting forever.
+    const reader = page.locator('[data-ui="pdf-scroll"]');
+    try {
+      await reader.waitFor({ timeout: 10_000 });
+    } catch {
+      await page.locator('[data-ui="document-card"]').first().click({ timeout: 10_000 });
+      await reader.waitFor({ timeout: 10_000 });
+    }
     if (process.env.CACHALOT_CHECK_RETRY === "1") {
       await page
         .locator('[data-ui="analysis-strip"][data-phase="error"]')
@@ -107,8 +120,8 @@ test("Live paper analysis @paper", async () => {
     await mkdir("test-results", { recursive: true });
     await page.screenshot({ path: "test-results/reader-layout.png", fullPage: true });
 
-    // Actual pointer drag over only the left half of a paragraph. The popup
-    // displays exactly the application DTO's text, so no private test hook exists.
+    // A partly enclosed paragraph cannot be translated; full containment uses
+    // exactly the application DTO's source and its visual unit boundary.
     const native = views.find((p) => p.page === 1)!;
     const body = native.blocks.find(
       (b) => b.kind === "paragraph" && b.characterIndices.length > 200,
@@ -125,13 +138,33 @@ test("Live paper analysis @paper", async () => {
       steps: 8,
     });
     await page.mouse.up();
+    await expect(page.locator('[data-ui="selected-unit"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "翻译选区" })).toHaveCount(0);
+    const unit = selectRegionUnits(native, [0, 0, 1, 1]).find((unit) => unit.id === body.id)!;
+    const fullBox: [number, number, number, number] = [
+      unit.box[0] - 0.003,
+      unit.box[1] - 0.003,
+      unit.box[2] + 0.003,
+      unit.box[3] + 0.003,
+    ];
+    await page.mouse.move(
+      bounds.x + fullBox[0] * bounds.width,
+      bounds.y + fullBox[1] * bounds.height,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + fullBox[2] * bounds.width,
+      bounds.y + fullBox[3] * bounds.height,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect(
+      page.locator(`[data-ui="selected-unit"][data-unit-id="${body.id}"]`),
+    ).toBeVisible();
     await page.getByRole("button", { name: "翻译选区" }).click();
     await page.locator('[data-ui="translation-source-format"]').click();
     const selected = await page.locator('[data-ui="translation-source-text"]').innerText();
-    assert.ok(
-      selected.length > 0 && selected.length < body.text.length,
-      "partial rectangle must not expand to the full paragraph",
-    );
+    assert.equal(selected, selectRegion(native, fullBox).text);
     await page.getByRole("button", { name: "关闭翻译" }).click();
 
     const before = modelRequests.length;
@@ -173,7 +206,7 @@ test("Live paper analysis @paper", async () => {
     const summary = {
       pages: first.length,
       cacheBytes: JSON.stringify(await readCache()).length,
-      partialTextLength: selected.length,
+      completeTextLength: selected.length,
       cachedReopenLoadedModel: false,
       resumedPages: [7],
       missingModelRetry: process.env.CACHALOT_CHECK_RETRY === "1",

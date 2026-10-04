@@ -94,7 +94,7 @@ export const en = {
     previews: "PAGE PREVIEWS",
     outline: "OUTLINE",
     region: "Region",
-    regionTitle: "Select a region to translate",
+    regionTitle: "Fully enclose paragraphs or display equations to translate",
     text: "Text",
     layout: "Layout",
     ask: "Ask",

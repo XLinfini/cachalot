@@ -3,14 +3,72 @@ import type {
   FormulaFragment,
   SelectedRegion,
   SelectedTextBlock,
+  SelectionUnit,
 } from "../../domain/analysis";
-import { area, characterText, containsCenter, intersection } from "../../domain/geometry";
+import { area, characterText, containsCenter, intersection, union } from "../../domain/geometry";
 import type { SemanticPageView } from "../../domain/document-semantics";
 import { formulaMarker } from "./formula-slots";
 import { translationContext } from "./context";
 
-/** A glyph is selected when its centre lies in the rectangle. No text-run expansion. */
-export function selectRegion(
+/** Rectangle selection accepts whole semantic units, including their inline
+ * formulas. Native fallback lines do not establish complete paragraph bounds. */
+export function selectRegionUnits(page: SemanticPageView, box: Box): SelectionUnit[] {
+  if (page.stage !== "layout") return [];
+  const nodes = new Map(page.document.nodes.map((node) => [node.id, node]));
+  const characters = new Map(
+    page.facts.characters.map((character) => [character.index, character]),
+  );
+  const byId = new Map(page.blocks.map((block) => [block.id, block]));
+  return page.readingOrder.flatMap((id) => {
+    const block = byId.get(id);
+    if (
+      !block ||
+      block.confidence <= 0 ||
+      ["figure", "table", "header", "footer"].includes(block.kind) ||
+      nodes.get(id)?.sources.some((source) => source.page !== page.page)
+    )
+      return [];
+    const formulas = page.formulas.filter((formula) => formula.blockId === id);
+    if (!block.text.trim() && !formulas.length) return [];
+    const bounds = union([
+      block.box,
+      ...block.characterIndices.flatMap((index) => {
+        const character = characters.get(index);
+        return character && area(character.box) > 0 ? [character.box] : [];
+      }),
+      ...formulas.map((formula) => formula.box),
+    ]);
+    // Only absorb numerical roundoff from normalized CSS/PDF conversions.
+    const epsilon = 1e-7;
+    return bounds[0] >= box[0] - epsilon &&
+      bounds[1] >= box[1] - epsilon &&
+      bounds[2] <= box[2] + epsilon &&
+      bounds[3] <= box[3] + epsilon
+      ? [{ id, kind: block.kind, box: bounds }]
+      : [];
+  });
+}
+
+export function selectRegion(page: SemanticPageView, box: Box) {
+  const units = selectRegionUnits(page, box);
+  const ids = new Set(units.map((unit) => unit.id));
+  const blocks = page.blocks.filter((block) => ids.has(block.id));
+  const formulas = page.formulas.filter((formula) => ids.has(formula.blockId));
+  const glyphs = new Set([
+    ...blocks.flatMap((block) => block.characterIndices),
+    ...formulas.flatMap((formula) => formula.characterIndices),
+  ]);
+  const result = selectTextRegion({ ...page, blocks, formulas }, box, glyphs);
+  return {
+    ...result,
+    units,
+    blocks: result.blocks.map((block) => ({ ...block, partial: false })),
+    formulas: result.formulas.map((formula) => ({ ...formula, partial: false })),
+  };
+}
+
+/** Text mode uses exact DOM glyph coverage without completing words or formulas. */
+export function selectTextRegion(
   page: SemanticPageView,
   box: Box,
   selectedGlyphs?: Set<number>,

@@ -308,7 +308,7 @@ for (const language of ["zh", "en"] as const) {
               nodes.map((n) => (n as HTMLImageElement).src),
             ),
             partialBytes,
-            "only the partially selected inline formula retains its original crop",
+            "complete inline formulas use the same source reconstruction",
           );
         };
         await expect(
@@ -395,7 +395,7 @@ for (const language of ["zh", "en"] as const) {
           node.scrollTop += 400;
         });
         await expect.poll(async () => (await host.boundingBox())!.y).toBeLessThan(0);
-        const selectSwitching = async (right = 0.936) => {
+        const selectSwitching = async (right = 0.936, translate = true) => {
           const box = (await host.boundingBox())!;
           await page.mouse.move(box.x + 0.509 * box.width, box.y + 0.535 * box.height);
           await page.mouse.down();
@@ -403,7 +403,7 @@ for (const language of ["zh", "en"] as const) {
             steps: 6,
           });
           await page.mouse.up();
-          await open();
+          if (translate) await open();
         };
         const checkBoth = async () => {
           const expected = Object.values(switchingFormulas);
@@ -444,17 +444,14 @@ for (const language of ["zh", "en"] as const) {
         await page.getByRole("button", { name: labels.translation.close }).click();
         mode = "valid";
         const beforePartial = ocr().length;
-        await selectSwitching(0.78);
-        await expect(result.locator(".katex-display")).toHaveCount(0);
-        await expect(
-          result.locator('[data-ui="preserved-formula"][data-mode="display"]'),
-        ).toHaveCount(2);
+        await selectSwitching(0.78, false);
+        await expect(page.locator('[data-ui="selected-unit"]')).toHaveCount(0);
+        await expect(page.getByRole("button", { name: labels.reader.translate })).toHaveCount(0);
         assert.equal(
           ocr().length,
           beforePartial,
-          "partial selections do not use full-formula reconstruction",
+          "partly enclosed equations do not start OCR or translation",
         );
-        await page.getByRole("button", { name: labels.translation.close }).click();
         // Exercise the new settings and a dedicated OCR service while keeping a
         // text-only translation model. All responses stay local fixtures.
         await page.getByRole("button", { name: labels.common.settings, exact: true }).click();

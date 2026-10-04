@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { Box, ContentBlock, SelectedRegion } from "../../src/domain/analysis";
 import { fixturePage } from "../support/analysis";
 import { inferHeadingLevel } from "../../src/application/document-analysis/document-semantics";
-import { selectRegion } from "../../src/application/selection-translation/select-region";
+import { selectTextRegion } from "../../src/application/selection-translation/select-region";
 import { finishTranslation } from "../../src/application/selection-translation/formula-slots";
 import {
   finishTranslatedHeadings,
@@ -68,7 +68,7 @@ test("missing, duplicated, nested, reordered, empty or invented heading boundari
     assert.throws(() => finishTranslatedHeadings(sample, result), /headingReferencesChanged/);
 });
 
-test("partial selection retains heading formatting, never completes the unselected title", () => {
+test("text mode retains partial heading formatting without completing the unselected title", () => {
   const characters = Array.from("ABCDE", (text, index) => ({
     index,
     text,
@@ -81,7 +81,7 @@ test("partial selection retains heading formatting, never completes the unselect
     { page: 1, width: 600, height: 1000, characters, objects: [], warnings: [] },
     [{ kind: "title", box: [0.08, 0.08, 0.4, 0.15], confidence: 1 }],
   );
-  const clipped = selectRegion(page, [0.095, 0.08, 0.15, 0.15]);
+  const clipped = selectTextRegion(page, [0.095, 0.08, 0.15, 0.15]);
   assert.equal(clipped.text, "AB");
   assert.equal(clipped.blocks[0].partial, true);
   assert.equal(sourceMarkdown({ ...sample, ...clipped }), "# AB");
