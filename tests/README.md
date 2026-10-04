@@ -47,3 +47,5 @@ npm run test:e2e:paper -- /absolute/path/reference.pdf
 OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协议/响应夹具，`integration/ocr-adapters.test.ts` 验证第三方适配器的元数据、模型目录、调用及缺失适配器行为。Node 测试通过 `support/register-ocr.ts` 自动发现生产代码的 `ocr/providers/*.ts`，不维护第二份注册名单。浏览器与 Rust 的通用传输共用 `fixtures/ocr-http.json`；TypeScript 在 `unit/ocr-http.test.ts` 验证，Rust 在 `ocr_http::tests` 验证。已有真实论文 `e2e/formulas-transcription.spec.ts` 覆盖 GLM 设置、独立选择、错误显示、字符校验、图片回退和缓存复用。添加厂商时先补它自己的接口夹具，再按影响范围选择回归，不调用用户的真实服务商。
 
 `integration/native-ocr.test.ts` 仅验证 Tauri 命令路由、请求信封和 TypeScript 厂商响应解析；鉴权注入、地址校验及脱敏由 Rust 共享契约测试验证，不用命令模拟代替原生实现。
+
+文档结构用例集中在 `unit/document-semantics.test.ts`（两层边界、全文标题证据、缺页、跨页来源投影、摘要及精确选区上下文）和 `integration/document-analysis.test.ts`（分阶段缓存、部分覆盖恢复、清除代次、关闭与重试、旧缓存迁移）。小型来源与检测输入共用 `fixtures/document-semantics.ts`；`support/analysis.ts` 通过生产构建器生成测试投影。真实论文缓存保存 `{ facts, observations, semantics }`，页面视图在读取时投影，不再保存混合页面分析。

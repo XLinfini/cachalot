@@ -1,17 +1,23 @@
-import type { Box, FormulaFragment, PageAnalysis, SelectedTextBlock } from "../domain/analysis";
+import type { Box, FormulaFragment, SelectedRegion, SelectedTextBlock } from "../domain/analysis";
 import { area, characterText, containsCenter, intersection } from "../domain/geometry";
-import { selectedHeadingLevel } from "./heading-translation";
+import type { SemanticPageView } from "../domain/document-semantics";
+import { translationContext } from "./translation-context";
 
 /** A glyph is selected when its centre lies in the rectangle. No text-run expansion. */
 export function selectRegion(
-  page: PageAnalysis,
+  page: SemanticPageView,
   box: Box,
   selectedGlyphs?: Set<number>,
-): { text: string; blockIds: string[]; formulas: FormulaFragment[]; blocks: SelectedTextBlock[] } {
+): Pick<SelectedRegion, "source" | "context"> & {
+  text: string;
+  blockIds: string[];
+  formulas: FormulaFragment[];
+  blocks: SelectedTextBlock[];
+} {
   const selected =
     selectedGlyphs ||
     new Set(
-      page.characters
+      page.facts.characters
         .filter((c) => area(c.box) > 0 && containsCenter(box, c.box))
         .map((c) => c.index),
     );
@@ -39,8 +45,8 @@ export function selectRegion(
       const evidence = {
         ...f,
         characterIndices,
-        characters: page.characters.filter((c) => indices.has(c.index)),
-        nativeText: characterText(page.characters, indices),
+        characters: page.facts.characters.filter((c) => indices.has(c.index)),
+        nativeText: characterText(page.facts.characters, indices),
       };
       return partial
         ? {
@@ -82,22 +88,22 @@ export function selectRegion(
     for (const formula of ordered) {
       const first = formula.characterIndices[0];
       const before = new Set([...remaining].filter((index) => index < first));
-      const prefix = characterText(page.characters, before);
-      const previous = page.characters.find((c) => c.index === first - 1)?.text || "";
+      const prefix = characterText(page.facts.characters, before);
+      const previous = page.facts.characters.find((c) => c.index === first - 1)?.text || "";
       text += prefix + (prefix && /\s/u.test(previous) ? " " : "") + `[[formula:${formula.id}]]`;
       const last = formula.characterIndices.at(-1)!;
-      const next = page.characters.find((c) => c.index === last + 1)?.text || "";
+      const next = page.facts.characters.find((c) => c.index === last + 1)?.text || "";
       if (/\s/u.test(next)) text += " ";
       remaining = new Set([...remaining].filter((index) => index > last));
     }
-    text += characterText(page.characters, remaining);
+    text += characterText(page.facts.characters, remaining);
     return text
       ? [
           {
             id,
             kind: block.kind,
             text,
-            headingLevel: selectedHeadingLevel(block, page),
+            headingLevel: block.headingLevel,
             partial: block.characterIndices.some((index) => !selected.has(index)),
           },
         ]
@@ -108,5 +114,15 @@ export function selectRegion(
     blockIds: blocks.map((b) => b.id),
     formulas,
     blocks: chunks,
+    source: {
+      factsKey: page.facts.cacheKey,
+      semanticsKey: page.document.cacheKey,
+      semanticRevision: page.document.revision,
+      characterIndices: [...selected].sort((a, b) => a - b),
+    },
+    context: translationContext(
+      page.document,
+      chunks.length ? chunks.map((block) => block.id) : blocks.map((block) => block.id),
+    ),
   };
 }

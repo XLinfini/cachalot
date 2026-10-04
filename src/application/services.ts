@@ -1,5 +1,6 @@
 import { platform } from "../infrastructure/platform";
 import { analysisRepository } from "../infrastructure/analysis/repository";
+import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
 import { DocumentAnalysisSession } from "./document-analysis";
 import { askPaper, translateRegion } from "./paper-assistant";
 import { importPaper } from "./import-paper";
@@ -14,7 +15,12 @@ import { formulaRepository } from "../infrastructure/formula-repository";
 import { exportFormulaPdf } from "../infrastructure/pdf/formula-source";
 import { getOcrSelection, saveOcrSelection, testOcrProvider } from "./ocr-settings";
 import { cacheManagement } from "./cache-management";
-import { listOcrAdapters, listOcrPresets, ocrRequestEndpoint, createOcrPreset } from "./ocr-catalog";
+import {
+  listOcrAdapters,
+  listOcrPresets,
+  ocrRequestEndpoint,
+  createOcrPreset,
+} from "./ocr-catalog";
 
 /**
  * Public facade for presentation code. UI replacements depend on these methods
@@ -33,6 +39,7 @@ export const services = {
     async remove(id: string): Promise<void> {
       await platform.deleteDocument(id);
       await analysisRepository.deleteDocument(id);
+      await semanticsRepository.deleteDocument(id);
       await removePreview(id);
       await formulaRepository.removeDocument(id);
     },
@@ -43,7 +50,15 @@ export const services = {
     remove: platform.deleteCategory,
   },
   settings: { get: platform.getSetting, set: platform.setSetting },
-  ocr: { getSelection: getOcrSelection, select: saveOcrSelection, test: testOcrProvider, adapters: listOcrAdapters, presets: listOcrPresets, endpoint: ocrRequestEndpoint, createPreset: createOcrPreset },
+  ocr: {
+    getSelection: getOcrSelection,
+    select: saveOcrSelection,
+    test: testOcrProvider,
+    adapters: listOcrAdapters,
+    presets: listOcrPresets,
+    endpoint: ocrRequestEndpoint,
+    createPreset: createOcrPreset,
+  },
   providers: {
     list: listConfiguredProviders,
     save: saveConfiguredProvider,

@@ -42,6 +42,8 @@ pub fn run() {
             db::list_page_text,
             analysis::get_page_analysis,
             analysis::save_page_analysis,
+            analysis::get_document_semantics,
+            analysis::save_document_semantics,
             cache::cache_usage,
             cache::clear_cache,
             db::create_chat_thread,

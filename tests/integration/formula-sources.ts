@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { init } from "@embedpdf/pdfium";
 import { PdfiumDocument } from "../../src/infrastructure/analysis/pdfium";
-import type { Box } from "../../src/domain/analysis";
+import type { Box, NativePage } from "../../src/domain/analysis";
 import { area, union } from "../../src/domain/geometry";
 import { loadReferencePaper } from "../support/reference-paper";
 
@@ -22,9 +22,9 @@ const pdf = await PdfiumDocument.create(
 );
 const { analyses: pages } = await loadReferencePaper(path);
 const formula = pages[1].formulas!.find((f) => f.mode === "display")!;
-const painted = (p: (typeof pages)[number]) =>
+const painted = (p: NativePage) =>
   p.characters.filter((c) => !c.generated && !/^\s+$/u.test(c.text));
-const ranks = painted(pages[1]).flatMap((c, rank) =>
+const ranks = painted(pages[1].facts).flatMap((c, rank) =>
   formula.characterIndices.includes(c.index) ? [rank] : [],
 );
 await mkdir("test-results/formula-sources", { recursive: true });
@@ -55,9 +55,7 @@ try {
       const source = pdf.extract(1);
       // Character indices can shift when PDFium regenerates whitespace after
       // rotation; select by painted-glyph rank, which retains content order.
-      const chars = ranks
-        .map((rank) => painted(source as (typeof pages)[number])[rank])
-        .filter((c) => c && area(c.box));
+      const chars = ranks.map((rank) => painted(source)[rank]).filter((c) => c && area(c.box));
       assert.ok(chars.length);
       const cropBox = union(chars.map((c) => c.box));
       const box: Box = [

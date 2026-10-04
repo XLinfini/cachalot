@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Box, ContentBlock, PageAnalysis, SelectedRegion } from "../../src/domain/analysis";
-import { assemblePage } from "../../src/application/assemble-page";
+import type { Box, ContentBlock, SelectedRegion } from "../../src/domain/analysis";
+import { fixturePage } from "../support/analysis";
+import { inferHeadingLevel } from "../../src/application/document-semantics";
 import { selectRegion } from "../../src/application/select-region";
 import { finishTranslation } from "../../src/application/formula-references";
 import {
   finishTranslatedHeadings,
   markedTranslationSource,
-  selectedHeadingLevel,
   sourceMarkdown,
 } from "../../src/application/heading-translation";
 
@@ -76,11 +76,10 @@ test("partial selection retains heading formatting, never completes the unselect
     box: [0.1 + index * 0.03, 0.1, 0.12 + index * 0.03, 0.13] as Box,
     generated: false,
   }));
-  const page = assemblePage(
+  const page = fixturePage(
     "paper",
     { page: 1, width: 600, height: 1000, characters, objects: [], warnings: [] },
     [{ kind: "title", box: [0.08, 0.08, 0.4, 0.15], confidence: 1 }],
-    "fixture",
   );
   const clipped = selectRegion(page, [0.095, 0.08, 0.15, 0.15]);
   assert.equal(clipped.text, "AB");
@@ -105,8 +104,8 @@ test("cached overlapping predictions recover the title and Roman/letter/numeric 
   });
   const page = {
     blocks: [block("section", "II Methods"), block("title", "", "title")],
-  } as PageAnalysis;
-  assert.equal(selectedHeadingLevel(block("overlap", "Paper title"), page), 1);
+  };
+  assert.equal(inferHeadingLevel(block("overlap", "Paper title"), page.blocks), 1);
   page.blocks = [block("section", "II Methods")];
   for (const [text, expected] of [
     ["II Methods", 2],
@@ -118,10 +117,13 @@ test("cached overlapping predictions recover the title and Roman/letter/numeric 
     ["2.1.1 Detail", 4],
     ["Unnumbered heading", 2],
   ] as const)
-    assert.equal(selectedHeadingLevel(block("heading", text), page), expected, text);
-  assert.equal(selectedHeadingLevel({ ...block("heading", "Whatever"), headingLevel: 5 }, page), 5);
+    assert.equal(inferHeadingLevel(block("heading", text), page.blocks), expected, text);
   assert.equal(
-    selectedHeadingLevel(block("body", "A normal sentence", "paragraph"), page),
+    inferHeadingLevel({ ...block("heading", "Whatever"), headingLevel: 5 }, page.blocks),
+    5,
+  );
+  assert.equal(
+    inferHeadingLevel(block("body", "A normal sentence", "paragraph"), page.blocks),
     undefined,
   );
 });

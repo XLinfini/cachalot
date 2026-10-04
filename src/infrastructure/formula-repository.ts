@@ -47,6 +47,9 @@ export const formulaRepository = {
       const record: FormulaRecord = typeof stored === "string" ? JSON.parse(stored) : stored;
       // Coordinates and extraction rules may change while the glyph range stays stable.
       return record.id === formula.id &&
+        record.documentId === formula.documentId &&
+        record.asset.formula.page === formula.page &&
+        record.asset.formula.factsKey === formula.factsKey &&
         JSON.stringify(record.asset.formula.box) === JSON.stringify(formula.box)
         ? record
         : null;
@@ -56,13 +59,19 @@ export const formulaRepository = {
   },
   async put(record: FormulaRecord, generation = cacheGeneration("formulas")): Promise<void> {
     await writeCache("formulas", generation, async () => {
-      if (platform.native) return invoke("save_page_analysis", {
-        documentId: record.documentId,
-        page: record.asset.formula.page,
-        cacheKey: key(record.asset.formula),
-        // The shared SQLite endpoint validates this versioned envelope too.
-        content: JSON.stringify({ ...record, schemaVersion: 1, page: record.asset.formula.page, cacheKey: key(record.asset.formula) }),
-      });
+      if (platform.native)
+        return invoke("save_page_analysis", {
+          documentId: record.documentId,
+          page: record.asset.formula.page,
+          cacheKey: key(record.asset.formula),
+          // The shared SQLite endpoint validates this versioned envelope too.
+          content: JSON.stringify({
+            ...record,
+            schemaVersion: 1,
+            page: record.asset.formula.page,
+            cacheKey: key(record.asset.formula),
+          }),
+        });
       await transaction("readwrite", (store) => store.put(record));
     });
   },

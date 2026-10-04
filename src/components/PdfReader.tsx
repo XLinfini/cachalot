@@ -163,7 +163,7 @@ export default function PdfReader({
   const initialPositionRestored = useRef(false);
   const zoomAnchor = useRef<ScrollAnchor | null>(null);
   const scrollFrame = useRef<number | null>(null);
-  const { pageAnalysis, pageAnalyses, progress, retry, getPage } = useDocumentAnalysis(
+  const { semanticPage, semanticPages, progress, retry, getSemanticPage } = useDocumentAnalysis(
     document,
     bytes,
     page,
@@ -525,9 +525,9 @@ export default function PdfReader({
               {t("reader.retryAnalysis")}
             </button>
           )}
-          {showLayout && pageAnalysis?.warnings.length ? (
-            <span title={pageAnalysis.warnings.map(localizeMessage).join("\n")}>
-              {t("reader.warnings", { count: pageAnalysis.warnings.length })}
+          {showLayout && semanticPage?.warnings.length ? (
+            <span title={semanticPage.warnings.map(localizeMessage).join("\n")}>
+              {t("reader.warnings", { count: semanticPage.warnings.length })}
             </span>
           ) : null}
         </div>
@@ -548,11 +548,11 @@ export default function PdfReader({
                   zoom={zoom}
                   mode={mode}
                   showLayout={showLayout}
-                  analysis={pageAnalyses.get(position.number)}
+                  semanticPage={semanticPages.get(position.number)}
                   scrollRoot={scrollRoot}
                   selection={selection}
                   selectionGeneration={selectionGeneration}
-                  getPage={getPage}
+                  getSemanticPage={getSemanticPage}
                   onSelection={onSelection}
                   onTranslate={onTranslate}
                   onPageFocus={(number) => {

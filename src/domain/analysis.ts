@@ -49,10 +49,31 @@ export interface NativePage {
   warnings: string[];
 }
 
+/** Source facts only. documentId is the PDF content hash; cacheKey fixes the
+ * extractor and coordinate contract. Semantic inference never rewrites these. */
+export interface PageFacts extends NativePage {
+  schemaVersion: 1;
+  kind: "page-facts";
+  documentId: string;
+  cacheKey: string;
+  extractedAt: number;
+}
+
 export interface LayoutDetection {
   kind: BlockKind;
   box: Box;
   confidence: number;
+}
+
+/** Model predictions, not accepted document roles or assembled paragraphs. */
+export interface LayoutObservations {
+  schemaVersion: 1;
+  kind: "layout-observations";
+  documentId: string;
+  cacheKey: string;
+  page: number;
+  detections: LayoutDetection[];
+  observedAt: number;
 }
 
 export interface ContentBlock extends LayoutDetection {
@@ -63,8 +84,7 @@ export interface ContentBlock extends LayoutDetection {
   captionId?: string;
   /** Nested panel inside a larger figure; render the outer region only once. */
   parentId?: string;
-  /** Optional explicit level from future layout engines; current Heron only
-   * labels title/heading, so selection derives conservative numbering levels. */
+  /** Assigned by the document semantic builder, before selection. */
   headingLevel?: HeadingLevel;
 }
 
@@ -78,29 +98,14 @@ export interface SelectedTextBlock {
   partial: boolean;
 }
 
-export interface PageAnalysis {
-  schemaVersion: 1;
-  documentId: string;
-  cacheKey: string;
-  page: number;
-  width: number;
-  height: number;
-  characters: PdfCharacter[];
-  objects: PdfObject[];
-  blocks: ContentBlock[];
-  readingOrder: string[];
-  plainText: string;
-  warnings: string[];
-  analyzedAt: number;
-  formulas?: FormulaFragment[];
-}
-
 /** Original glyphs/paths remain available for comparison and faithful export.
  * Reconstructed source and translation can render the same LaTeX candidate;
  * syntax/character checks do not prove mathematical correctness. */
 export interface FormulaFragment {
   id: string;
   documentId: string;
+  /** Exact extraction contract for source/candidate cache validation. */
+  factsKey?: string;
   page: number;
   box: Box;
   mode: "inline" | "display";
@@ -159,6 +164,25 @@ export interface SelectedRegion {
   blockIds: string[];
   blocks?: SelectedTextBlock[];
   formulas?: FormulaFragment[];
+  source?: SelectionSource;
+  context?: TranslationContext;
+}
+
+/** Exact output scope, independently of the broader context used to translate. */
+export interface SelectionSource {
+  factsKey: string;
+  semanticsKey: string;
+  semanticRevision: number;
+  characterIndices: number[];
+}
+
+export interface TranslationContext {
+  semanticRevision: number;
+  complete: boolean;
+  title?: string;
+  abstract?: string;
+  sectionPath: string[];
+  passages: { nodeId: string; pages: number[]; text: string }[];
 }
 
 export interface AnalysisProgress {

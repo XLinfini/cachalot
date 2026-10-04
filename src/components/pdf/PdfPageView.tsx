@@ -4,7 +4,8 @@ import * as pdfjs from "pdfjs-dist";
 import { useTranslation } from "react-i18next";
 import { selectRegion } from "../../application/select-region";
 import { area, containsCenter } from "../../domain/geometry";
-import type { PageAnalysis, SelectedRegion } from "../../domain/analysis";
+import type { SelectedRegion } from "../../domain/analysis";
+import type { SemanticPageView } from "../../domain/document-semantics";
 import { message } from "../../domain/messages";
 import { cx } from "../ui/styles";
 import { PDF_SCALE, type PagePosition } from "./page-layout";
@@ -23,11 +24,11 @@ interface Props {
   zoom: number;
   mode: "region" | "text";
   showLayout: boolean;
-  analysis?: PageAnalysis;
+  semanticPage?: SemanticPageView;
   scrollRoot: HTMLDivElement | null;
   selection: SelectedRegion | null;
   selectionGeneration: RefObject<number>;
-  getPage: (page: number) => Promise<PageAnalysis>;
+  getSemanticPage: (page: number) => Promise<SemanticPageView>;
   onSelection: (selection: SelectedRegion | null) => void;
   onTranslate: () => void;
   onPageFocus: (page: number) => void;
@@ -46,11 +47,11 @@ export function PdfPageView({
   zoom,
   mode,
   showLayout,
-  analysis,
+  semanticPage,
   scrollRoot,
   selection,
   selectionGeneration,
-  getPage,
+  getSemanticPage,
   onSelection,
   onTranslate,
   onPageFocus,
@@ -223,10 +224,10 @@ export function PdfPageView({
     const generation = ++selectionGeneration.current;
     pendingGeneration.current = generation;
     onBusy(true);
-    void getPage(number)
-      .then((pageAnalysis) => {
+    void getSemanticPage(number)
+      .then((view) => {
         if (generation !== selectionGeneration.current) return;
-        const selected = selectRegion(pageAnalysis, [
+        const selected = selectRegion(view, [
           normalized.x,
           normalized.y,
           normalized.x + normalized.width,
@@ -297,16 +298,16 @@ export function PdfPageView({
         ] as [number, number, number, number],
     );
     const imageDataUrl = cropImage(rect);
-    void getPage(number)
-      .then((pageAnalysis) => {
+    void getSemanticPage(number)
+      .then((view) => {
         if (generation !== selectionGeneration.current) return;
         const selectedGlyphs = new Set(
-          pageAnalysis.characters
+          view.facts.characters
             .filter((c) => area(c.box) > 0 && glyphBoxes.some((b) => containsCenter(b, c.box)))
             .map((c) => c.index),
         );
         const result = selectRegion(
-          pageAnalysis,
+          view,
           [
             normalized.x,
             normalized.y,
@@ -376,7 +377,7 @@ export function PdfPageView({
         </>
       )}
       {showLayout &&
-        analysis?.blocks
+        semanticPage?.blocks
           .filter((block) => block.confidence > 0)
           .map((block) => (
             <div

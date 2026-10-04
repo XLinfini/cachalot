@@ -1,13 +1,13 @@
 /** Continuous reader checks share the cached paper fixture with visual checks. */
 import assert from "node:assert/strict";
 import type { Page } from "@playwright/test";
-import type { PageAnalysis } from "../../../src/domain/analysis";
+import type { SemanticPageView } from "../../../src/domain/document-semantics";
 import { selectRegion } from "../../../src/application/select-region";
 import type { LocaleResource } from "../../../src/i18n/locales/en";
 
 export async function verifyContinuousReader(
   page: Page,
-  analyses: PageAnalysis[],
+  analyses: SemanticPageView[],
   labels: LocaleResource,
   output: string,
   viewportWidth: number,

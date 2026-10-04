@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Box, FormulaAsset, NativePage, PdfCharacter } from "../../src/domain/analysis";
-import { assemblePage } from "../../src/application/assemble-page";
+import { fixturePage } from "../support/analysis";
 import { nativeLatex } from "../../src/application/formula-analysis";
 import { selectRegion } from "../../src/application/select-region";
 import { finishTranslation, formulaClipboard } from "../../src/application/formula-references";
@@ -33,7 +33,7 @@ test("effective em size and origin recover subscripts; nominal PDF font size alo
     glyph(2, "p", 0.116, 0.202, 6),
   ];
   assert.equal(nativeLatex(chars, 1000), "I_{op}");
-  const page = assemblePage("paper", native(chars), [paragraph], "formulas-v1");
+  const page = fixturePage("paper", native(chars), [paragraph]);
   assert.equal(page.formulas?.[0].latex, "I_{op}");
   const selected = selectRegion(page, [0, 0, 1, 1]);
   assert.equal(selected.formulas.length, 1);
@@ -51,12 +51,11 @@ test("Greek symbols and literal inverse-function notation survive; multi-baselin
 
 test("italic prose does not become a formula; partial formula selection never completes an unselected suffix", () => {
   const prose = Array.from("where").map((text, i) => glyph(i, text, 0.1 + i * 0.008));
-  assert.equal(assemblePage("paper", native(prose), [paragraph], "v1").formulas?.length, 0);
-  const page = assemblePage(
+  assert.equal(fixturePage("paper", native(prose), [paragraph]).formulas?.length, 0);
+  const page = fixturePage(
     "paper",
     native([glyph(0, "I", 0.1), glyph(1, "o", 0.108, 0.202, 6), glyph(2, "p", 0.116, 0.202, 6)]),
     [paragraph],
-    "v1",
   );
   const selected = selectRegion(page, [0.099, 0.185, 0.109, 0.211]);
   assert.equal(selected.formulas[0].partial, true);
@@ -75,15 +74,10 @@ test("italic prose does not become a formula; partial formula selection never co
 });
 
 test("standalone equations stay in source order and retain source geometry even without readable Unicode", () => {
-  const page = assemblePage(
-    "paper",
-    native([{ ...glyph(0, "A", 0.1, 0.15), italic: false }]),
-    [
-      { ...paragraph, box: [0, 0.1, 0.9, 0.18] },
-      { kind: "formula", confidence: 0.95, box: [0.1, 0.2, 0.8, 0.25] },
-    ],
-    "v1",
-  );
+  const page = fixturePage("paper", native([{ ...glyph(0, "A", 0.1, 0.15), italic: false }]), [
+    { ...paragraph, box: [0, 0.1, 0.9, 0.18] },
+    { kind: "formula", confidence: 0.95, box: [0.1, 0.2, 0.8, 0.25] },
+  ]);
   const selected = selectRegion(page, [0, 0, 1, 1]);
   assert.match(selected.text, /^A\n\n\[\[formula:/);
   assert.equal(selected.formulas[0].mode, "display");
@@ -91,11 +85,10 @@ test("standalone equations stay in source order and retain source geometry even 
 });
 
 test("translation rejects missing, duplicated, invented and reordered formula references", () => {
-  const page = assemblePage(
+  const page = fixturePage(
     "paper",
     native([glyph(0, "θ", 0.1), glyph(2, "A", 0.2), glyph(4, "π", 0.3)]),
     [paragraph],
-    "v1",
   );
   // Separate the two formula assets explicitly to exercise reference validation.
   const a = {

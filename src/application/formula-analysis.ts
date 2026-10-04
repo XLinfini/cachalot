@@ -1,11 +1,6 @@
-import type {
-  Box,
-  ContentBlock,
-  FormulaFragment,
-  NativePage,
-  PdfCharacter,
-} from "../domain/analysis";
-import { characterText, union } from "../domain/geometry";
+import type { Box, ContentBlock, PageFacts, PdfCharacter } from "../domain/analysis";
+import type { SemanticFormula } from "../domain/document-semantics";
+import { intersection, union } from "../domain/geometry";
 
 const symbols: Record<string, string> = {
   α: "\\alpha",
@@ -236,13 +231,9 @@ function inlineGroups(
   return groups;
 }
 
-export function analyzeFormulas(
-  documentId: string,
-  page: NativePage,
-  blocks: ContentBlock[],
-): FormulaFragment[] {
+export function analyzeFormulas(page: PageFacts, blocks: ContentBlock[]): SemanticFormula[] {
   const byIndex = new Map(page.characters.map((c) => [c.index, c]));
-  const result: FormulaFragment[] = [];
+  const result: SemanticFormula[] = [];
   for (const block of blocks) {
     const chars = block.characterIndices
       .map((i) => byIndex.get(i)!)
@@ -261,24 +252,31 @@ export function analyzeFormulas(
           ? union([block.box, ...group.map((c) => c.box)])
           : union(group.map((c) => c.box));
       const mode = block.kind === "formula" ? "display" : "inline";
-      const latex = mode === "inline" ? nativeLatex(group, page.height) : null;
       const size = group.length ? Math.max(...group.map(em)) : undefined;
       const main = group.filter((c) => c.origin && em(c) >= (size || 0) * 0.88);
+      const sourceBox = padded(box, page.width, page.height);
       result.push({
         id: `p${page.page}-${mode}-${group[0]?.index ?? block.id}-${group.at(-1)?.index ?? "empty"}`,
-        documentId,
-        page: page.page,
-        pageWidth: page.width,
-        pageHeight: page.height,
         mode,
         blockId: block.id,
-        box: padded(box, page.width, page.height),
-        characterIndices: group.map((c) => c.index),
-        nativeText: characterText(page.characters, new Set(group.map((c) => c.index))),
-        latex,
-        recognition: latex ? "native-candidate" : "unrecognized",
+        source: {
+          documentId: page.documentId,
+          page: page.page,
+          factsKey: page.cacheKey,
+          box: sourceBox,
+          characterIndices: group.map((c) => c.index),
+          objectIds: page.objects
+            .filter((object) => intersection(object.box, sourceBox) > 0)
+            .map((object) => object.id),
+        },
         baseline: main.length ? median(main.map((c) => c.origin![1])) : undefined,
         emSize: size,
+        evidence: [
+          {
+            rule: mode === "display" ? "layout-formula-region" : "native-math-glyphs",
+            confidence: block.confidence,
+          },
+        ],
       });
     }
   }

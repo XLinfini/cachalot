@@ -13,6 +13,7 @@ pub enum CacheKind {
     PageText,
     Previews,
     Formulas,
+    Semantics,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,11 +44,12 @@ fn location(kind: CacheKind) -> (&'static str, &'static str, &'static str) {
         ),
         CacheKind::PageText => ("page_text", "content", "1"),
         CacheKind::Previews => ("settings", "value", "key GLOB 'preview:*' AND value <> ''"),
+        CacheKind::Semantics => ("document_semantics", "content", "1"),
     }
 }
 
 fn usage(db: &Connection) -> Result<Vec<CacheUsage>, rusqlite::Error> {
-    [CacheKind::Native, CacheKind::Layout, CacheKind::PageText, CacheKind::Previews, CacheKind::Formulas]
+    [CacheKind::Native, CacheKind::Layout, CacheKind::PageText, CacheKind::Previews, CacheKind::Formulas, CacheKind::Semantics]
         .into_iter().map(|kind| {
             let (table, column, predicate) = location(kind);
             let (entries, bytes) = db.query_row(
@@ -88,6 +90,7 @@ mod tests {
     fn independent_cache_clearing_preserves_papers_conversations_and_settings() {
         let db = Connection::open_in_memory().unwrap();
         db.execute_batch("CREATE TABLE page_analysis(cache_key TEXT, content TEXT);
+            CREATE TABLE document_semantics(content TEXT); INSERT INTO document_semantics VALUES('semantic snapshot');
             CREATE TABLE page_text(content TEXT);
             CREATE TABLE settings(key TEXT, value TEXT);
             CREATE TABLE documents(id TEXT); INSERT INTO documents VALUES('paper');
@@ -111,6 +114,7 @@ mod tests {
         );
         assert_eq!(rows[3].entries, 2);
         assert_eq!(rows[4].candidates, 2);
+        assert_eq!(rows[5].entries, 1);
         clear(&db, CacheKind::Layout).unwrap();
         assert_eq!(usage(&db).unwrap()[0].entries, 2);
         for kind in [
@@ -118,6 +122,7 @@ mod tests {
             CacheKind::PageText,
             CacheKind::Previews,
             CacheKind::Formulas,
+            CacheKind::Semantics,
         ] {
             clear(&db, kind).unwrap();
             clear(&db, kind).unwrap();

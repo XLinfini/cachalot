@@ -3,7 +3,6 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { platform } from "../platform";
 import { formulaRepository, type FormulaRecord } from "../formula-repository";
 import type { FormulaFragment } from "../../domain/analysis";
-import { AnalysisClient } from "../analysis/client";
 import { cacheGeneration } from "../cache-writes";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -83,6 +82,7 @@ export function formulaSources(formulas: FormulaFragment[]): Promise<FormulaReco
 /** Future PDF reflow/export uses this vector-preserving crop, never PNG or
  * re-typeset OCR. Each exported region still references original resources. */
 export async function exportFormulaPdf(formula: FormulaFragment): Promise<Uint8Array> {
+  const { AnalysisClient } = await import("../analysis/client");
   const client = new AnalysisClient(() => undefined);
   try {
     await client.open(formula.documentId, await platform.loadPdf(formula.documentId));

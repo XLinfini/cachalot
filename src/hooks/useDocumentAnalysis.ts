@@ -2,7 +2,8 @@ import { message } from "../domain/messages";
 import { useEffect, useRef, useState } from "react";
 import { services } from "../application/services";
 import type { DocumentAnalysisSession } from "../application/document-analysis";
-import type { AnalysisProgress, PageAnalysis } from "../domain/analysis";
+import type { AnalysisProgress } from "../domain/analysis";
+import type { AnalysisSnapshot, SemanticPageView } from "../domain/document-semantics";
 import type { DocumentRecord } from "../domain/records";
 
 /** React lifecycle adapter. Parsing and persistence live outside this hook. */
@@ -11,7 +12,7 @@ export function useDocumentAnalysis(
   bytes: Uint8Array | null,
   page: number,
 ) {
-  const [pages, setPages] = useState<Map<number, PageAnalysis>>(new Map());
+  const [snapshot, setSnapshot] = useState<AnalysisSnapshot | null>(null);
   const [progress, setProgress] = useState<AnalysisProgress>({
     phase: "loading",
     completed: 0,
@@ -22,7 +23,7 @@ export function useDocumentAnalysis(
   const currentPage = useRef(page);
   currentPage.current = page;
   useEffect(() => {
-    setPages(new Map());
+    setSnapshot(null);
     setProgress({
       phase: "loading",
       completed: 0,
@@ -33,18 +34,10 @@ export function useDocumentAnalysis(
     const next = services.analysis.createSession(
       document,
       bytes,
-      (analysis) => {
-        setPages((current) => {
-          // A delayed native result must not overwrite an already analyzed page.
-          if (
-            current.get(analysis.page)?.cacheKey === analysis.cacheKey ||
-            !current.has(analysis.page) ||
-            !analysis.cacheKey.includes("native")
-          )
-            return new Map(current).set(analysis.page, analysis);
-          return current;
-        });
-      },
+      (next) =>
+        setSnapshot((current) =>
+          !current || next.semantics.revision >= current.semantics.revision ? next : current,
+        ),
       setProgress,
     );
     session.current = next;
@@ -55,17 +48,18 @@ export function useDocumentAnalysis(
     };
   }, [document.id, bytes]);
   return {
-    pageAnalysis: pages.get(page) || null,
-    pageAnalyses: pages,
+    documentSemantics: snapshot?.semantics || null,
+    semanticPage: snapshot?.pages.find((view) => view.page === page) || null,
+    semanticPages: new Map<number, SemanticPageView>(
+      snapshot?.pages.map((view) => [view.page, view]),
+    ),
     progress,
     retry: () => {
       if (session.current) void session.current.start(page);
     },
-    getPage: async (number: number) => {
-      const cached = pages.get(number);
-      if (cached && !cached.cacheKey.includes("native")) return cached;
+    getSemanticPage: async (number: number) => {
       if (!session.current) throw new Error(message("analysisLoading"));
-      return session.current.getPage(number);
+      return session.current.getSemanticPage(number);
     },
   };
 }

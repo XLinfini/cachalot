@@ -21,7 +21,7 @@ test("Layout and visual behavior @paper", async () => {
   await mkdir(directory, { recursive: true });
   // The versioned fixture is prepared on demand. Parsing quality is covered
   // separately; style checks reuse the result across viewports.
-  const { analyses, bytes } = await loadReferencePaper(paper);
+  const { analyses, observations, bytes } = await loadReferencePaper(paper);
   const id = analyses[0].documentId;
   const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
   const errors: string[] = [];
@@ -171,7 +171,7 @@ test("Layout and visual behavior @paper", async () => {
           },
           { id },
         );
-        await seedPaper(page, { analyses, bytes });
+        await seedPaper(page, { analyses, observations, bytes });
         await page.reload();
         await page.locator(selector("document-card")).first().waitFor();
         // Switch through the actual settings UI; reload must restore the preference.

@@ -10,6 +10,7 @@ import { platform } from "../infrastructure/platform";
 import { DEFAULT_TRANSLATION_PROMPT } from "./prompts";
 import { supportsImages } from "./model-catalog";
 import { prepareFormulas } from "./formula-translation";
+import { TRANSLATION_CONTEXT_POLICY } from "./translation-context";
 import { finishTranslation, FORMULA_TRANSLATION_POLICY } from "./formula-references";
 import {
   finishTranslatedHeadings,
@@ -100,7 +101,7 @@ export async function translateRegion(
   callbacks.onPrepared?.({ formulas: assets, issues });
   callbacks.onPhase?.("translating");
   const source = markedTranslationSource(selection);
-  const text = `${source}${glossary ? `\n\n公式阅读辅助（不属于待翻译正文）：\n${glossary}` : ""}`;
+  const text = `${source}${selection.context ? `\n\n背景材料（仅用于理解，不属于待翻译正文）：\n${JSON.stringify(selection.context)}` : ""}${glossary ? `\n\n公式阅读辅助（不属于待翻译正文）：\n${glossary}` : ""}`;
   const content: unknown = vision
     ? [
         {
@@ -118,7 +119,7 @@ export async function translateRegion(
       messages: [
         {
           role: "system",
-          content: `${prompt}\n\n${FORMULA_TRANSLATION_POLICY}\n\n${HEADING_TRANSLATION_POLICY}`,
+          content: `${prompt}\n\n${FORMULA_TRANSLATION_POLICY}\n\n${HEADING_TRANSLATION_POLICY}\n\n${TRANSLATION_CONTEXT_POLICY}`,
         },
         { role: "user", content },
       ],

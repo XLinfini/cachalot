@@ -13,7 +13,7 @@ test("Added models and composer @paper", async () => {
     test.skip(true, "Set CACHALOT_PAPER to run the real-paper suite");
     return;
   }
-  const { analyses, bytes } = await loadReferencePaper(paper);
+  const { analyses, observations, bytes } = await loadReferencePaper(paper);
   await mkdir("test-results/added-models", { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
   try {
@@ -80,7 +80,7 @@ test("Added models and composer @paper", async () => {
           },
           { id: analyses[0].documentId, language },
         );
-        await seedPaper(page, { analyses, bytes });
+        await seedPaper(page, { analyses, observations, bytes });
         await page.reload();
         const picker = page.getByRole("button", { name: labels.chat.chooseModel, exact: true });
         const menu = page.locator('[data-ui="model-menu"]');

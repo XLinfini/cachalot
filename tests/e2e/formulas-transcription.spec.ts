@@ -18,7 +18,7 @@ for (const language of ["zh", "en"] as const) {
       test.skip(true, "Set CACHALOT_PAPER to run the real-paper suite");
       return;
     }
-    const { analyses, bytes } = await loadReferencePaper(paper);
+    const { analyses, observations, bytes } = await loadReferencePaper(paper);
     const correct = "C\\approx\\frac{0.2\\cdot I_{op}}{2\\pi\\cdot f_o\\cdot V_{op}}";
     const switchingFormulas = {
       "p2-display-3766-3831":
@@ -193,7 +193,7 @@ for (const language of ["zh", "en"] as const) {
           },
           { id: analyses[0].documentId, language },
         );
-        await seedPaper(page, { analyses, bytes });
+        await seedPaper(page, { analyses, observations, bytes });
         await page.reload();
         await page.locator('[data-ui="document-card"]').first().click();
         await page.locator('[data-ui="analysis-strip"][data-phase="ready"]').waitFor();

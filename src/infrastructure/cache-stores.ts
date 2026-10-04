@@ -7,6 +7,11 @@ const schemas = {
     store: "pages",
     keyPath: ["documentId", "cacheKey", "page"],
   },
+  semantics: {
+    database: "cachalot-semantics",
+    store: "documents",
+    keyPath: ["documentId", "cacheKey"],
+  },
   formulas: { database: "cachalot-formulas", store: "assets", keyPath: ["documentId", "id"] },
   previews: { database: "cachalot-previews", store: "previews", keyPath: undefined },
 } as const;

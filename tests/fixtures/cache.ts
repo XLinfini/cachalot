@@ -1,4 +1,5 @@
-import type { PageAnalysis } from "../../src/domain/analysis";
+import { buildDocumentSemantics } from "../../src/application/document-semantics";
+import type { ContentBlock, NativePage } from "../../src/domain/analysis";
 import type { FormulaRecord } from "../../src/infrastructure/formula-repository";
 
 // A valid one-page PDF makes preview regeneration testable without a real paper.
@@ -22,7 +23,18 @@ pdf += `xref\n0 6\n0000000000 65535 f \n${offsets
   .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
   .join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
 
-const page = (cacheKey: string, documentId = "cache-paper"): PageAnalysis => ({
+// Historical payloads intentionally retain the old mixed shape for migration
+// and all-version cache clearing. Production exports no legacy analysis type.
+interface LegacyCacheEntry extends NativePage {
+  schemaVersion: 1;
+  documentId: string;
+  cacheKey: string;
+  blocks: ContentBlock[];
+  readingOrder: string[];
+  plainText: string;
+  analyzedAt: number;
+}
+const page = (cacheKey: string, documentId = "cache-paper"): LegacyCacheEntry => ({
   schemaVersion: 1,
   documentId,
   cacheKey,
@@ -43,6 +55,7 @@ export const cacheFixture = {
     page("schema1:pdfium:native-new", "other-paper"),
     page("schema1:pdfium:heron-old:rules1"),
   ],
+  semantics: buildDocumentSemantics("cache-paper", 1, []),
   formula: {
     documentId: "cache-paper",
     id: "formula-fixture",

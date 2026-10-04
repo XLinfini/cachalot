@@ -117,6 +117,11 @@ pub fn open_database(app: &AppHandle) -> Result<Connection, String> {
            cache_key TEXT NOT NULL, page INTEGER NOT NULL, content TEXT NOT NULL,
            PRIMARY KEY(document_id, cache_key, page)
          );
+         CREATE TABLE IF NOT EXISTS document_semantics (
+           document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+           cache_key TEXT NOT NULL, content TEXT NOT NULL,
+           PRIMARY KEY(document_id, cache_key)
+         );
          CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
     )
     .map_err(|e| e.to_string())?;

@@ -9,7 +9,7 @@
 | `src/domain/` | 文档、会话、版面 DTO；坐标和模型版本约定 | 复用数据契约，保持无 React / Tauri 依赖 |
 | `src/application/services.ts` | 文献库、设置、模型服务、会话、解析、翻译、问答的统一入口 | 新界面调用这里 |
 | `src/application/document-analysis.ts` | 文档分析生命周期、缓存读取、逐页续解析 | 在打开/关闭文档时建立/释放 session |
-| `src/application/assemble-page.ts` | 检测区域与字符的归属、阅读顺序、图表说明关联 | 业务规则修改后更新缓存版本 |
+| `src/application/assemble-page-semantics.ts`、`document-semantics.ts` | 页内组装、文档阅读顺序、章节与来源关联 | 业务规则修改后更新缓存版本 |
 | `src/application/select-region.ts` | 框选命中与正文提取 | 用归一化选区调用 |
 | `src/application/paper-assistant.ts` | 论文检索、上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
 | `src/application/model-catalog.ts` | 已添加模型配置、临时模型列表请求、逐模型图像能力 | 通过 services 获取，能力不按模型名称猜测 |
@@ -46,14 +46,15 @@
 
 ## 文档分析流程
 
-1. 导入时计算 PDF 内容 SHA-256，作为文档 ID；同一文件重复导入会复用文档。PDF.js 读取目录、元数据和页数。
-2. 打开文档，应用服务先按页读取分析缓存。缺失时启动独立 Worker，在 PDFium 中打开论文。
-3. PDFium 提取字符（Unicode、字号、字形边界）和顶层页面对象（文字、路径、位图、表单等）。首先建立全部页的文字索引，问答可以先使用这份索引。
-4. 每个未分析页面由 PDFium 渲染为 640×640 RGB 图像，送入固定版本 Docling Heron ONNX，得到正文、标题、图、表、公式、说明等区域。
-5. 程序将字符按中心点归属到区域，保留模型漏掉的字符为 `confidence: 0` 的待核对块；建立阅读顺序和图表说明关系。区域类型来自模型，PDF 路径对象本身不直接等于一张图。
-6. 每页成功写入持久缓存后才视为完成。保存结构结果，同时更新问答的页面文字索引。关闭文档终止 Worker，释放文档句柄和模型内存。
+1. 导入时计算 PDF 内容 SHA-256，作为文档 ID。PDF.js 读取目录、元数据和页数。
+2. PDFium 原生提取生成 `PageFacts`：页面尺寸、字符、字形属性、对象和归一化坐标。`extract` Worker 请求只做提取，不生成段落或公式。
+3. 原生提取顺序的文字作为临时问答索引。当前页优先，各页可独立完成，不等待全文版面分析。
+4. `detect` Worker 请求把 PDFium 渲染的 640×640 RGB 图像交给固定版本 Heron ONNX，返回 `LayoutObservations`。它保存原始检测框、预测类别、置信度和模型版本，未做字符归属、去重或段落组装。
+5. `assemble-page-semantics.ts` 将页面事实与版面观测组成语义片段；`document-semantics.ts` 汇总为唯一的 `DocumentSemantics`。缺失字符保留为回退块；标题层级、段落、阅读顺序、图注、子图和公式归属全部属于语义层。
+6. 每个新页面生成替换式文档快照。页面结构由 `projectSemanticPage` 投影，选区与翻译输入绑定快照版本；缺少版面分析的页面打断章节和跨页连续性。
+7. 页面事实、模型观测、文档语义分别持久化。关闭文档终止 Worker；重新打开时校验语义输入及字符/对象引用，复用兼容缓存，补齐缺失阶段。
 
-本次接入的是 **Docling 的 Heron 版面模型 + 自己的 PDFium/TypeScript 后处理**。其输出是 Cachalot 的 `PageAnalysis`，与完整 Python Docling 管线的 `DoclingDocument` 格式不同。
+使用的是 **Heron 版面模型 + Cachalot 的 TypeScript 语义构建器**，不是完整 Python Docling 管线。没有第二份权威页面结构；构建过程中的页面片段和界面的 `SemanticPageView` 都是内部阶段数据或临时投影。
 
 ## 固定模型与资源
 
@@ -70,21 +71,20 @@
 
 ## 数据与坐标契约
 
-`PageAnalysis` 保存文档 ID、页码、页尺寸、字符、PDF 对象、语义块、阅读顺序、正文和核对提示。完整字段定义见 `src/domain/analysis.ts`。
+`src/domain/analysis.ts` 定义页面事实、版面观测及选区/公式展示 DTO；`src/domain/document-semantics.ts` 定义文档语义及来源引用。
 
-```ts
-// 示例仅展示结构，坐标及文字为示意数据。
-{
-  schemaVersion: 1, documentId: "PDF内容摘要", page: 1,
-  cacheKey: "包含解析器/模型摘要/后处理版本的键",
-  width: 612, height: 792,
-  characters: [{ index: 0, text: "A", box: [0.1, 0.2, 0.11, 0.22], fontSize: 10, generated: false }],
-  objects: [{ id: 8, kind: "path", box: [0.1, 0.5, 0.4, 0.7] }],
-  blocks: [{ id: "p1-b0", kind: "figure", box: [0.1, 0.5, 0.4, 0.7], confidence: 0.98,
-    characterIndices: [], objectIds: [8], text: "", captionId: "p1-b1" }],
-  readingOrder: ["p1-b0", "p1-b1"], plainText: "…", warnings: [], analyzedAt: 0
-}
-```
+| 数据 | 包含内容 | 不应混入的内容 |
+| --- | --- | --- |
+| `PageFacts` | PDF 来源、提取版本、页面、原始字符/对象及坐标 | 段落、标题层级、阅读顺序、公式候选 |
+| `LayoutObservations` | 原始 Heron 检测框、类别、置信度、模型版本 | 接受后的文档结构与字符归属 |
+| `DocumentSemantics` | 节点、文字/公式内容片段、来源引用、阅读顺序、章节、关系、覆盖状态与推断依据 | OCR/LaTeX 候选和译文 |
+| `SemanticPageView` | 页面事实引用及文档结构的页面投影 | 独立持久化的页面树 |
+
+`SourceRef` 保存文档 ID、页面、事实版本、坐标、字符索引与对象 ID；一个语义节点可以引用多页的多个片段。节点 ID 只在相应来源/语义版本内有效。来源引用不反向改写页面事实。LaTeX 原生候选在投影时重建，远端候选仍由公式资产仓库独立管理。
+
+文档快照记录事实覆盖、版面覆盖与缺页，章节关系允许暂定状态。跨页未结束段落只提出带依据的 `continues` 候选，不自动合并；有缺页时不建立连续关系。标题编号判断使用全文已知标题证据，重叠 title/heading 判断仍限制在同页。显式摘要标签用于标记摘要来源；不能确定时不生成摘要。
+
+选区的 `source` 保存精确字符索引和使用的语义版本；`context` 从同一快照生成论文标题、摘要、章节路径、所在段落和相邻段落，并限制长度。背景材料仅供模型理解，输出范围仍以选区正文及标题/公式标记为准，不使用强制术语表。
 
 - 页码从 **1** 开始；字符和对象索引从 **0** 开始，仅在该 PDF 页内有效。块 ID 随解析版本变化，跨版本引用应保留页码和坐标。
 - `Box` 是 `[左, 上, 右, 下]`，坐标范围 0–1，以显示页左上角为原点，包含 PDF 固有旋转。PDFium 的页面到设备转换处理旋转和 CropBox。不要把 CSS 像素、屏幕 DPI、缩放比例写进缓存。
@@ -106,13 +106,13 @@
 
 ## 缓存与恢复
 
-桌面：SQLite `page_analysis(document_id, cache_key, page, content)`；浏览器：IndexedDB `cachalot-analysis/pages`，联合键相同。原生提取与完整语义分析分别存储。写入完成按 SQLite 提交或 IndexedDB transaction complete 判断；模型分析报错不覆盖此前成功页。
+桌面页面事实和模型观测保存在 SQLite `page_analysis(document_id, cache_key, page, content)`；文档语义保存在独立的 `document_semantics(document_id, cache_key, content)`。浏览器对应 `cachalot-analysis/pages` 和 `cachalot-semantics/documents`。写入成功以 SQLite 提交或 IndexedDB transaction complete 为准。
 
-- 完整页缓存命中时跳过 PDFium 和 ONNX 加载/推理。
-- 中断后重新打开，只处理当前版本缺失的页。
-- 缓存键包含 schema、PDFium 包版本、模型 SHA、规则版本、阈值。换模型、坐标、字符归属、阅读顺序或阈值时必须更新相应键，旧缓存不复用。
-- 删除论文时清理 PDF、页面文字、分析和会话；桌面通过外键级联，浏览器通过服务协调。浏览器站点数据被系统/用户清理后需要重新导入及分析。
-- 「设置 → 缓存管理」按类别统计并清理所有论文、所有缓存版本；不自动淘汰旧模型版本。
+- 来源事实和模型观测均命中时，不加载 PDFium 或 ONNX。仅语义规则变化时直接重新组装。
+- 部分完成的文档快照可以恢复；缺失的事实由 PDFium 提取，缺失的观测只运行对应页面的 Heron。引用源缺失或字形索引无法解析时重建语义，不使用悬空结构。
+- 三类版本由 `domain/model.ts` 分别定义。模型变化不使字符提取失效，语义规则变化不使原始观测失效。
+- 旧混合缓存仅按明确兼容的提取版本复用字符与对象，不迁移其段落、标题、公式或阅读顺序为新观测；首次升级会重新生成版面观测。
+- 删除文档通过外键级联或浏览器文档索引清理来源与语义缓存。「设置 → 缓存管理」仍分别清除各类别的所有版本。
 
 ### 缓存管理
 
@@ -120,15 +120,16 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 | 类别 | 浏览器 | 桌面 | 清除后的恢复 |
 | --- | --- | --- | --- |
-| PDF 原生提取 | `cachalot-analysis/pages` 中原生版本 | `page_analysis` 的原生版本 | 重新打开时由 PDFium 提取；完整版面结果也可供复用 |
-| 版面分析 | 同一 store 中的完整版面版本 | `page_analysis` 的版面版本 | 重新运行 Heron，可复用原生数据 |
+| PDF 原生提取 | `cachalot-analysis/pages` 中原生版本 | `page_analysis` 的原生版本 | 重新打开时由 PDFium 提取，并重新建立依赖它的文档结构 |
+| 版面分析 | 同一 store 中的 Heron 原始观测 | `page_analysis` 的观测版本 | 重新运行 Heron，可复用原生数据 |
+| 文档语义 | `cachalot-semantics/documents` | `document_semantics` | 重新组装，可复用事实与原始观测 |
 | 问答文字索引 | localStorage `cachalot:page:` | `page_text` | 重新打开时从已有解析或新提取结果建立 |
 | 论文首页预览 | `cachalot-previews/previews`，兼容旧 `setting:preview:` | `settings` 中 `preview:` 项 | 返回文献库后由 PDF.js 渲染 |
 | 公式裁图与 OCR | `cachalot-formulas/assets` | `page_analysis` 中 `formula-assets:` 项 | 框选时重新裁图；复杂公式按设置请求远端识别 |
 
 公式原图与 OCR 候选是同一条记录，作为一组清除，界面单独展示候选数量，并提示重新识别的服务商费用。桌面公式记录写入时带有 `schemaVersion/documentId/page/cacheKey` 包装，符合共享 SQLite 保存接口的身份校验。
 
-统计的是已保存内容的 UTF-8 字节数，不包含主键、SQLite 页、索引、IndexedDB 结构化存储等额外开销；图像按实际保存的 Base64 字符串计数，而不是解码后的图片大小。原生与完整版面中重复保存的字符数据分别计入各自记录。清除释放逻辑内容，数据库可复用空闲空间，不承诺数据库文件立即缩小。所有旧解析/模型版本也在统计和清除范围内。
+统计的是已保存内容的 UTF-8 字节数，不包含主键、SQLite 页、索引、IndexedDB 结构化存储等额外开销；图像按实际保存的 Base64 字符串计数，而不是解码后的图片大小。旧混合缓存中的重复字符数据仍计入各自记录；新格式的观测与语义通过来源引用复用原生数据。清除释放逻辑内容，数据库可复用空闲空间，不承诺数据库文件立即缩小。所有旧解析/模型版本也在统计和清除范围内。
 
 原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好和密钥属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
 
@@ -148,14 +149,14 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 1. PDFium 提取字形 Unicode、原始字号、字体、字形原点及文字矩阵。`emSize` 包含文字矩阵缩放，不能只使用 PDF 声明的字号（示例论文中常为 1）。基线转换到与版面相同的显示页坐标。
 2. 页面分析在 `formula-analysis.ts` 中建立 `FormulaFragment`：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。保存来源文档、页码、区域、字形索引、行内/行间形式、基线和有效字号。简单单基线与上下标生成 `native-candidate`；分数等二维结构不根据字符顺序猜测。
-3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此已有页面缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
+3. `select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此兼容的来源与观测缓存无需重新跑 Heron/PDFium。部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式。正文中的普通半词选择仍不补全。
 4. `formula-source.ts` 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
 5. 用户框选并启动翻译后，`formula-translation.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，再翻译正文。`ocr-settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`formula-transcription.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
 6. 多模态 LLM 的 JSON/唯一 ID 或专用 OCR 规范化结果通过后，校验 KaTeX 语法，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
 7. 翻译请求包含正文位置标记和 LaTeX 阅读候选。`formula-references.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
 8. `translateRegion` 经 `onPhase` 回传准备/翻译状态，`onPrepared` 回传这次翻译实际使用的候选与失败原因。翻译弹窗为三栏：PDF 图片、重建原文、译文。中栏与右栏显式使用 `MathMarkdown` 的 `latex-candidate` 显示方式，中栏可切换到 LaTeX 源文本；识别完成立即更新，不等待正文翻译结束，翻译失败后也能继续核对原文。取消旧的折叠“查看提取的文字”入口。
 
-公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；多模态 LLM 候选按 `transcribe-v2-native:<providerId>:<modelId>` 保存，专用 OCR 按 `formula-ocr-v1:<protocol>:<providerId>:<modelId>` 保存。显式 OCR 选择只使用该模型的候选，停用、删除或协议不匹配时报错；旧文字模型的候选兼容路径仅在未配置独立 OCR 时使用。只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。页面缓存保持 `rules3-formulas2` 与原生字形 `native-rules2-metrics`，本次不失效页面分析。修改公式定位或语义规则时还需更新对应页面/资产/转写缓存版本。
+公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；多模态 LLM 候选按 `transcribe-v2-native:<providerId>:<modelId>` 保存，专用 OCR 按 `formula-ocr-v1:<protocol>:<providerId>:<modelId>` 保存。显式 OCR 选择只使用该模型的候选，停用、删除或协议不匹配时报错；旧文字模型的候选兼容路径仅在未配置独立 OCR 时使用。只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。原生提取、版面观测与文档语义分别使用 `PAGE_FACTS_KEY`、`LAYOUT_OBSERVATIONS_KEY`、`DOCUMENT_SEMANTICS_KEY`。公式资产还校验来源提取版本；修改语义规则可复用提取及模型观测，修改转写规则只影响候选。
 
 边界：行内定位是保守规则，模型也可能漏检独立公式；公式区域的完整性仍需对照原页核对。原图/矢量来源能保证已定位区域的外观，不能证明 OCR LaTeX 的数学正确性。尚未安装 Docling CodeFormula 等额外本地权重，也未实现整篇译文 PDF 重排导出。接口和来源资产已为后续工作准备。
 
@@ -177,7 +178,7 @@ GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或
 
 `select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`heading-translation.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
 
-Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h1；重叠的 title/heading 预测优先保留标题语义（示例论文存在空 title 与有文字的 heading 重合）。章节标题默认 h2，数字编号深度和罗马章节下的字母小节推为更深层级；未来解析器可通过 `ContentBlock.headingLevel` 直接提供层级。无法判断的标题保留为 h2，识别错误或不常见的编号体系仍可能需要人工核对。依据来自完整原始块，不依赖翻译后的文字或裁剪后的编号。多行标题合并为一个标题；只选中半个标题仍按标题格式显示实际选中的文字，不补回未选中内容。标题结构从已有页面缓存派生，无需重新分析论文。
+Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h1；重叠的 title/heading 预测优先保留标题语义（示例论文存在空 title 与有文字的 heading 重合）。章节标题默认 h2，数字编号深度和罗马章节下的字母小节推为更深层级；未来解析器可通过 `ContentBlock.headingLevel` 直接提供层级。无法判断的标题保留为 h2，识别错误或不常见的编号体系仍可能需要人工核对。依据来自完整原始块，不依赖翻译后的文字或裁剪后的编号。多行标题合并为一个标题；只选中半个标题仍按标题格式显示实际选中的文字，不补回未选中内容。标题层级由文档语义构建器统一推断，选区翻译只读取结果；修改层级规则可复用原始版面观测。
 
 ## 新界面接入示例
 
@@ -185,9 +186,11 @@ Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h
 import { services } from "../application/services";
 
 const bytes = await services.library.loadPdf(document.id);
-const session = services.analysis.createSession(document, bytes, onPage, onProgress);
+const session = services.analysis.createSession(document, bytes, onSnapshot, onProgress);
 void session.start(currentPage);
-const parsed = await session.getPage(currentPage); // 完整分析，内部复用并发请求和缓存
+const facts = await session.getPageFacts(currentPage);
+const view = await session.getSemanticPage(currentPage); // 版面就绪的页面投影
+const semantics = await session.getDocumentSemantics(); // 当前部分/完整文档快照
 // 页面关闭、切换文档或卸载视图时：
 session.dispose();
 ```
@@ -212,6 +215,8 @@ cd src-tauri && cargo check
 
 参考论文：`Design_Control_and_Performance_of_Tracking_Power_Supply_for_a_Linear_Power_Amplifier.pdf`（用户提供，7 页）。检查双栏、矢量电路/曲线、位图波形、公式、说明、第 7 页表格。脚本将结构和截图保存到忽略 Git 的 `test-results/`；论文不打包、不提交。
 
-2026-09-26 验证：7 页直接解析（WASM CPU 单线程）约 37 秒，包括模型初始化；这个耗时只代表当前开发机。生产构建 Chromium 集成测试通过了框选正文左半边、缓存重开（不请求模型/PDFium 二进制）、仅缺失第 7 页时续解析、模型文件不可用后的重试。原生提取加完整分析的 JSON 序列化大小约 **7.7 MB**，这不是 IndexedDB/SQLite 实际磁盘占用；另外保存原始 PDF。模型约 171 MB，为应用共享资源，每篇论文不重复保存。
+历史基线（2026-09-26，旧混合缓存）：7 页直接解析（WASM CPU 单线程）约 37 秒，包括模型初始化；这个耗时只代表当前开发机。生产构建 Chromium 集成测试通过了框选正文左半边、缓存重开（不请求模型/PDFium 二进制）、仅缺失第 7 页时续解析、模型文件不可用后的重试。原生提取加完整分析的 JSON 序列化大小约 **7.7 MB**，这不是 IndexedDB/SQLite 实际磁盘占用；另外保存原始 PDF。模型约 171 MB，为应用共享资源，每篇论文不重复保存。
+
+2026-10-04 双层架构验证：类型检查、单元/集成测试、9 项 Rust 测试、生产构建和格式检查通过。隔离 Chromium 的全部 12 个界面用例通过，另行验证模型文件不可用后的重试；七页论文缓存重开不加载 PDFium/Heron，仅删除第 7 页观测后只补该页。公式原始矢量导出通过 CropBox 偏移与 0/90/180/270 度旋转验证。新增用例还覆盖全文标题证据、缺页、跨页节点来源投影、上下文与精确选区分离、缓存清除代次、Worker 并发恢复和缓存打开失败后的重试。
 
 当前支持版面识别、原生字符提取、选区正文过滤、公式来源保留与按需转写、持久缓存和可视区域核对。PDF.js 继续负责显示。尚未接入扫描件全文 OCR、TableFormer，尚未实现整篇图文混排译文导出；公式矢量区域导出已有服务接口。图表原图保留在翻译预览中。模型区域预测与阅读顺序可能出错，“版面”开关用于核对。桌面 Chromium 的通过结果不能替代 iPad Safari/WebView 真机测试。

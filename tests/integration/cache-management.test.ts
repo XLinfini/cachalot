@@ -7,6 +7,7 @@ import {
   clearCacheRecords,
   writeCache,
 } from "../../src/infrastructure/cache-writes";
+import { createPageFacts } from "../../src/domain/page-facts";
 import { analysisRepository } from "../../src/infrastructure/analysis/repository";
 import { formulaRepository } from "../../src/infrastructure/formula-repository";
 import { platform } from "../../src/infrastructure/platform";
@@ -50,7 +51,7 @@ test("counts all cache versions in UTF-8 bytes and clears each type without touc
   const before = await cacheRepository.usage();
   assert.deepEqual(
     before.map((row) => row.entries),
-    [2, 1, 2, 3, 1],
+    [2, 1, 2, 3, 1, 1],
   );
   assert.equal(
     before[0].bytes,
@@ -80,7 +81,7 @@ test("counts all cache versions in UTF-8 bytes and clears each type without touc
   );
   assert.equal(await platform.revealProviderKey("key-fixture"), "sk-fixture-only-abcd");
   // Regeneration through the real repositories is still possible after clear.
-  await analysisRepository.put(cacheFixture.analyses[0]);
+  await analysisRepository.putFacts(createPageFacts("cache-paper", cacheFixture.analyses[0]));
   await formulaRepository.put(cacheFixture.formula);
   await platform.savePageText("cache-paper", 1, "regenerated");
   await platform.savePageText("cache-paper", 2, "");
@@ -93,6 +94,14 @@ test("counts all cache versions in UTF-8 bytes and clears each type without touc
   assert.deepEqual(
     await formulaRepository.get(cacheFixture.formula.asset.formula),
     cacheFixture.formula,
+  );
+  assert.equal(
+    await formulaRepository.get({
+      ...cacheFixture.formula.asset.formula,
+      factsKey: "new-extraction-contract",
+    }),
+    null,
+    "Formula candidates cannot cross source extraction revisions even when coordinates match",
   );
   await assert.rejects(cacheRepository.clear("providers" as never), /Unknown cache kind/);
 });

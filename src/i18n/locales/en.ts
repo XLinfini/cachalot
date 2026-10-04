@@ -301,20 +301,27 @@ export const en = {
         description:
           "Characters, coordinates, font information and drawing objects extracted by PDFium.",
         effect:
-          "Missing data is extracted again with PDFium when a paper is reopened. Existing layout analysis can also supply native data.",
+          "Missing data is extracted again with PDFium when a paper is reopened. Document structure is rebuilt using the new page facts.",
       },
       layout: {
         name: "Layout analysis",
         description:
-          "Paragraphs, headings, figures, tables, equation regions and reading order detected by Docling Heron, including native data.",
+          "Regions, predicted categories and confidence scores from Docling Heron, stored separately from native extraction and document semantics.",
         effect:
           "Layout is analyzed again when a paper is reopened, which may take some time. Existing native extraction can be reused.",
+      },
+      semantics: {
+        name: "Document semantics",
+        description:
+          "Paragraphs, reading order, section hierarchy, captions and formula source relationships.",
+        effect:
+          "Document structure is rebuilt when a paper is reopened. Existing native extraction and layout observations can be reused.",
       },
       pageText: {
         name: "Q&A text index",
         description: "Plain-text copies used to retrieve relevant paper pages.",
         effect:
-          "The text index is rebuilt from layout analysis or native extraction when a paper is reopened. Q&A has less paper context until indexing finishes.",
+          "The text index is rebuilt from document semantics or native extraction when a paper is reopened. Q&A has less paper context until indexing finishes.",
       },
       previews: {
         name: "First-page previews",

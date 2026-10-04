@@ -39,6 +39,7 @@ export async function seedCaches(input: CacheFixture): Promise<void> {
     input.analyses.map((page) => [page]),
     ["documentId", "cacheKey", "page"],
   );
+  await put("cachalot-semantics", "documents", [[input.semantics]], ["documentId", "cacheKey"]);
   await put("cachalot-formulas", "assets", [[input.formula]], ["documentId", "id"]);
   await put("cachalot-previews", "previews", [
     [input.preview, "preview:v1:cache-paper"],

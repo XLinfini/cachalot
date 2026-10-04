@@ -1,54 +1,10 @@
-import type {
-  ContentBlock,
-  HeadingLevel,
-  PageAnalysis,
-  SelectedRegion,
-  SelectedTextBlock,
-} from "../domain/analysis";
-import { area, intersection } from "../domain/geometry";
+import type { SelectedRegion, SelectedTextBlock } from "../domain/analysis";
 import { message } from "../domain/messages";
 
-// Single C/D/L/M are ambiguous alphabetic subsections (C, D in our fixture).
-// Use the usual paper section numerals for this heuristic; explicit levels win.
-const ROMAN_SECTION = /^[IVX]+[.)]?\s+\S/u;
 const HEADING_TOKEN = /\[\[(\/?)heading:([a-zA-Z0-9-]+)\]\]/g;
 const singleLine = (text: string) => text.replace(/\s+/gu, " ").trim();
 const opening = (id: string) => `[[heading:${id}]]`;
 const closing = (id: string) => `[[/heading:${id}]]`;
-
-/** Use original full-block evidence even when the user selects only a suffix.
- * Do not infer a new level from translated text or from a cropped number. */
-export function selectedHeadingLevel(
-  block: ContentBlock,
-  page: PageAnalysis,
-): HeadingLevel | undefined {
-  if (block.kind !== "title" && block.kind !== "heading") return undefined;
-  if (block.headingLevel) return block.headingLevel;
-  // Cached Heron output can contain coincident title+heading predictions, with
-  // glyphs assigned to heading and an empty title. Prefer the explicit title.
-  if (
-    block.kind === "title" ||
-    page.blocks.some(
-      (other) =>
-        other.kind === "title" &&
-        intersection(other.box, block.box) / Math.max(area(block.box), area(other.box)) > 0.9,
-    )
-  )
-    return 1;
-  const text = singleLine(block.text);
-  const numbered = text.match(/^(\d+(?:\.\d+){0,4})[.)]?\s+\S/u);
-  if (numbered) return Math.min(6, numbered[1].split(".").length + 1) as HeadingLevel;
-  if (ROMAN_SECTION.test(text)) return 2;
-  if (
-    /^[A-Z][.)]\s+\S/u.test(text) ||
-    (/^[A-Z]\s+\S/u.test(text) &&
-      page.blocks.some(
-        (other) => other.kind === "heading" && ROMAN_SECTION.test(singleLine(other.text)),
-      ))
-  )
-    return 3;
-  return 2;
-}
 
 const selectedHeadings = (selection: SelectedRegion) =>
   (selection.blocks || []).filter((block) => block.headingLevel);

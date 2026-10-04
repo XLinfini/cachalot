@@ -13,7 +13,7 @@ test("Reader navigation @paper", async () => {
     test.skip(true, "Set CACHALOT_PAPER to run the real-paper suite");
     return;
   }
-  const { analyses, bytes } = await loadReferencePaper(paper);
+  const { analyses, observations, bytes } = await loadReferencePaper(paper);
   await mkdir("test-results/reader-navigation", { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
   try {
@@ -57,7 +57,7 @@ test("Reader navigation @paper", async () => {
           },
           { id: analyses[0].documentId, language },
         );
-        await seedPaper(page, { analyses, bytes });
+        await seedPaper(page, { analyses, observations, bytes });
         await page.reload();
         const card = page.locator('[data-ui="document-card"]');
         const firstPage = page.locator('[data-ui="pdf-page"][data-page="1"]');

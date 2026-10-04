@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect, test } from "@playwright/test";
-import type { PageAnalysis } from "../../src/domain/analysis";
+import type { LayoutObservations } from "../../src/domain/analysis";
 import { zh } from "../../src/i18n/locales/zh";
 import { en } from "../../src/i18n/locales/en";
 import { loadReferencePaper } from "../support/reference-paper";
@@ -14,7 +14,7 @@ test("Library categories @paper", async () => {
     test.skip(true, "Set CACHALOT_PAPER to run the real-paper suite");
     return;
   }
-  const { analyses, bytes } = await loadReferencePaper(paper);
+  const { analyses, observations, bytes } = await loadReferencePaper(paper);
   const ids = [analyses[0].documentId, "b".repeat(64), "c".repeat(64)];
   await mkdir("test-results/categories", { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
@@ -68,7 +68,7 @@ test("Library categories @paper", async () => {
           },
           { ids, language },
         );
-        await seedPaper(page, { analyses, bytes, aliases: ids });
+        await seedPaper(page, { analyses, observations, bytes, aliases: ids });
         await page.reload();
         const cards = page.locator('[data-ui="document-card"]');
         const primary = cards.filter({
@@ -215,7 +215,7 @@ test("Library categories @paper", async () => {
             const request = indexedDB.open("cachalot-analysis", 1);
             request.onsuccess = () => resolve(request.result);
           });
-          const cachedPages = await new Promise<Array<{ page: number; analyzedAt: number }>>(
+          const cachedPages = await new Promise<Array<{ page: number; observedAt: number }>>(
             (resolve) => {
               const request = cache
                 .transaction("pages")
@@ -224,10 +224,12 @@ test("Library categories @paper", async () => {
                 .getAll(id);
               request.onsuccess = () =>
                 resolve(
-                  request.result.map((entry: PageAnalysis) => ({
-                    page: entry.page,
-                    analyzedAt: entry.analyzedAt,
-                  })),
+                  request.result
+                    .filter((entry: LayoutObservations) => entry.kind === "layout-observations")
+                    .map((entry: LayoutObservations) => ({
+                      page: entry.page,
+                      observedAt: entry.observedAt,
+                    })),
                 );
             },
           );
@@ -243,7 +245,7 @@ test("Library categories @paper", async () => {
         assert.equal(preserved.size, bytes.length);
         assert.deepEqual(
           preserved.cachedPages,
-          analyses.map(({ page, analyzedAt }) => ({ page, analyzedAt })),
+          observations.map(({ page, observedAt }) => ({ page, observedAt })),
         );
         assert.equal(preserved.threads[0].title, "Existing discussion");
         assert.equal(preserved.state.assignments[ids[0]], undefined);

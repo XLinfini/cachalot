@@ -67,6 +67,7 @@ export const cacheRepository = {
       const row = add(kind, cursor.value);
       if (kind === "formulas") row.candidates += Object.keys(cursor.value.candidates || {}).length;
     });
+    await scan("semantics", "readonly", (cursor) => add("semantics", cursor.value));
     await scan("previews", "readonly", (cursor) => add("previews", cursor.value));
     await scan("formulas", "readonly", (cursor) => {
       const row = add("formulas", cursor.value);
@@ -88,7 +89,7 @@ export const cacheRepository = {
           if (analysisCacheKind(String(cursor.value.cacheKey)) === kind) cursor.delete();
         });
       }
-      if (kind === "previews" || kind === "formulas") {
+      if (kind === "previews" || kind === "formulas" || kind === "semantics") {
         await scan(kind, "readwrite", (cursor) => {
           cursor.delete();
         });

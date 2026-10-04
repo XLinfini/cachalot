@@ -1,5 +1,12 @@
 /** Regenerable document data only; original PDFs and user data are excluded. */
-export const CACHE_KINDS = ["native", "layout", "pageText", "previews", "formulas"] as const;
+export const CACHE_KINDS = [
+  "native",
+  "layout",
+  "pageText",
+  "previews",
+  "formulas",
+  "semantics",
+] as const;
 export type CacheKind = (typeof CACHE_KINDS)[number];
 export interface CacheUsage {
   kind: CacheKind;

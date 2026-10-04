@@ -2,7 +2,14 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, test, type Page } from "@playwright/test";
-import type { PageAnalysis } from "../../src/domain/analysis";
+import type { PageFacts, LayoutObservations } from "../../src/domain/analysis";
+import type { DocumentSemantics } from "../../src/domain/document-semantics";
+import { projectSemanticPage } from "../../src/application/document-semantics";
+interface CacheBundle {
+  facts: PageFacts[];
+  observations: LayoutObservations[];
+  semantics: DocumentSemantics;
+}
 
 test("Live paper analysis @paper", async () => {
   const paper = process.env.CACHALOT_PAPER;
@@ -44,19 +51,34 @@ test("Live paper analysis @paper", async () => {
     await page.locator('[data-ui="pdf-page"][data-page="1"] > canvas').waitFor();
   };
   const readCache = () =>
-    page.evaluate(async (): Promise<PageAnalysis[]> => {
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const r = indexedDB.open("cachalot-analysis", 1);
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-      });
-      const result = await new Promise<PageAnalysis[]>((resolve, reject) => {
-        const r = db.transaction("pages").objectStore("pages").getAll();
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-      });
-      db.close();
-      return result;
+    page.evaluate(async (): Promise<CacheBundle> => {
+      async function read(database: string, store: string) {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(database, 1);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        try {
+          return await new Promise<unknown[]>((resolve, reject) => {
+            const request = db.transaction(store).objectStore(store).getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+        } finally {
+          db.close();
+        }
+      }
+      const pages = (await read("cachalot-analysis", "pages")) as Array<
+        PageFacts | LayoutObservations
+      >;
+      const documents = (await read("cachalot-semantics", "documents")) as DocumentSemantics[];
+      return {
+        facts: pages.filter((page): page is PageFacts => page.kind === "page-facts"),
+        observations: pages.filter(
+          (page): page is LayoutObservations => page.kind === "layout-observations",
+        ),
+        semantics: documents[0],
+      };
     });
   try {
     await page.goto(process.env.CACHALOT_URL || "http://127.0.0.1:1420/");
@@ -73,10 +95,12 @@ test("Live paper analysis @paper", async () => {
       await page.getByRole("button", { name: "重试分析" }).click();
     }
     await waitReady(page);
-    const first = (await readCache()).filter((p) => !p.cacheKey.includes("native"));
+    const initial = await readCache();
+    const first = initial.observations;
+    const views = initial.facts.map((facts) => projectSemanticPage(initial.semantics, facts));
     assert.equal(first.length, 7, "all reference pages are committed");
-    assert.ok(first.find((p) => p.page === 1)?.blocks.some((b) => b.kind === "figure"));
-    assert.ok(first.find((p) => p.page === 7)?.blocks.some((b) => b.kind === "table"));
+    assert.ok(views.find((p) => p.page === 1)?.blocks.some((b) => b.kind === "figure"));
+    assert.ok(views.find((p) => p.page === 7)?.blocks.some((b) => b.kind === "table"));
     assert.ok(modelRequests.some((url) => url.includes("docling-heron.onnx")));
     await page.getByRole("button", { name: "版面", exact: true }).click();
     await page.locator('[data-ui="layout-box"]').first().waitFor();
@@ -85,7 +109,7 @@ test("Live paper analysis @paper", async () => {
 
     // Actual pointer drag over only the left half of a paragraph. The popup
     // displays exactly the application DTO's text, so no private test hook exists.
-    const native = first.find((p) => p.page === 1)!;
+    const native = views.find((p) => p.page === 1)!;
     const body = native.blocks.find(
       (b) => b.kind === "paragraph" && b.characterIndices.length > 200,
     )!;
@@ -115,10 +139,10 @@ test("Live paper analysis @paper", async () => {
     await page.locator('[data-ui="document-card"]').first().click();
     await waitReady(page);
     assert.equal(modelRequests.length, before, "cached reopen must not load model or PDFium");
-    const reopened = (await readCache()).filter((p) => !p.cacheKey.includes("native"));
+    const reopened = (await readCache()).observations;
     assert.deepEqual(
-      reopened.map((p) => p.analyzedAt),
-      first.map((p) => p.analyzedAt),
+      reopened.map((p) => p.observedAt),
+      first.map((p) => p.observedAt),
     );
 
     // Simulate exiting before the final page completed: retain native page and
@@ -141,10 +165,10 @@ test("Live paper analysis @paper", async () => {
     await page.reload();
     await page.locator('[data-ui="document-card"]').first().click();
     await waitReady(page);
-    const resumed = (await readCache()).filter((p) => !p.cacheKey.includes("native"));
+    const resumed = (await readCache()).observations;
     for (const cached of first.filter((p) => p.page !== 7))
-      assert.equal(resumed.find((p) => p.page === cached.page)?.analyzedAt, cached.analyzedAt);
-    assert.ok(resumed.find((p) => p.page === 7)!.analyzedAt > missing.analyzedAt);
+      assert.equal(resumed.find((p) => p.page === cached.page)?.observedAt, cached.observedAt);
+    assert.ok(resumed.find((p) => p.page === 7)!.observedAt > missing.observedAt);
     assert.deepEqual(errors, [], "browser and worker should finish without uncaught errors");
     const summary = {
       pages: first.length,

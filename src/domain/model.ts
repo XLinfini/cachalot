@@ -12,6 +12,14 @@ export const LAYOUT_MODEL = {
 
 export const MODEL_URL = `https://huggingface.co/docling-project/docling-layout-heron-onnx/resolve/${LAYOUT_MODEL.revision}/model.onnx`;
 
-/** Bump whenever geometry, text assignment or reading-order rules change. */
-export const ANALYSIS_CACHE_KEY = `schema1:pdfium2.15.1:heron-${LAYOUT_MODEL.sha256}:rules3-formulas2:threshold-${LAYOUT_MODEL.threshold}`;
-export const NATIVE_CACHE_KEY = "schema1:pdfium2.15.1:native-rules2-metrics";
+/** Extraction, model observations and semantic rules have independent identity. */
+export const PAGE_FACTS_KEY = "facts1:pdfium2.15.1:native-metrics2:coords1";
+export const LAYOUT_OBSERVATIONS_KEY = `layout1:pdfium2.15.1:heron-${LAYOUT_MODEL.sha256}:threshold-${LAYOUT_MODEL.threshold}:render1:coords1`;
+export const DOCUMENT_SEMANTICS_KEY = `document-semantics:v1:${PAGE_FACTS_KEY}:${LAYOUT_OBSERVATIONS_KEY}:assembly4-headings1-formulas2`;
+
+/** Only these known-compatible legacy extractions may be migrated. Legacy
+ * assembled blocks cannot be recovered as raw model observations. */
+export const LEGACY_ANALYSIS_KEYS = [
+  `schema1:pdfium2.15.1:heron-${LAYOUT_MODEL.sha256}:rules3-formulas2:threshold-${LAYOUT_MODEL.threshold}`,
+  "schema1:pdfium2.15.1:native-rules2-metrics",
+] as const;
