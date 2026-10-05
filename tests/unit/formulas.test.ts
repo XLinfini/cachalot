@@ -3,11 +3,11 @@ import { test } from "node:test";
 import type { Box, FormulaAsset, NativePage, PdfCharacter } from "../../src/domain/analysis";
 import { fixturePage } from "../support/analysis";
 import { nativeLatex } from "../../src/application/document-analysis/formulas";
-import { selectTextRegion } from "../../src/application/selection-translation/select-region";
+import { selectTextRegion } from "../../src/extensions/selection-translation/select-region";
 import {
   finishTranslation,
   formulaClipboard,
-} from "../../src/application/selection-translation/formula-slots";
+} from "../../src/extensions/selection-translation/formula-slots";
 
 const glyph = (index: number, text: string, x: number, y = 0.2, size = 10): PdfCharacter => ({
   index,

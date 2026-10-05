@@ -14,6 +14,7 @@ import { preservesNativeCharacters, validLatex } from "./validate-latex";
  * inspect the whole selection, generate translation markers or mutate semantics. */
 export interface FormulaReconstructionRequest {
   formulas: FormulaFragment[];
+  signal?: AbortSignal;
   /** Used only by existing installations without an explicit OCR selection. */
   fallback: { provider: Provider; supportsImages: boolean };
 }
@@ -38,9 +39,12 @@ export interface FormulaReconstructionPorts {
  * candidates leave this boundary; these checks do not prove mathematical accuracy. */
 export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
   return async (request: FormulaReconstructionRequest): Promise<FormulaReconstructionResult> => {
+    const check = () => request.signal?.throwIfAborted();
+    check();
     let { provider, supportsImages: vision } = request.fallback;
     const generation = ports.generation();
     const records = await ports.sources(request.formulas);
+    check();
     if (!records.length) return { assets: [], issues: [] };
     let protocol: FormulaOcrProtocol = "vision-llm";
     let legacy = true;
@@ -98,6 +102,7 @@ export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
     );
     if (vision && adapter)
       for (let offset = 0; offset < unresolved.length; offset += adapter.batchSize) {
+        check();
         const batch = unresolved.slice(offset, offset + adapter.batchSize);
         try {
           const candidates = await ports.recognize(
@@ -108,8 +113,11 @@ export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
               imageDataUrl: record.asset.imageDataUrl,
               evidence: formulaEvidence(record.asset.formula),
             })),
+            request.signal,
           );
+          check();
           for (const record of batch) {
+            check();
             const entries = candidates.filter((candidate) => candidate.id === record.id);
             const latex = entries.length === 1 ? entries[0].latex : null;
             if (!validLatex(latex)) issues.push({ formulaId: record.id, reason: "invalid" });
@@ -121,6 +129,7 @@ export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
             }
           }
         } catch (error) {
+          check();
           for (const record of unresolved.slice(offset))
             if (!acceptable(record.asset.formula, record.candidates[key]))
               issues.push({ formulaId: record.id, reason: "request", details: String(error) });
@@ -135,6 +144,7 @@ export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
             reason: configurationError ? "request" : "vision-unavailable",
             ...(configurationError ? { details: configurationError } : {}),
           });
+    check();
     return {
       assets: records.map((record) => {
         const formula = record.asset.formula;

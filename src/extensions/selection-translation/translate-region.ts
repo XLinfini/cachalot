@@ -1,15 +1,13 @@
-import { message } from "../../domain/messages";
 import type {
-  PreparedTranslationSource,
   SelectedRegion,
-  TranslationPhase,
   TranslationResult,
-} from "../../domain/analysis";
-import type { Provider } from "../../domain/records";
-import { platform } from "../../infrastructure/platform";
+  TranslationPhase,
+  PreparedTranslationSource,
+} from "./types";
+import { message } from "../../sdk";
+import type { Provider } from "../../sdk";
+import type { ExtensionContext } from "../../sdk";
 import { DEFAULT_TRANSLATION_PROMPT } from "./prompt";
-import { supportsImages } from "../model-catalog";
-import { reconstructFormulas } from "../ocr";
 import { TRANSLATION_CONTEXT_POLICY } from "./context";
 import { finishTranslation, formulaGlossary, FORMULA_TRANSLATION_POLICY } from "./formula-slots";
 import {
@@ -22,21 +20,25 @@ import {
  * analysis never calls the remote model. Presentation gets the exact candidates
  * used in the translation glossary, even if subsequent translation fails. */
 export async function translateRegion(
+  context: ExtensionContext,
   selection: SelectedRegion,
   provider: Provider,
   onDelta: (text: string) => void,
   callbacks: {
     onPrepared?: (source: PreparedTranslationSource) => void;
     onPhase?: (phase: TranslationPhase) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<TranslationResult> {
   callbacks.onPhase?.("preparing");
-  const prompt = (await platform.getSetting("translationPrompt")) || DEFAULT_TRANSLATION_PROMPT;
-  const vision = await supportsImages(provider);
+  const prompt =
+    (await context.workspace.getConfiguration().get("prompt")) || DEFAULT_TRANSLATION_PROMPT;
+  const vision = await context.lm.supportsImages(provider);
   if (!selection.text && !vision) throw new Error(message("visionRequired"));
-  const { assets, issues } = await reconstructFormulas({
-    formulas: selection.formulas || [],
-    fallback: { provider, supportsImages: vision },
+  const { assets, issues } = await context.ocr.reconstructFormulas(selection.formulas || [], {
+    fallback: provider,
+    supportsImages: vision,
+    signal: callbacks.signal,
   });
   const glossary = formulaGlossary(assets);
   callbacks.onPrepared?.({ formulas: assets, issues });
@@ -53,7 +55,7 @@ export async function translateRegion(
       ]
     : `第 ${selection.page} 页选区正文：\n${text}`;
   let answer = "";
-  await platform.complete(
+  await context.lm.complete(
     {
       providerId: provider.id,
       modelId: provider.modelId,
@@ -69,6 +71,7 @@ export async function translateRegion(
       answer += delta;
       onDelta(delta);
     },
+    callbacks.signal,
   );
   if (!answer.trim()) throw new Error(message("emptyResponse"));
   return finishTranslation(selection.text, finishTranslatedHeadings(selection, answer), assets);

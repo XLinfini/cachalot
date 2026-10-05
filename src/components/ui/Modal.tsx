@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ui } from "./styles";
+import { ui } from "../../sdk/ui/styles";
 
 /** Native modal semantics provide focus trapping, Escape and focus restoration.
  * Modal contents remain presentation code; storage belongs to the caller. */

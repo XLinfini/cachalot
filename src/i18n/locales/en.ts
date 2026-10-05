@@ -1,6 +1,27 @@
-import type { MessageCode } from "../../domain/messages";
-
 export const en = {
+  extensions: {
+    moveView: "Move view",
+    positions: {
+      left: "Left sidebar",
+      right: "Right sidebar",
+      panel: "Bottom panel",
+    },
+    title: "Extensions",
+    description:
+      "Built-in extensions are preinstalled. Disabling an extension preserves its settings and data.",
+    builtIn: "Built-in · cannot uninstall",
+    disable: "Disable",
+    enable: "Enable",
+    resize: "Resize extension view",
+    closeView: "Close extension view",
+    status: {
+      disabled: "Disabled",
+      inactive: "Waiting to activate",
+      activating: "Activating",
+      active: "Enabled",
+      error: "Activation failed",
+    },
+  },
   common: {
     settings: "Settings",
     library: "Library",
@@ -57,7 +78,6 @@ export const en = {
     previewAlt: "First page of {{title}}",
     previewLoading: "Generating preview…",
     previewUnavailable: "Preview unavailable",
-
     eyebrow: "YOUR RESEARCH SPACE",
     title: "Read. Translate. Think deeper",
     punctuation: ".",
@@ -93,8 +113,6 @@ export const en = {
     invalidPage: "Enter a whole page number between 1 and {{count}}.",
     previews: "PAGE PREVIEWS",
     outline: "OUTLINE",
-    region: "Region",
-    regionTitle: "Fully enclose paragraphs or display equations to translate",
     text: "Text",
     layout: "Layout",
     ask: "Ask",
@@ -109,8 +127,6 @@ export const en = {
     retryAnalysis: "Retry analysis",
     warnings_one: "{{count}} item to review",
     warnings_other: "{{count}} items to review",
-    translate: "Translate selection",
-    translateIcon: "T",
     blocks: {
       paragraph: "Text",
       title: "Title",
@@ -141,7 +157,6 @@ export const en = {
     imageQuestion: "Image question",
     incompatibleDraft:
       "The selected model cannot read these draft images. Choose a vision model or remove the images.",
-
     me: "Me",
     you: "You",
     regenerate: "Regenerate",
@@ -168,42 +183,10 @@ export const en = {
     sendHint: "↵ Send · LaTeX supported",
     send: "Send question",
   },
-  translation: {
-    originalFormula: "Original PDF equation",
-    partialFormula: "Partially selected equation; no completion is inferred",
-    formulaPreservation:
-      "{{count}} equation region(s). Reconstructed equations use LaTeX; others retain original images. Check against the source.",
-    eyebrow: "SELECTION TRANSLATION · PAGE {{page}}",
-    title: "Selection translation",
-    close: "Close translation",
-    source: "Original selection",
-    imageAlt: "Selected region on page {{page}} of the paper",
-    reconstructedSource: "Reconstructed source",
-    noExtractedText: "No body text was extracted. Refer to the image on the left.",
-    showRenderedSource: "Show rendered source",
-    preparing: "Preparing source and recognizing complex equations…",
-    latexSource: "Show source text with LaTeX",
-    formulaFallback:
-      "{{count}} equation(s) could not be reconstructed; original images are retained.",
-    formulaIssue: {
-      request: "The equation recognition request failed.",
-      invalid: "The model did not return usable LaTeX.",
-      characters:
-        "The reconstruction lost or changed letters or digits from the PDF and was discarded.",
-      "vision-unavailable":
-        "The current model cannot read images and no reusable recognition result is available.",
-    },
-    result: "Translation",
-    noModel: "No model configured",
-    running: "Translating the selection…",
-    verify: "Check figures and equations against the original",
-    copy: "Copy translation",
-  },
   settings: {
     eyebrow: "PREFERENCES",
     app: "Application",
     general: "General",
-    translation: "Reading & translation",
     providers: "Model services",
     generalEyebrow: "INTERFACE LANGUAGE",
     generalTitle: "Choose your interface language.",
@@ -211,13 +194,6 @@ export const en = {
     language: "Interface language",
     languageHint:
       "Applies immediately and is remembered on this device. Paper text, saved messages and translation prompts keep their content.",
-    translationEyebrow: "READING & TRANSLATION",
-    translationTitle: "Translate your way.",
-    translationDescription:
-      "Edit the prompt for selection translation. The model receives the original selection and these instructions.",
-    prompt: "Translation prompt",
-    restorePrompt: "Restore default",
-    savePrompt: "Save prompt",
     providersEyebrow: "AI PROVIDERS",
     providersTitle: "Choose your model.",
     providersDescription:
@@ -382,7 +358,6 @@ export const en = {
       "The selected OCR model is missing, disabled or has an incompatible interface. Check Formula OCR settings.",
     ocrTestFailed:
       "The OCR test did not return a renderable formula. Check the model and interface.",
-
     formulaSourceFailed: "Could not preserve the original equation region.",
     formulaReferencesChanged:
       "The translation changed or omitted equation positions. Retry to preserve every original equation.",
@@ -391,7 +366,6 @@ export const en = {
     imageUnsupported: "Cannot upload images to a model that does not support image understanding",
     imageFileInvalid: "Choose a PNG, JPEG, WebP or GIF image.",
     imageFileTooLarge: "Each image must be 10 MB or smaller.",
-
     loadingPaper: "Loading paper…",
     loadingCache: "Reading analysis cache…",
     loadingModel: "Loading the local layout model…",
@@ -452,7 +426,7 @@ export const en = {
     languageSaveFailed: "Could not save the language preference. Please try again.",
     singlePageSelection:
       "Select text within a single page for translation. Cross-page text can still be copied.",
-  } satisfies Record<MessageCode, string>,
+  },
   nativeErrors: {
     invalidPdf: "The selected file is not a valid PDF",
     pdfLimit: "PDF exceeds the 200 MB limit",
@@ -473,6 +447,11 @@ export const en = {
     cacheRange: "Page analysis data is out of range.",
     cacheIdentity: "Page analysis ID does not match the cache key.",
   },
-} as const;
-type LocaleShape<T> = { [K in keyof T]: T[K] extends string ? string : LocaleShape<T[K]> };
-export type LocaleResource = LocaleShape<typeof en>;
+  formulas: {
+    original: "Original formula",
+    partial: "Partially selected formula",
+  },
+};
+
+export type LocaleResource = { [K in keyof typeof en]: Widen<(typeof en)[K]> };
+type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };

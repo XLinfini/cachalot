@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { CategoryRecord } from "../domain/records";
 import type { LibraryFilter } from "../domain/categories";
 import { ActionMenu, menuItem } from "./ui/ActionMenu";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 
 /** Built-in views never have a delete menu. Names and memberships come from
  * application services; the sidebar only renders and emits navigation/actions. */

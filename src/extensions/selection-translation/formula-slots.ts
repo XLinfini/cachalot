@@ -1,7 +1,9 @@
-import type { FormulaAsset, TranslationResult } from "../../domain/analysis";
-import { message } from "../../domain/messages";
+import type { TranslationResult } from "./types";
+import type { FormulaAsset } from "../../sdk";
+import { message } from "../../sdk";
 
-export const FORMULA_PATTERN = /\[\[formula:([a-zA-Z0-9-]+)\]\]/g;
+import { FORMULA_PATTERN } from "../../sdk";
+export { FORMULA_PATTERN };
 export const formulaMarker = (id: string) => `[[formula:${id}]]`;
 /** OCR supplies validated candidates and original crops. Translation alone owns
  * their position markers and the prose instructions sent with the selected text. */

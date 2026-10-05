@@ -4,7 +4,7 @@ import type { DocumentRecord } from "../domain/records";
 import { dateLocale } from "../i18n";
 import DocumentPreview from "./DocumentPreview";
 import { ActionMenu, menuItem } from "./ui/ActionMenu";
-import { cx } from "./ui/styles";
+import { cx } from "../sdk/ui/styles";
 
 export function LibraryDocumentCard({
   document,

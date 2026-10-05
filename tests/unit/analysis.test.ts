@@ -3,11 +3,11 @@ import { test } from "node:test";
 import type { Box, ContentBlock, NativePage } from "../../src/domain/analysis";
 import { readingOrder } from "../../src/application/document-analysis/page-semantics";
 import { fixturePage } from "../support/analysis";
-import { selectTextRegion } from "../../src/application/selection-translation/select-region";
+import { selectTextRegion } from "../../src/extensions/selection-translation/select-region";
 import {
   selectRegion as selectWholeRegion,
   selectRegionUnits,
-} from "../../src/application/selection-translation/select-region";
+} from "../../src/extensions/selection-translation/select-region";
 import { semanticFixture } from "../fixtures/document-semantics";
 
 const block = (id: string, box: Box): ContentBlock => ({

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { expect, type Page, type Route } from "@playwright/test";
-import type { LocaleResource } from "../../../src/i18n/locales/en";
+import type { LocaleResource } from "../../fixtures/locales";
 
 /** Uses the real reference paper's cached overlapping title/heading detections,
  * with the parent harness's isolated profile and local translation fixture. */

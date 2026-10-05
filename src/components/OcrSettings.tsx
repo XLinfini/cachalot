@@ -6,7 +6,7 @@ import type { Provider } from "../domain/records";
 import { ocrModels } from "../domain/provider-models";
 import ModelPicker from "./ModelPicker";
 import ProviderEditor from "./ProviderEditor";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 
 export default function OcrSettings({
   providers,

@@ -2,7 +2,7 @@
 @import "./pdf-text-layer.css";
 
 /* Shared design tokens. Page layout belongs to Tailwind utilities in TSX;
-   reusable control recipes belong to components/ui/styles.ts. */
+   reusable control recipes belong to sdk/ui/styles.ts. */
 @theme {
   --font-sans: "DM Sans", "Noto Sans SC", sans-serif;
   --font-brand: Georgia, serif;

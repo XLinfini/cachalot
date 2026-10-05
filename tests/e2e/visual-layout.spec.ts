@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, test } from "@playwright/test";
-import { en } from "../../src/i18n/locales/en";
-import { zh } from "../../src/i18n/locales/zh";
+import { en } from "../fixtures/locales";
+import { zh } from "../fixtures/locales";
 import { verifyContinuousReader } from "./scenarios/continuous-reader";
 import { verifyModelComposer } from "./scenarios/model-composer";
 import { verifyFormulas } from "./scenarios/formulas";

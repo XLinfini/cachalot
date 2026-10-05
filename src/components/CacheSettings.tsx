@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
 import { CACHE_KINDS, type CacheKind, type CacheUsage } from "../domain/cache";
 import { localizeMessage } from "../i18n/messages";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 import { Modal } from "./ui/Modal";
 
 /** Presentation only: sizes and deletion scope come from the cache service. */

@@ -215,3 +215,49 @@ test("legacy text models can reuse character-checked vision candidates without m
   assert.deepEqual(h.requests, []);
   assert.deepEqual(result.issues, []);
 });
+
+test("cancellation rejects late OCR results without cache writes or subsequent batches", async () => {
+  const controller = new AbortController();
+  let requests = 0;
+  const h = harness({
+    recognize: async (_protocol, _provider, regions, signal) => {
+      requests++;
+      assert.equal(signal, controller.signal);
+      controller.abort();
+      // An adapter can finish late even after receiving cancellation.
+      return regions.map(({ id }) => ({ id, latex }));
+    },
+  });
+  await assert.rejects(
+    h.reconstruct({
+      formulas: ["first", "second"].map((id) => ({ ...evidenceFormula, id })),
+      fallback,
+      signal: controller.signal,
+    }),
+    { name: "AbortError" },
+  );
+  assert.equal(requests, 1);
+  assert.deepEqual(h.saved, []);
+});
+
+test("cancellation during one cache save prevents remaining candidate writes", async () => {
+  const controller = new AbortController(),
+    writes: string[] = [];
+  const h = harness({
+    adapter: () => ({ cachePrefix: "fixture-v1", batchSize: 2 }),
+    save: async (value) => {
+      writes.push(value.id);
+      controller.abort();
+    },
+  });
+  await assert.rejects(
+    h.reconstruct({
+      formulas: ["first", "second", "third"].map((id) => ({ ...evidenceFormula, id })),
+      fallback,
+      signal: controller.signal,
+    }),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(writes, ["first"]);
+  assert.equal(h.requests.length, 1);
+});

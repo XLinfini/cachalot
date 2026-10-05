@@ -1,33 +1,31 @@
+import type { SelectedRegion, TranslationPhase } from "./types";
 import { useEffect, useRef, useState } from "react";
 import { Check, Code2, Copy, Eye, Languages, RefreshCw, X } from "lucide-react";
-import { services } from "../application/services";
-import type { Provider } from "../domain/records";
-import type {
-  FormulaAsset,
-  FormulaPreparationIssue,
-  SelectedRegion,
-  TranslationPhase,
-} from "../domain/analysis";
+import type { ExtensionContext, Provider } from "../../sdk";
+import { translateRegion } from "./translate-region";
+
+import type { FormulaAsset, FormulaPreparationIssue } from "../../sdk";
 import {
   FORMULA_PATTERN,
   formulaClipboard,
   previewTranslatedHeadings,
   sourceMarkdown,
-} from "../application/selection-translation";
-import MathMarkdown from "./MathMarkdown";
-import { ui } from "./ui/styles";
-import { useTranslation } from "react-i18next";
-import { message } from "../domain/messages";
-import { localizeMessage } from "../i18n/messages";
+} from "./index";
+import { MathMarkdown, ui, useActiveModel } from "../../sdk/react";
+import { useExtensionTranslation } from "../../sdk/react";
+import { message } from "../../sdk";
+import { localizeMessage } from "../../sdk/react";
 
 interface Props {
   selection: SelectedRegion;
-  provider: Provider | null;
+  context: ExtensionContext;
+  signal: AbortSignal;
   onClose: () => void;
 }
 
-export default function TranslationPopup({ selection, provider, onClose }: Props) {
-  const { t } = useTranslation();
+export default function TranslationPopup({ selection, context, signal, onClose }: Props) {
+  const provider: Provider | null = useActiveModel(context);
+  const { t } = useExtensionTranslation(context);
   const [translation, setTranslation] = useState("");
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
@@ -38,13 +36,12 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
   const [phase, setPhase] = useState<TranslationPhase>("preparing");
   const [issues, setIssues] = useState<FormulaPreparationIssue[]>([]);
   const generation = useRef(0);
-  const automaticRun = useRef<{
-    selection: SelectedRegion;
-    providerId: string | null;
-    modelId: string | null;
-  } | null>(null);
+  const pending = useRef<AbortController | null>(null);
 
   const translate = async () => {
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
     const request = ++generation.current;
     setValidated(false);
     setTranslation("");
@@ -59,13 +56,15 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
     setError("");
     setRunning(true);
     try {
-      const result = await services.assistant.translateRegion(
+      const result = await translateRegion(
+        context,
         selection,
         provider,
         (delta) => {
           if (request === generation.current) setTranslation((text) => text + delta);
         },
         {
+          signal: AbortSignal.any([controller.signal, signal]),
           onPrepared: (source) => {
             if (request === generation.current) {
               setFormulas(source.formulas);
@@ -93,19 +92,12 @@ export default function TranslationPopup({ selection, provider, onClose }: Props
   };
 
   useEffect(() => {
-    if (
-      automaticRun.current?.selection === selection &&
-      automaticRun.current.providerId === (provider?.id || null) &&
-      automaticRun.current.modelId === (provider?.modelId || null)
-    )
-      return;
-    automaticRun.current = {
-      selection,
-      providerId: provider?.id || null,
-      modelId: provider?.modelId || null,
-    };
     void translate();
-  }, [selection, provider?.id, provider?.modelId]);
+    return () => {
+      generation.current++;
+      pending.current?.abort();
+    };
+  }, [selection, provider?.id, provider?.modelId, signal]);
 
   // Before preparation finishes, native candidates can already be inspected.
   // Afterwards use the same assets/candidates the translation request received.

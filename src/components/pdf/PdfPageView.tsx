@@ -2,16 +2,15 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { ChevronRight } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import { useTranslation } from "react-i18next";
-import {
-  selectRegion,
-  selectRegionUnits,
-  selectTextRegion,
-} from "../../application/selection-translation";
+import { extensionHost } from "../../application/extensions/runtime";
+import { label, useExtensions } from "../extensions/ExtensionWorkbench";
+import type { InteractionTool, ReaderDecoration } from "../../sdk";
+import { selectionPreview } from "../../domain/reader";
 import { area, containsCenter } from "../../domain/geometry";
-import type { SelectedRegion } from "../../domain/analysis";
+import type { ReaderSelection } from "../../domain/reader";
 import type { SemanticPageView } from "../../domain/document-semantics";
 import { message } from "../../domain/messages";
-import { cx } from "../ui/styles";
+import { cx } from "../../sdk/ui/styles";
 import { PDF_SCALE, type PagePosition } from "./page-layout";
 
 // Keep complete class names so Tailwind can discover them statically.
@@ -30,11 +29,12 @@ interface Props {
   showLayout: boolean;
   semanticPage?: SemanticPageView;
   scrollRoot: HTMLDivElement | null;
-  selection: SelectedRegion | null;
+  selection: ReaderSelection | null;
   selectionGeneration: RefObject<number>;
   getSemanticPage: (page: number) => Promise<SemanticPageView>;
-  onSelection: (selection: SelectedRegion | null) => void;
-  onTranslate: () => void;
+  onSelection: (selection: ReaderSelection | null) => void;
+  tool?: InteractionTool;
+  pluginDecorations: ReaderDecoration[];
   onPageFocus: (page: number) => void;
   onBusy: (busy: boolean) => void;
   onError: (error: string) => void;
@@ -57,12 +57,24 @@ export function PdfPageView({
   selectionGeneration,
   getSemanticPage,
   onSelection,
-  onTranslate,
+  tool,
+  pluginDecorations,
   onPageFocus,
   onBusy,
   onError,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const extensions = useExtensions();
+  const [hover, setHover] = useState<string | null>(null);
+  const hoverJob = useRef<AbortController | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      hoverJob.current?.abort();
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
   const { number, width, height } = position;
   const pageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -87,7 +99,7 @@ export function PdfPageView({
     dragStart.current = null;
     setBox(null);
     setBoxGeneration(null);
-  }, [mode, zoom]);
+  }, [mode, zoom, tool]);
 
   useEffect(() => {
     setRendered(false);
@@ -209,7 +221,26 @@ export function PdfPageView({
     };
   };
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (dragStart.current) setBox(dragRect(event));
+    if (dragStart.current) {
+      setBox(dragRect(event));
+      return;
+    }
+    if (!semanticPage) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverJob.current?.abort();
+    const current = point(event);
+    setHover(null);
+    hoverTimer.current = setTimeout(() => {
+      const controller = new AbortController();
+      hoverJob.current = controller;
+      void extensionHost
+        .hover(semanticPage, [current.x / width, current.y / height], controller.signal)
+        .then((value) => {
+          if (!controller.signal.aborted)
+            setHover(value ? label(value, i18n.resolvedLanguage) : null);
+        })
+        .catch(() => undefined);
+    }, 450);
   };
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
     if (!dragStart.current || !canvasRef.current) return;
@@ -233,16 +264,19 @@ export function PdfPageView({
     void getSemanticPage(number)
       .then((view) => {
         if (generation !== selectionGeneration.current) return;
-        const selected = selectRegion(view, [
-          normalized.x,
-          normalized.y,
-          normalized.x + normalized.width,
-          normalized.y + normalized.height,
-        ]);
         onSelection(
-          selected.units.length
-            ? { documentId, page: number, ...normalized, ...selected, imageDataUrl }
-            : null,
+          tool?.select(view, {
+            documentId,
+            page: number,
+            mode: "rectangle",
+            box: [
+              normalized.x,
+              normalized.y,
+              normalized.x + normalized.width,
+              normalized.y + normalized.height,
+            ],
+            imageDataUrl,
+          }) || null,
         );
       })
       .catch((cause: unknown) => {
@@ -315,27 +349,22 @@ export function PdfPageView({
             .filter((c) => area(c.box) > 0 && glyphBoxes.some((b) => containsCenter(b, c.box)))
             .map((c) => c.index),
         );
-        const result = selectTextRegion(
-          view,
-          [
-            normalized.x,
-            normalized.y,
-            normalized.x + normalized.width,
-            normalized.y + normalized.height,
-          ],
-          selectedGlyphs,
+        onSelection(
+          selectionPreview({
+            documentId,
+            page: number,
+            mode: "text",
+            box: [
+              normalized.x,
+              normalized.y,
+              normalized.x + normalized.width,
+              normalized.y + normalized.height,
+            ],
+            text,
+            imageDataUrl,
+            characterIndices: [...selectedGlyphs],
+          }),
         );
-        onSelection({
-          documentId,
-          page: number,
-          ...normalized,
-          ...result,
-          text:
-            result.formulas.length || result.blocks.some((block) => block.headingLevel)
-              ? result.text
-              : text,
-          imageDataUrl,
-        });
       })
       .catch((cause) => {
         if (generation === selectionGeneration.current) onError(String(cause));
@@ -357,17 +386,27 @@ export function PdfPageView({
       ? box
       : null;
   const selectedUnits =
-    mode === "region" && visibleBox
-      ? ownSelection?.units ||
-        (semanticPage
-          ? selectRegionUnits(semanticPage, [
-              visibleBox.x / width,
-              visibleBox.y / height,
-              (visibleBox.x + visibleBox.width) / width,
-              (visibleBox.y + visibleBox.height) / height,
-            ])
-          : [])
+    mode === "region" && visibleBox && semanticPage && tool
+      ? tool.preview(semanticPage, [
+          visibleBox.x / width,
+          visibleBox.y / height,
+          (visibleBox.x + visibleBox.width) / width,
+          (visibleBox.y + visibleBox.height) / height,
+        ])
       : [];
+  useEffect(() => {
+    hoverJob.current?.abort();
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setHover(null);
+  }, [extensions.revision]);
+  const selectionActions = ownSelection
+    ? extensions.actions.filter(({ action }) => !action.when || action.when(ownSelection))
+    : [];
+  const stopHover = () => {
+    hoverJob.current?.abort();
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setHover(null);
+  };
 
   return (
     <div
@@ -378,7 +417,11 @@ export function PdfPageView({
       aria-label={t("reader.page", { page: number })}
       className="relative flex-none touch-none bg-white shadow-[0_10px_24px_#28405a34]"
       style={{ width, height }}
-      onPointerDown={handlePointerDown}
+      onPointerLeave={stopHover}
+      onPointerDown={(event) => {
+        stopHover();
+        handlePointerDown(event);
+      }}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
@@ -428,14 +471,16 @@ export function PdfPageView({
             </div>
           ))}
       {mode === "region" && <div className="absolute inset-0 cursor-crosshair" />}
-      {selectedUnits.map((unit) => (
+      {[...selectedUnits, ...pluginDecorations].map((unit) => (
         <div
           key={unit.id}
           data-ui="selected-unit"
           data-unit-id={unit.id}
           data-kind={unit.kind}
-          className="pointer-events-none absolute z-[4] border-2 border-[#8b5cf6] bg-[#8b5cf6]/20"
+          className="pointer-events-none absolute z-[4] border-2"
           style={{
+            borderColor: unit.borderColor,
+            backgroundColor: unit.backgroundColor,
             left: `${unit.box[0] * 100}%`,
             top: `${unit.box[1] * 100}%`,
             width: `${(unit.box[2] - unit.box[0]) * 100}%`,
@@ -455,21 +500,45 @@ export function PdfPageView({
           }}
         />
       )}
-      {ownSelection && (
-        <button
-          className="absolute z-[6] flex items-center gap-[7px] rounded-lg border border-[#d7e5f6] bg-white px-[10px] py-[7px] text-[11px] whitespace-nowrap text-[#2968c2] shadow-[0_4px_13px_#28446f2a]"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={onTranslate}
+      {hover && (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute top-3 right-3 z-[7] max-w-[80%] rounded border border-border bg-white p-3 text-xs shadow-lg"
+        >
+          {hover}
+        </div>
+      )}
+      {ownSelection && selectionActions.length > 0 && (
+        <div
+          className="absolute z-[6] flex gap-2"
           style={{
             left: Math.min(visibleBox?.x || 0, width - 150),
             top: Math.min((visibleBox?.y || 0) + (visibleBox?.height || 0) + 10, height - 45),
           }}
         >
-          <span className="grid size-[18px] place-items-center rounded-[4px] bg-[#e5f0ff] font-bold">
-            {t("reader.translateIcon")}
-          </span>
-          {t("reader.translate")} <ChevronRight size={16} />
-        </button>
+          {selectionActions.map(({ owner, action }) => (
+            <button
+              key={action.id}
+              aria-label={label(action.title, i18n.resolvedLanguage)}
+              className="flex items-center gap-[7px] rounded-lg border border-[#d7e5f6] bg-white px-[10px] py-[7px] text-[11px] whitespace-nowrap text-[#2968c2] shadow-[0_4px_13px_#28446f2a]"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                void extensionHost.runAction(owner, action, ownSelection).catch((cause) => {
+                  if (!(cause instanceof DOMException && cause.name === "AbortError"))
+                    onError(String(cause));
+                })
+              }
+            >
+              {action.icon && (
+                <span className="grid size-[18px] place-items-center rounded-[4px] bg-[#e5f0ff] font-bold">
+                  {label(action.icon, i18n.resolvedLanguage)}
+                </span>
+              )}
+              {label(action.title, i18n.resolvedLanguage)}
+              <ChevronRight size={16} />
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

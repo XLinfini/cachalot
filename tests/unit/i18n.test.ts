@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import i18n from "i18next";
+import { locales as extensionLocales } from "../../src/extensions/selection-translation/locales";
 import { en } from "../../src/i18n/locales/en";
 import { zh } from "../../src/i18n/locales/zh";
 import { localizeMessage } from "../../src/i18n/messages";
@@ -28,6 +29,10 @@ for (const key of Object.keys(english)) {
     `interpolation values must match: ${key}`,
   );
 }
+const extensionEnglish = leaves(extensionLocales.en), extensionChinese = leaves(extensionLocales.zh);
+assert.deepEqual(Object.keys(extensionEnglish).sort(), Object.keys(extensionChinese).sort());
+for (const key of Object.keys(extensionEnglish)) assert.deepEqual(extensionEnglish[key].match(/{{\w+}}/g)?.sort() || [], extensionChinese[key].match(/{{\w+}}/g)?.sort() || [], `extension interpolation: ${key}`);
+
 await i18n.init({
   lng: "en",
   fallbackLng: "zh",

@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, expect, test } from "@playwright/test";
-import { en } from "../../src/i18n/locales/en";
-import { zh } from "../../src/i18n/locales/zh";
+import { en } from "../fixtures/locales";
+import { zh } from "../fixtures/locales";
 
 test("Provider credentials", async () => {
   const errors: string[] = [];

@@ -1,12 +1,7 @@
-import type {
-  Box,
-  FormulaFragment,
-  SelectedRegion,
-  SelectedTextBlock,
-  SelectionUnit,
-} from "../../domain/analysis";
-import { area, characterText, containsCenter, intersection, union } from "../../domain/geometry";
-import type { SemanticPageView } from "../../domain/document-semantics";
+import type { SelectedRegion, SelectedTextBlock, SelectionUnit } from "./types";
+import type { Box, FormulaFragment } from "../../sdk";
+import { area, characterText, containsCenter, intersection, union } from "../../sdk";
+import type { SemanticPageView } from "../../sdk";
 import { formulaMarker } from "./formula-slots";
 import { translationContext } from "./context";
 

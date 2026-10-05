@@ -153,8 +153,13 @@ fn redact(body: &mut Value, secret: Option<&str>) {
 #[tauri::command]
 pub async fn ocr_http(
     state: State<'_, AppState>,
+    requests: State<'_, crate::ai_requests::AiRequests>,
+    request_id: Option<String>,
     input: OcrHttpInput,
 ) -> Result<OcrJsonResponse, String> {
+    crate::ai_requests::run(&requests, request_id, ocr_response(state, input)).await
+}
+async fn ocr_response(state: State<'_, AppState>, input: OcrHttpInput) -> Result<OcrJsonResponse, String> {
     let provider: Provider = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         db.query_row(

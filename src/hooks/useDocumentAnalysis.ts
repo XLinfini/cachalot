@@ -1,5 +1,6 @@
 import { message } from "../domain/messages";
 import { useEffect, useRef, useState } from "react";
+import { bindDocumentSession, publishDocumentSemantics } from "../application/extensions/runtime";
 import { services } from "../application/services";
 import type { DocumentAnalysisSession } from "../application/document-analysis";
 import type { AnalysisProgress } from "../domain/analysis";
@@ -34,15 +35,19 @@ export function useDocumentAnalysis(
     const next = services.analysis.createSession(
       document,
       bytes,
-      (next) =>
+      (next) => {
+        publishDocumentSemantics(document.id, next.semantics);
         setSnapshot((current) =>
           !current || next.semantics.revision >= current.semantics.revision ? next : current,
-        ),
+        );
+      },
       setProgress,
     );
     session.current = next;
+    const binding = bindDocumentSession(document.id, next);
     void next.start(currentPage.current);
     return () => {
+      binding.dispose();
       next.dispose();
       if (session.current === next) session.current = null;
     };

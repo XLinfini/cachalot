@@ -3,11 +3,12 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import "fake-indexeddb/auto";
 import "../support/register-ocr";
+import { formulaLatex, validateOcrImage } from "../../src/domain/ocr";
 import {
-  formulaLatex,
-  validateOcrImage,
-} from "../../src/domain/ocr";
-import { glmFormulaLatex, glmOcrEndpoint, GLM_OCR_MODEL } from "../../src/infrastructure/ocr/providers/glm";
+  glmFormulaLatex,
+  glmOcrEndpoint,
+  GLM_OCR_MODEL,
+} from "../../src/infrastructure/ocr/providers/glm";
 import {
   chatModels,
   normalizeModels,
@@ -27,6 +28,67 @@ import {
 } from "../../src/application/ocr/settings";
 import { parseMessage } from "../../src/domain/messages";
 import { recognizeFormula } from "../../src/infrastructure/ocr/formula-ocr";
+
+test("browser OCR and LLM transports pass host cancellation to fetch", async () => {
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const previousFetch = globalThis.fetch;
+  const provider = {
+    id: "cancel-fixture",
+    name: "Cancel fixture",
+    baseUrl: "https://cancel.invalid",
+    modelId: "fixture",
+    enabled: true,
+    hasKey: false,
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => (key === "cachalot:providers" ? JSON.stringify([provider]) : null),
+    },
+  });
+  try {
+    for (const transport of ["ocr", "lm"]) {
+      let started!: () => void, received: AbortSignal | undefined;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      globalThis.fetch = async (_url, options) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = options?.signal;
+          assert.ok(signal, `${transport} must carry cancellation into fetch`);
+          received = signal;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          started();
+        });
+      const controller = new AbortController();
+      const request =
+        transport === "ocr"
+          ? platform.ocrJson(
+              {
+                providerId: provider.id,
+                url: "https://cancel.invalid/parse",
+                auth: { type: "none" },
+                body: {},
+              },
+              controller.signal,
+            )
+          : platform.complete(
+              { providerId: provider.id, messages: [{ role: "user", content: "Fixture" }] },
+              () => {},
+              controller.signal,
+            );
+      const rejected = assert.rejects(request, { name: "AbortError" });
+      await ready;
+      controller.abort();
+      await rejected;
+      assert.equal(received?.aborted, true);
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
 
 test("GLM endpoint preview shares native fixtures and accepts bare origins and pasted endpoints", () => {
   const fixtures = JSON.parse(readFileSync("tests/fixtures/ocr-endpoints.json", "utf8"));
@@ -154,7 +216,9 @@ test("OCR provider/model settings are shared, independently selected and safely 
     );
     assert.equal(JSON.parse((await platform.getSetting("activeModel"))!).modelId, "translate");
     assert.deepEqual(
-      await recognizeFormula("glm-layout", provider, { imageDataUrl: "data:image/png;base64,AAAA" }),
+      await recognizeFormula("glm-layout", provider, {
+        imageDataUrl: "data:image/png;base64,AAAA",
+      }),
       "x^2+1=0",
     );
     for (const status of [503, 200]) {
@@ -224,7 +288,10 @@ test("OCR provider/model settings are shared, independently selected and safely 
         { id: "x", formulaOcr: "invalid" },
         { id: "glm", formulaOcr: "glm-layout" },
       ]),
-      [{ id: "x", formulaOcr: "invalid" }, { id: "glm", formulaOcr: "glm-layout" }],
+      [
+        { id: "x", formulaOcr: "invalid" },
+        { id: "glm", formulaOcr: "glm-layout" },
+      ],
     );
     const legacy = await saveConfiguredProvider({
       id: "legacy-ocr-fixture",

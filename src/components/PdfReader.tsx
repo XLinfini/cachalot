@@ -5,7 +5,6 @@ import {
   Columns2,
   Layers3,
   ArrowRight,
-  ScanLine,
   TextCursor,
   ZoomIn,
   ZoomOut,
@@ -13,11 +12,13 @@ import {
 import * as pdfjs from "pdfjs-dist";
 import type { RefProxy } from "pdfjs-dist/types/src/display/api";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { onRevealPage } from "../application/extensions/runtime";
+import { ExtensionToolbar, label, useExtensions } from "./extensions/ExtensionWorkbench";
 import { services } from "../application/services";
-import type { SelectedRegion } from "../domain/analysis";
+import type { ReaderSelection } from "../domain/reader";
 import type { DocumentRecord } from "../domain/records";
 import { useDocumentAnalysis } from "../hooks/useDocumentAnalysis";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 import { useTranslation } from "react-i18next";
 import { localizeMessage } from "../i18n/messages";
 import { PdfPageView } from "./pdf/PdfPageView";
@@ -46,9 +47,8 @@ interface ReaderProps {
   document: DocumentRecord;
   page: number;
   onPageChange: (page: number) => void;
-  onSelection: (selection: SelectedRegion | null) => void;
-  selection: SelectedRegion | null;
-  onTranslate: () => void;
+  onSelection: (selection: ReaderSelection | null, owner?: string) => void;
+  selection: ReaderSelection | null;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   chatOpen: boolean;
@@ -134,18 +134,22 @@ export default function PdfReader({
   onPageChange,
   onSelection,
   selection,
-  onTranslate,
   sidebarOpen,
   onToggleSidebar,
   chatOpen,
   onToggleChat,
 }: ReaderProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   const [zoom, setZoom] = useState(1);
-  const [mode, setMode] = useState<"region" | "text">("region");
+  const extensions = useExtensions();
+  // Until the user chooses a mode, follow the first available tool. Startup
+  // activation may finish after the document opens; do not freeze text mode.
+  const [chosenMode, setMode] = useState<string | null>(null);
+  const mode = chosenMode ?? extensions.tools[0]?.tool.id ?? "text";
+  const activeTool = extensions.tools.find((item) => item.tool.id === mode);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [invalidPage, setInvalidPage] = useState(false);
@@ -175,6 +179,19 @@ export default function PdfReader({
     setError("");
     onSelection(null);
   };
+  useEffect(() => {
+    if (mode !== "text" && !activeTool) {
+      setMode("text");
+      clearSelection();
+    }
+  }, [mode, activeTool]);
+  useEffect(() => {
+    const subscription = onRevealPage((target) => {
+      if (target.documentId === document.id) jumpToPage(target.page);
+    });
+    return () => subscription.dispose();
+  }, [document.id, positions, scrollRoot]);
+
   const reportPage = (number: number) => {
     if (reportedPage.current === number) return;
     reportedPage.current = number;
@@ -417,7 +434,10 @@ export default function PdfReader({
           </div>
         </aside>
       )}
-      <section className="flex min-w-0 flex-1 flex-col bg-reader">
+      <section
+        className="flex min-w-0 flex-1 flex-col bg-reader"
+        style={{ backgroundColor: extensions.background }}
+      >
         <div className="flex h-12 flex-none items-center gap-1 border-b border-[#e4eaf1] bg-white px-[13px] whitespace-nowrap">
           {!sidebarOpen && (
             <button
@@ -428,18 +448,23 @@ export default function PdfReader({
               <Columns2 size={17} />
             </button>
           )}
-          <button
-            className={ui.toolbarButton}
-            aria-pressed={mode === "region"}
-            title={t("reader.regionTitle")}
-            onClick={() => {
-              setMode("region");
-              clearSelection();
-            }}
-          >
-            <ScanLine size={16} />
-            {t("reader.region")}
-          </button>
+          {extensions.tools.map(({ tool }) => (
+            <button
+              key={tool.id}
+              className={ui.toolbarButton}
+              aria-pressed={mode === tool.id}
+              aria-label={label(tool.title, i18n.resolvedLanguage)}
+              title={label(tool.tooltip, i18n.resolvedLanguage)}
+              onClick={() => {
+                setMode(tool.id);
+                clearSelection();
+              }}
+            >
+              <span aria-hidden="true">{label(tool.icon, i18n.resolvedLanguage)}</span>
+              {label(tool.title, i18n.resolvedLanguage)}
+            </button>
+          ))}
+          <ExtensionToolbar />
           <button
             className={ui.toolbarButton}
             aria-pressed={mode === "text"}
@@ -546,15 +571,20 @@ export default function PdfReader({
                   documentId={document.id}
                   position={position}
                   zoom={zoom}
-                  mode={mode}
+                  mode={activeTool ? "region" : "text"}
+                  tool={activeTool?.tool}
+                  pluginDecorations={extensions.decorations
+                    .filter(
+                      (item) => item.documentId === document.id && item.page === position.number,
+                    )
+                    .flatMap((item) => item.decorations)}
                   showLayout={showLayout}
                   semanticPage={semanticPages.get(position.number)}
                   scrollRoot={scrollRoot}
                   selection={selection}
                   selectionGeneration={selectionGeneration}
                   getSemanticPage={getSemanticPage}
-                  onSelection={onSelection}
-                  onTranslate={onTranslate}
+                  onSelection={(value) => onSelection(value, activeTool?.owner)}
                   onPageFocus={(number) => {
                     navigationTarget.current = null;
                     reportPage(number);

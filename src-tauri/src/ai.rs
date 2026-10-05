@@ -130,7 +130,10 @@ pub async fn test_provider(state: State<'_, AppState>, provider_id: String) -> R
 }
 
 #[tauri::command]
-pub async fn stream_completion(state: State<'_, AppState>, input: CompletionInput, on_event: Channel<CompletionEvent>) -> Result<(), String> {
+pub async fn stream_completion(state: State<'_, AppState>, requests: State<'_, crate::ai_requests::AiRequests>, request_id: Option<String>, input: CompletionInput, on_event: Channel<CompletionEvent>) -> Result<(), String> {
+    crate::ai_requests::run(&requests, request_id, stream_response(state, input, on_event)).await
+}
+async fn stream_response(state: State<'_, AppState>, input: CompletionInput, on_event: Channel<CompletionEvent>) -> Result<(), String> {
     let provider = get_provider(&state, &input.provider_id)?;
     if !provider.enabled { return Err("该服务商已停用".into()); }
     let model_id = input.model_id.as_deref().unwrap_or(&provider.model_id);

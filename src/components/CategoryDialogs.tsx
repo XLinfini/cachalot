@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { CategoryRecord, DocumentRecord } from "../domain/records";
 import { localizeMessage } from "../i18n/messages";
 import { Modal } from "./ui/Modal";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 
 export function CreateCategoryDialog({
   onCreate,

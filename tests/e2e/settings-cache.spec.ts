@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect, test } from "@playwright/test";
-import { en } from "../../src/i18n/locales/en";
-import { zh } from "../../src/i18n/locales/zh";
+import { en } from "../fixtures/locales";
+import { zh } from "../fixtures/locales";
 import { CACHE_KINDS } from "../../src/domain/cache";
 import { cacheFixture } from "../fixtures/cache";
 import { seedCaches } from "../support/seed-caches";

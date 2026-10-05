@@ -8,7 +8,7 @@ import { apiEndpoint } from "../domain/api-endpoint";
 import { message } from "../domain/messages";
 import { visionKey } from "../application/model-catalog";
 import { localizeMessage } from "../i18n/messages";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 import ApiKeyField from "./ApiKeyField";
 
 interface Props {

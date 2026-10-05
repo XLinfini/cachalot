@@ -45,7 +45,7 @@ const name = (file: string) => relative(root, file).replaceAll("\\", "/");
 const presentation = (path: string) => /^(components\/|hooks\/|App\.tsx|main\.tsx)/.test(path);
 
 /** Follow transitive imports too: a facade/barrel must not hide a reverse edge. */
-test("analysis → OCR → selection translation has no reverse dependency, including dynamic and barrel imports", () => {
+test("core analysis and OCR remain independent of extensions, including dynamic and barrel imports", () => {
   const violations: string[] = [];
   for (const file of files) {
     const origin = name(file);
@@ -53,10 +53,9 @@ test("analysis → OCR → selection translation has no reverse dependency, incl
       if (/^(domain|infrastructure)\//.test(origin))
         return /^application\//.test(path) || presentation(path);
       if (origin.startsWith("application/document-analysis/"))
-        return /^application\/(ocr|selection-translation)\//.test(path) || presentation(path);
+        return /^application\/ocr\//.test(path) || /^extensions\//.test(path) || presentation(path);
       if (origin.startsWith("application/ocr/"))
-        return path.startsWith("application/selection-translation/") || presentation(path);
-      if (origin.startsWith("application/selection-translation/")) return presentation(path);
+        return path.startsWith("extensions/") || presentation(path);
       return false;
     };
     const seen = new Set<string>([file]);
@@ -72,4 +71,26 @@ test("analysis → OCR → selection translation has no reverse dependency, incl
     walk(file, [origin]);
   }
   assert.deepEqual(violations, [], `Layer violations:\n${violations.join("\n")}`);
+});
+
+// SDK calls are runtime-scoped. Plugin packages may import their own modules,
+// the public SDK and external libraries; no internal core facade is permitted.
+test("extensions import only their own package or public SDK; only the composition root imports extensions", () => {
+  const violations: string[] = [];
+  for (const [file, dependencies] of graph) {
+    const origin = name(file);
+    for (const target of dependencies) {
+      const destination = name(target);
+      if (origin.startsWith("extensions/")) {
+        const packageRoot = origin.split("/").slice(0, 2).join("/") + "/";
+        if (!destination.startsWith(packageRoot) && !destination.startsWith("sdk/"))
+          violations.push(`${origin} → ${destination}`);
+      } else if (
+        destination.startsWith("extensions/") &&
+        origin !== "application/extensions/runtime.ts"
+      )
+        violations.push(`${origin} → ${destination}`);
+    }
+  }
+  assert.deepEqual(violations, []);
 });

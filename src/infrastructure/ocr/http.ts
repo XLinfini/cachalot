@@ -8,6 +8,7 @@ import { providerErrorDetails } from "../provider-error";
 export async function browserOcrJson(
   provider: Provider,
   input: OcrHttpInput,
+  signal?: AbortSignal,
 ): Promise<OcrJsonResponse> {
   const secret = input.auth?.type === "none" ? null : await browserProviderKeys.get(provider.id);
   const request = prepareOcrRequest(provider.baseUrl, input, secret || undefined);
@@ -15,7 +16,9 @@ export async function browserOcrJson(
     method: request.method,
     headers: request.headers,
     body: request.body,
-    signal: AbortSignal.timeout(120_000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+      : AbortSignal.timeout(120_000),
     redirect: "error",
   });
   const text = await response.text();

@@ -8,7 +8,7 @@ import { projectSemanticPage } from "../../src/application/document-analysis/doc
 import {
   selectRegion,
   selectRegionUnits,
-} from "../../src/application/selection-translation/select-region";
+} from "../../src/extensions/selection-translation/select-region";
 interface CacheBundle {
   facts: PageFacts[];
   observations: LayoutObservations[];

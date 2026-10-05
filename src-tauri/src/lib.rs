@@ -1,4 +1,5 @@
 mod ai;
+mod ai_requests;
 mod analysis;
 mod categories;
 mod cache;
@@ -19,6 +20,7 @@ pub fn run() {
                 .timeout(std::time::Duration::from_secs(120))
                 .build()?;
             app.manage(AppState { db: Mutex::new(db), http });
+            app.manage(ai_requests::AiRequests::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,6 +58,8 @@ pub fn run() {
             ai::list_models,
             ai::test_provider,
             ai::stream_completion,
+            ai_requests::register_ai_request,
+            ai_requests::cancel_ai_request,
             ocr_http::ocr_http,
         ])
         .run(tauri::generate_context!())

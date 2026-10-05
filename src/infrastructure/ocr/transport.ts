@@ -3,12 +3,12 @@ import type { Provider } from "../../domain/records";
 import { platform } from "../platform";
 
 /** Every adapter uses these primitives on browser and Tauri alike. */
-export function ocrContext(provider: Provider): OcrContext {
+export function ocrContext(provider: Provider, signal?: AbortSignal): OcrContext {
   return {
     baseUrl: provider.baseUrl,
     modelId: provider.modelId,
     transport: {
-      json: (request) => platform.ocrJson({ ...request, providerId: provider.id }),
+      json: (request) => platform.ocrJson({ ...request, providerId: provider.id }, signal),
       models: () => platform.listModels(provider.id),
       async complete(input) {
         let output = "";
@@ -17,6 +17,7 @@ export function ocrContext(provider: Provider): OcrContext {
           (delta) => {
             output += delta;
           },
+          signal,
         );
         return output;
       },

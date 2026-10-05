@@ -17,10 +17,10 @@ import type {
   DocumentRecord,
   Provider,
 } from "../domain/records";
-import type { SelectedRegion } from "../domain/analysis";
-import MathMarkdown from "./MathMarkdown";
+import type { ReaderSelection } from "../domain/reader";
+import MathMarkdown from "../sdk/MathMarkdown";
 import ChatComposer from "./ChatComposer";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 import { useTranslation } from "react-i18next";
 import { message as noticeMessage } from "../domain/messages";
 
@@ -30,7 +30,7 @@ const isUntitled = (title: string) => title === "" || title === "新对话";
 interface Props {
   document: DocumentRecord;
   page: number;
-  selection: SelectedRegion | null;
+  selection: ReaderSelection | null;
   provider: Provider | null;
   providers: Provider[];
   vision: boolean;

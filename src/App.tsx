@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { services } from "./application/services";
 import type { CategoryRecord, DocumentRecord, Provider } from "./domain/records";
-import type { SelectedRegion } from "./domain/analysis";
+import type { ReaderSelection } from "./domain/reader";
 import PdfReader from "./components/PdfReader";
 import { LibraryDocumentCard } from "./components/LibraryDocumentCard";
 import { CategorySidebar } from "./components/CategorySidebar";
@@ -31,9 +31,14 @@ import { LibrarySortMenu } from "./components/LibrarySortMenu";
 import { CreateCategoryDialog, MoveCategoryDialog } from "./components/CategoryDialogs";
 import ChatPanel from "./components/ChatPanel";
 import ProviderSettings from "./components/ProviderSettings";
-import TranslationPopup from "./components/TranslationPopup";
+import { extensionHost, onExtensionError } from "./application/extensions/runtime";
+import {
+  ExtensionDock,
+  ExtensionModals,
+  ExtensionStatusBar,
+} from "./components/extensions/ExtensionWorkbench";
 import logo from "../assets/brand/cachalot-icon.png";
-import { cx, ui } from "./components/ui/styles";
+import { cx, ui } from "./sdk/ui/styles";
 import { useTranslation } from "react-i18next";
 import { localizeMessage } from "./i18n/messages";
 import { dateLocale } from "./i18n";
@@ -63,8 +68,7 @@ export default function App() {
   const [savingSort, setSavingSort] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(true);
-  const [selection, setSelection] = useState<SelectedRegion | null>(null);
-  const [translationOpen, setTranslationOpen] = useState(false);
+  const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -100,6 +104,22 @@ export default function App() {
       cancelled = true;
     };
   }, [activeProviderId, activeProvider?.modelId, providers]);
+
+  useEffect(() => {
+    const selectionSubscription = extensionHost.onDidChangeSelection(setSelection);
+    const errorSubscription = onExtensionError(setNotice);
+    void extensionHost.start().catch((cause) => setNotice(String(cause)));
+    return () => {
+      selectionSubscription.dispose();
+      errorSubscription.dispose();
+    };
+  }, []);
+  useEffect(() => {
+    extensionHost.setActiveDocument(view === "reader" ? activeId : null);
+  }, [view, activeId]);
+  useEffect(() => {
+    extensionHost.setModel(activeProvider);
+  }, [activeProvider]);
 
   const refreshDocuments = async () => {
     setDocuments(await services.library.list());
@@ -190,7 +210,6 @@ export default function App() {
     setActiveId(document.id);
     setPage(document.currentPage);
     setSelection(null);
-    setTranslationOpen(false);
     setView("reader");
   };
 
@@ -259,7 +278,6 @@ export default function App() {
     setFilter(next);
     setView("library");
     setSelection(null);
-    setTranslationOpen(false);
   };
   const changeSort = async (next: LibrarySort) => {
     if (savingSort) return;
@@ -541,6 +559,7 @@ export default function App() {
                   </button>
                 </header>
                 <div className="flex min-h-0 min-w-0 flex-1">
+                  <ExtensionDock location="sidebar.left" />
                   {/* Sibling keys include the panel type so React can remove both
                       panels when returning to the library or switching documents. */}
                   <PdfReader
@@ -549,13 +568,13 @@ export default function App() {
                     page={page}
                     onPageChange={changePage}
                     selection={selection}
-                    onSelection={setSelection}
-                    onTranslate={() => setTranslationOpen(true)}
+                    onSelection={(value, owner) => extensionHost.publishSelection(value, owner)}
                     sidebarOpen={sidebarOpen}
                     onToggleSidebar={() => setSidebarOpen((value) => !value)}
                     chatOpen={chatOpen}
                     onToggleChat={() => setChatOpen((value) => !value)}
                   />
+                  <ExtensionDock location="sidebar.right" />
                   {chatOpen && (
                     <ChatPanel
                       key={`chat:${activeDocument.id}`}
@@ -572,6 +591,8 @@ export default function App() {
                     />
                   )}
                 </div>
+                <ExtensionDock location="panel" />
+                <ExtensionStatusBar />
               </div>
             )}
           </main>
@@ -594,13 +615,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {translationOpen && selection && (
-        <TranslationPopup
-          selection={selection}
-          provider={activeProvider}
-          onClose={() => setTranslationOpen(false)}
-        />
-      )}
+      <ExtensionModals />
       {creatingCategory && (
         <CreateCategoryDialog
           onCreate={createCategory}

@@ -2,11 +2,11 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect, test } from "@playwright/test";
-import { zh } from "../../src/i18n/locales/zh";
-import { en } from "../../src/i18n/locales/en";
+import { zh } from "../fixtures/locales";
+import { en } from "../fixtures/locales";
 import { loadReferencePaper } from "../support/reference-paper";
 import { seedPaper } from "../support/seed-paper";
-import { selectRegionUnits } from "../../src/application/selection-translation/select-region";
+import { selectRegionUnits } from "../../src/extensions/selection-translation/select-region";
 
 test("Reader navigation @paper", async () => {
   const paper = process.env.CACHALOT_PAPER;

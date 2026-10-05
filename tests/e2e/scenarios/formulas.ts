@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { expect, type Page, type Request, type Route } from "@playwright/test";
-import type { LocaleResource } from "../../../src/i18n/locales/en";
+import type { LocaleResource } from "../../fixtures/locales";
 import { fixtureTranslation } from "../../fixtures/translation";
 
 /** Real selection -> persistent source assets -> model input -> LaTeX reflow. */

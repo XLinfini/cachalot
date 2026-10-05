@@ -168,6 +168,12 @@ export class DocumentAnalysisSession {
     return this.restoring;
   }
 
+  async getLayoutObservations(page: number): Promise<LayoutObservations | null> {
+    await this.getSemanticPage(page);
+    this.active();
+    return this.observations.get(page) || null;
+  }
+
   private indexPage(page: number): Promise<void> {
     const stage = this.observations.has(page) ? "layout" : "native",
       key = `${page}:${stage}`;

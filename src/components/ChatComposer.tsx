@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { message } from "../domain/messages";
 import type { Provider } from "../domain/records";
 import ModelPicker from "./ModelPicker";
-import { ui } from "./ui/styles";
+import { ui } from "../sdk/ui/styles";
 
 interface Props {
   runtime: AssistantRuntime;

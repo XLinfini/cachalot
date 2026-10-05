@@ -4,7 +4,6 @@ import { analysisRepository } from "../infrastructure/analysis/repository";
 import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
 import { DocumentAnalysisSession } from "./document-analysis";
 import { askPaper } from "./paper-assistant";
-import { translateRegion } from "./selection-translation";
 import { importPaper } from "./import-paper";
 import {
   listConfiguredProviders,
@@ -86,7 +85,7 @@ export const services = {
     createSession: (...args: ConstructorParameters<typeof DocumentAnalysisSession>) =>
       new DocumentAnalysisSession(...args),
   },
-  assistant: { askPaper, translateRegion },
+  assistant: { askPaper },
   formulas: {
     exportPdf: async (fragment: FormulaFragment) =>
       (await import("../infrastructure/pdf/formula-source")).exportFormulaPdf(fragment),

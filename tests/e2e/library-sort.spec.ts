@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium, expect, test } from "@playwright/test";
-import { zh } from "../../src/i18n/locales/zh";
-import { en } from "../../src/i18n/locales/en";
+import { zh } from "../fixtures/locales";
+import { en } from "../fixtures/locales";
 
 test("Library sorting", async () => {
   await mkdir("test-results/library-sort", { recursive: true });

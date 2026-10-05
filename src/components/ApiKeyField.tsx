@@ -3,7 +3,7 @@ import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
 import type { Provider } from "../domain/records";
-import { ui } from "./ui/styles";
+import { ui } from "../sdk/ui/styles";
 
 interface Props {
   provider?: Provider;

@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Database, HardDrive, Layers3, Languages, Settings2 } from "lucide-react";
-import { services } from "../application/services";
 import type { Provider } from "../domain/records";
-import { DEFAULT_TRANSLATION_PROMPT } from "../application/selection-translation";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 import { useTranslation } from "react-i18next";
 import { changeUiLanguage, type UiLanguage } from "../i18n";
-import { localizeMessage } from "../i18n/messages";
 import { message } from "../domain/messages";
 import OcrSettings from "./OcrSettings";
 import ProviderEditor from "./ProviderEditor";
 import CacheSettings from "./CacheSettings";
+import {
+  ExtensionSettings,
+  ExtensionView,
+  label,
+  useExtensions,
+} from "./extensions/ExtensionWorkbench";
 
 interface Props {
   providers: Provider[];
@@ -31,16 +34,14 @@ export default function ProviderSettings({
 }: Props) {
   const { t, i18n } = useTranslation();
   const [languageBusy, setLanguageBusy] = useState(false);
-  const [section, setSection] = useState<"general" | "providers" | "translation" | "ocr" | "cache">(
-    "providers",
-  );
-  const [prompt, setPrompt] = useState(DEFAULT_TRANSLATION_PROMPT);
-  const [notice, setNotice] = useState("");
+  const [section, setSection] = useState("providers");
+  const extensions = useExtensions();
+  const pluginViews = extensions.views.filter((view) => view.declaration.location === "settings");
+  const pluginView = pluginViews.find((view) => view.declaration.id === section);
   useEffect(() => {
-    void services.settings.get("translationPrompt").then((value) => {
-      if (value) setPrompt(value);
-    });
-  }, []);
+    if (!["general", "providers", "ocr", "cache", "extensions"].includes(section) && !pluginView)
+      setSection("extensions");
+  }, [section, pluginView]);
 
   const setLanguage = async (language: UiLanguage) => {
     setLanguageBusy(true);
@@ -74,12 +75,23 @@ export default function ProviderSettings({
           </button>
           <button
             className={ui.settingsNavButton}
-            aria-pressed={section === "translation"}
-            onClick={() => setSection("translation")}
+            aria-pressed={section === "extensions"}
+            onClick={() => setSection("extensions")}
           >
             <Settings2 size={18} />
-            {t("settings.translation")}
+            {t("extensions.title")}
           </button>
+          {pluginViews.map((view) => (
+            <button
+              key={view.declaration.id}
+              className={ui.settingsNavButton}
+              aria-pressed={section === view.declaration.id}
+              onClick={() => setSection(view.declaration.id)}
+            >
+              <Settings2 size={18} />
+              {label(view.declaration.title, i18n.resolvedLanguage)}
+            </button>
+          ))}
           <button
             className={ui.settingsNavButton}
             aria-pressed={section === "providers"}
@@ -137,52 +149,8 @@ export default function ProviderSettings({
             </p>
           </section>
         </main>
-      ) : section === "translation" ? (
-        <main
-          data-ui="settings-main"
-          className={cx(
-            "min-w-0 flex-1 overflow-y-auto px-[max(30px,calc((100vw_-_1160px)/2))] pt-[52px] pb-[50px] max-desktop:px-[28px] max-desktop:py-[44px]",
-            "max-w-[920px]",
-          )}
-        >
-          <div className={ui.eyebrowBlue}>{t("settings.translationEyebrow")}</div>
-          <h1 className="mt-3 mb-2 text-[27px]">{t("settings.translationTitle")}</h1>
-          <p className="mb-[33px] text-[12px] text-[#8b9caf]">
-            {t("settings.translationDescription")}
-          </p>
-          <div className={cx(ui.surface, "p-6")}>
-            <label className="mb-[10px] block text-[12px] font-bold" htmlFor="translation-prompt">
-              {t("settings.prompt")}
-            </label>
-            <textarea
-              className={cx(ui.fieldInput, "block resize-y leading-[1.8]")}
-              id="translation-prompt"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={12}
-            />
-            <div className={cx(ui.settingsActions, "mt-[14px]")}>
-              <button
-                className={ui.secondaryButton}
-                onClick={() => setPrompt(DEFAULT_TRANSLATION_PROMPT)}
-              >
-                {t("settings.restorePrompt")}
-              </button>
-              <button
-                className={ui.primaryButton}
-                onClick={() =>
-                  void services.settings
-                    .set("translationPrompt", prompt)
-                    .then(() => setNotice(message("promptSaved")))
-                    .catch((cause: unknown) => onError(String(cause)))
-                }
-              >
-                {t("settings.savePrompt")}
-              </button>
-            </div>
-          </div>
-          {notice && <p className={ui.settingsNotice}>{localizeMessage(notice)}</p>}
-        </main>
+      ) : section === "extensions" ? (
+        <ExtensionSettings />
       ) : section === "ocr" ? (
         <OcrSettings
           providers={providers}
@@ -194,6 +162,14 @@ export default function ProviderSettings({
       ) : section === "cache" ? (
         <CacheSettings />
       ) : null}
+      {pluginViews.map((view) => (
+        <div
+          key={`${view.declaration.id}:${view.instance}`}
+          className={section === view.declaration.id ? "flex min-w-0 flex-1" : "hidden"}
+        >
+          <ExtensionView view={view} />
+        </div>
+      ))}
       <div className={section === "providers" ? "flex min-w-0 flex-1" : "hidden"}>
         <ProviderEditor
           purpose="llm"

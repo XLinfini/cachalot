@@ -1,7 +1,7 @@
 /** Exercise the actual composer and request adapter with isolated fixtures. */
 import assert from "node:assert/strict";
 import { expect, type Page, type Request } from "@playwright/test";
-import type { LocaleResource } from "../../../src/i18n/locales/en";
+import type { LocaleResource } from "../../fixtures/locales";
 
 export async function verifyModelComposer(
   page: Page,

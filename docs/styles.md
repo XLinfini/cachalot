@@ -5,7 +5,7 @@
 | 位置 | 修改内容 |
 | --- | --- |
 | `src/styles/app.css` 的 `@theme` | 全局字体、主题色、圆角、阴影、断点 |
-| `src/components/ui/styles.ts` | 按钮、输入框、导航等通用控件的样式组合 |
+| `src/sdk/ui/styles.ts` | 按钮、输入框、导航等通用控件的样式组合 |
 | `src/App.tsx`、`src/components/*.tsx` | 页面布局、间距、组件特有的样式和交互状态 |
 
 例如，修改 `--color-brand` 会更新所有 `bg-brand`、`text-brand`、`border-brand` 的使用位置；修改 `ui.primaryButton` 会更新共用该样式的主要按钮。旧版色值与尺寸保留在组件中，重设计时可逐步收敛为主题变量。
@@ -17,7 +17,7 @@
 - `cx()` 只连接类名，不处理冲突。同一个元素的同一种属性应明确选择一个值；类名在字符串中的先后顺序不决定覆盖关系。
 - 运行时坐标继续使用 `style`：PDF 缩放尺寸、框选矩形、版面区域、截图位置和目录层级缩进。不要把这些数值生成动态 Tailwind 类名。
 - `data-ui` 是浏览器测试的稳定定位标记。调整布局和类名时保留标记，测试不依赖某个颜色或样式类。
-- 业务服务仍在 `src/application/`，持久化与模型调用仍由适配器提供。界面重构继续通过这些接口接入，详见 [开发交接文档](architecture.md)。
+- 本体业务服务仍在 `src/application/`，插件通过 `src/sdk/` 接入；持久化与模型调用由本体适配器提供。界面重构保持这个边界，详见 [开发交接文档](architecture.md)。
 
 当前断点为 `compact: 940px`、`desktop: 1200px`，沿用桌面和 iPad 横屏的布局。没有增加竖屏专用布局。
 
@@ -31,11 +31,11 @@
 
 连续阅读的滚动容器为 `data-ui="pdf-scroll"`，各页为 `data-ui="pdf-page" data-page="页码"`。页栈的 `gap-6` / `py-7` 分别对应 `pdf/page-layout.ts` 的 `PAGE_GAP=24` / `PAGE_PADDING=28`；修改页面间距时同步这两处，避免导航和缩放定位偏移。每页宽高由 PDF 实际尺寸与缩放计算，不要用固定 CSS 尺寸覆盖。
 
-KaTeX 使用其自带样式；`MathMarkdown.tsx` 用 Tailwind 的后代选择器调整段落、列表、代码和公式容器。页面主题重构时需检查文字选择、公式溢出和选区截图。
+KaTeX 使用其自带样式；`src/sdk/MathMarkdown.tsx` 用 Tailwind 的后代选择器调整段落、列表、代码和公式容器。页面主题重构时需检查文字选择、公式溢出和选区截图。
 
 重建原文与翻译结果都显式使用 `MathMarkdown` 的 `latex-candidate` 渲染方式：完整且有可用 LaTeX 的公式由 KaTeX 渲染，未识别或部分选中的公式以 `data-ui="preserved-formula"` 保留无损 PNG 来源。回退图片的行内 `width` 与 `verticalAlign` 根据原有效字号和基线计算，不用固定高度拉伸；行间图片限制最大宽度、保持比例。原始公式资产继续保留，用于核对及后续矢量裁剪导出。
 
-翻译弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，与右栏使用同一份重建 LaTeX，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
+选区翻译插件注册 modal 视图，其弹窗采用横屏三栏（PDF 选区图片 / 重建原文 / 译文），最大宽度 1440px，各栏独立滚动。`data-ui="translation-reconstructed-source"` 是核对公式的中栏，与右栏使用同一份重建 LaTeX，原始截图始终可在左侧比较。其右上角 `translation-source-format` 按钮切换排版预览与 LaTeX 源文本；无需另设折叠原文预览。未能重建的公式仍显示来源图片和原因。`npm run test:formula-transcription-ui -- /absolute/path/reference.pdf` 使用隔离浏览器与模拟接口验证两种语言下的三栏、字符辅助请求、分阶段更新、缓存和错误回退，不衡量实际 LLM 准确率。
 
 重建原文与译文的标题来自选区块结构，而不是依靠模型自己选择 Markdown 层级。`MathMarkdown` 为 h1–h6 统一设置粗体、行距和上下间距，并逐级缩小字号。后续更换 UI 时，应保持这些 HTML 标题的语义，不将标题统一改为普通段落。浏览器验证还覆盖示例论文重叠检测的主标题、章节/字母小节、部分选中的标题，以及模型漏掉标题边界时的提示。
 
@@ -47,7 +47,7 @@ npm run format:check
 npm run build
 ```
 
-Prettier 配置了 Tailwind 插件，自动排序 TSX 的类名和 `cx()` 中的字面量。格式化脚本覆盖界面文件、样式、i18n 词典、React 入口和 Vite 配置。
+Prettier 配置了 Tailwind 插件，自动排序 TSX 的类名和 `cx()` 中的字面量。格式化脚本覆盖界面文件、样式、i18n 词典、公开 SDK、插件包、插件宿主、React 入口和 Vite 配置。
 
 浏览器样式检查使用独立浏览器上下文和模拟模型接口，不读取用户的 API Key，也不改变正在使用的文献库。以用户提供的论文检查两种横屏宽度与中英文布局：
 
@@ -60,3 +60,11 @@ npm run test:styles -- /absolute/path/reference.pdf
 2026-09-26：连续阅读、多语言、问答图片模型切换和公式原图重排的生产构建检查通过，生成 56 张截图，无未捕获的浏览器错误。这些桌面浏览器检查不能代替 iPad 真机验证。
 
 Tailwind 参考：[Vite 接入](https://tailwindcss.com/docs/installation/using-vite)、[主题变量](https://tailwindcss.com/docs/theme)、[类名扫描规则](https://tailwindcss.com/docs/detecting-classes-in-source-files)。
+
+## 插件视图
+
+`components/extensions/ExtensionWorkbench.tsx` 管理通用侧栏、底部 panel、statusbar、settings 和 modal。插件提供内容，本体处理标签、关闭、尺寸和位置。modal 通过 portal 挂到 body，不占用横屏阅读器的 flex 宽度；插件内容的挂载、关闭和取消属于同一视图实例。动态插件颜色和归一化覆盖框使用 style，不能生成动态 Tailwind 类名。
+
+`selected-unit` 是通用工具覆盖框标记。翻译插件提供紫色边框与半透明填充，本体提供蓝色无填充的原始手势框；本体不识别段落或公式的选取策略。`extension-dock`、`data-location`、`data-extension-view`、`extension-statusbar` 为注册视图提供稳定的测试定位。鼠标悬停提供者的显示和取消也由本体处理。
+
+`npm run test:e2e -- tests/e2e/extensions.spec.ts` 用小型合成 PDF 验证两种语言下的停用/启用、问答保留、树视图、位置移动、Webview 消息和状态栏；不需要真实论文或服务商。完整翻译与横屏布局继续使用既有论文回归。

@@ -1,4 +1,4 @@
-# 开发交接：解析、应用服务与界面
+# 开发交接：阅读器本体、文档理解与插件
 
 ## 分层与入口
 
@@ -7,10 +7,13 @@
 | 目录 / 文件 | 职责 | 界面重构时的处理 |
 | --- | --- | --- |
 | `src/domain/` | 文档、会话、版面 DTO；坐标和模型版本约定 | 复用数据契约，保持无 React / Tauri 依赖 |
-| `src/application/services.ts` | 文献库、设置、模型服务、会话、解析、翻译、问答的统一入口 | 新界面调用这里 |
+| `src/application/services.ts` | 本体的文献库、设置、模型服务、会话、解析与问答入口 | 本体界面调用这里；插件不可访问 |
 | `src/application/document-analysis/` | 文档分析生命周期、页内组装、全文语义及公式定位 | 建立/释放 session；规则变化时更新对应缓存版本 |
 | `src/application/ocr/` | 独立 OCR 配置、公式裁图调度、识别、校验及候选缓存 | 通过公式区域 DTO 调用，不依赖翻译协议 |
-| `src/application/selection-translation/` | 精确选区、背景范围、公式位置、标题格式、翻译请求及返回校验 | 使用目录公开入口或 `services.assistant.translateRegion` |
+| `src/sdk/` | 插件公开类型、能力接口和可选 React 工具包 | 插件唯一的本体依赖 |
+| `src/application/extensions/` | 插件清单、激活、能力检查、资源归属、状态与本体服务适配 | `runtime.ts` 是唯一内置插件组合入口 |
+| `src/components/extensions/` | 通用侧栏、底部面板、状态栏、树视图、Webview 和插件设置 | 按注册内容呈现，不包含翻译业务 |
+| `src/extensions/selection-translation/` | 完整单元/文字选取、背景、协议、翻译流程、结果和设置界面、文案 | 首个预装插件，仅通过 SDK 使用本体 |
 | `src/application/paper-assistant.ts` | 论文问答检索、会话上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
 | `src/application/model-catalog.ts` | 已添加模型配置、临时模型列表请求、逐模型图像能力 | 通过 services 获取，能力不按模型名称猜测 |
 | `src/infrastructure/pdf/document-preview.ts` | 独立生成并缓存 PDF 第一页预览 | 通过 services.library.preview 调用 |
@@ -20,17 +23,31 @@
 | `src/hooks/useDocumentAnalysis.ts` | 服务与 React 生命周期的衔接 | 换框架时替换该桥接层 |
 | `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件 | 可重新设计 |
 
-### 应用层的三个环节
+### 本体能力与插件流程
 
 应用层按处理环节组织，而不是把所有公式文件归为同一个功能。目录与文件职责见 [application 维护指南](../src/application/README.md)。
 
 - **文档分析**是底层：`session.ts` 管生命周期与分阶段缓存，`page-semantics.ts`/`document-semantics.ts` 管页内和全文结构，`formulas.ts` 管公式定位及原生简单结构。输出页面事实、文档语义和临时页面投影，不调用远端 OCR 或翻译，也不保存 OCR 候选到语义树。
 - **OCR**是中间层：`reconstruct-formulas.ts` 接收上层明确指定的 `FormulaFragment[]`，通过 infrastructure 的裁图、适配器和仓库取得原图、识别并校验候选，返回 `{ assets, issues }`。它不接收整个 `SelectedRegion`，不产生公式位置标记、翻译提示词或译文。`validate-latex.ts` 管语法与字符检查；`settings.ts`/`catalog.ts` 管独立模型选择与派生设置选项。
-- **框选翻译**是上层：`select-region.ts` 从文档分析投影确定实际覆盖，`context.ts` 从同一语义快照取有限背景；`translate-region.ts` 调用 OCR 公开入口，把候选与正文交给翻译模型；`formula-slots.ts` 管位置标记、候选说明和译文回填，`headings.ts` 管标题协议和格式恢复。
+- **选区翻译插件**是能力的使用者：`select-region.ts` 从文档分析投影确定实际覆盖，`context.ts` 从同一语义快照取有限背景；`translate-region.ts` 调用 SDK 的 OCR 与 LLM 接口，把候选与正文交给翻译模型；`formula-slots.ts` 管位置标记、候选说明和译文回填，`headings.ts` 管标题协议和格式恢复。
 
-调用方向为框选翻译 → OCR → infrastructure，框选翻译也直接消费文档分析的领域数据。文档分析与 OCR 不反向导入框选翻译；domain/infrastructure 不导入 application。目录 `index.ts` 是受控公开入口，界面用 `services.ts` 调用有副作用的流程，纯选区及预览助手使用相应目录入口。内部单元测试可直接导入被测模块。
+调用方向为插件 → 公开 SDK → 插件宿主 → 本体能力 → infrastructure。文档分析、OCR、领域与基础设施不依赖插件；本体界面只读取宿主的通用注册项。唯一能够导入内置插件的本体文件是 `application/extensions/runtime.ts`，负责安装清单、加载模块和旧设置迁移。测试对静态导入、动态导入与间接依赖分别检查。
 
-`createFormulaReconstructor(ports)` 允许替换裁图、设置、识别、候选保存等副作用；默认实现连接现有 infrastructure。这些端口用于隔离测试和替换运行环境，业务校验仍由 OCR 层统一执行。问答继续在 `paper-assistant.ts`；`services.assistant.askPaper/translateRegion` 的界面契约保持一致。此次目录/API 整理不改变事实、语义或 OCR 缓存版本，已有兼容缓存继续复用。
+`createFormulaReconstructor(ports)` 继续提供 OCR 的隔离测试端口。问答保留在 `paper-assistant.ts`，通过 `services.assistant.askPaper` 供本体聊天栏使用；`services.assistant.translateRegion` 已移除。选区翻译的业务 DTO 保存在插件自己的 `types.ts`，本体仅使用 `domain/reader.ts` 的来源预览 `ReaderSelection`。本次拆分不改变事实、语义或公式候选的缓存版本。
+
+## 插件宿主与工作台
+
+本体负责学术 PDF 阅读、文献库、分析、来源与公式资源、OCR、模型配置和问答栏。附加能力通过插件提供。选区翻译的工具入口、完整单元策略、紫色覆盖框、选区动作、上下文、提示词、标题/公式协议、结果弹窗、复制和设置页均由插件注册。本体 PDF 页面只处理矩形/文字手势、来源截图、坐标、通用覆盖框、悬停及通用动作。
+
+插件清单采用 `publisher/name/version/engines.cachalot/activationEvents/capabilities/contributes`。公开 API 使用 `activate(context)`、`context.subscriptions`、`Disposable`、命令注册、视图提供者与树数据提供者；取消使用标准 `AbortSignal`。具体约定和可执行的开发示例见 [插件开发指南](extensions.md)。这不是 VS Code 插件的二进制兼容层。
+
+宿主以激活作用域管理命令、工具、动作、视图、状态项、背景、覆盖框、事件与文案资源。所有注册自动归属，即使插件没有手动加入 subscriptions。停用先取消作用域，再释放全部资源并调用 deactivate；激活失败回滚已注册内容。重复启用不会累积注册。配置和 globalState 使用插件 ID 命名空间保存，停用保留这些数据。原来的 `translationPrompt` 首次迁入翻译插件的 `config:prompt`，已有插件设置不会被旧键覆盖。
+
+预装/不可卸载由宿主安装清单的 `builtIn` 字段决定，不由插件自报。插件设置可停用或启用选区翻译，没有内置插件卸载入口，宿主也拒绝卸载。停用翻译不关闭阅读、分析、OCR 配置或本体问答。关闭结果窗口会取消该视图请求；停用插件会取消该插件全部请求。浏览器传输接收组合 AbortSignal，桌面使用 `ai_requests.rs` 的登记/取消机制，让 OCR 或 LLM 的 reqwest future 真正停止；即使适配器忽略信号，宿主也立即结束调用并屏蔽迟到的流式数据。页面分析是本体共享任务，不因单个插件停用而取消。
+
+工作台区分 `sidebar.left`、`sidebar.right`、`panel`、`settings` 与 `modal`。底部 panel 是可滚动内容区，statusbar 是独立状态行。侧栏和 panel 支持标签切换、关闭、重新展开、鼠标调整尺寸和移动位置；尺寸、位置及用户关闭状态由本体设置保存。树视图支持展开与命令，HTML Webview 在不带 same-origin 的 sandbox iframe 内，通过自己的消息通道与提供者交互；sandbox 禁止访问本体 DOM、顶层导航和弹出窗口，当前 HTML 的 CSP 禁止 fetch、外部脚本和表单提交。iframe 自身导航并未作为强网络隔离实现。复杂本地 React 视图只挂载在其拥有的内容根节点中。
+
+当前加载器服务于经过信任的打包模块和开发安装清单；尚无社区插件安装 UI、商店、签名、文件系统包管理或独立 Extension Host 进程。能力声明与只读清单约束 SDK 调用，但同进程 JavaScript 不是恶意插件安全沙箱。开放任意第三方执行代码前，必须增加独立运行时、消息桥和安装授权；SDK、宿主注册表与通用工作台已作为该边界分离。Webview 已隔离 HTML UI，不等同于隔离插件主代码。
 
 ## 文献分类
 
@@ -162,11 +179,11 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 1. PDFium 提取字形 Unicode、原始字号、字体、字形原点及文字矩阵。`emSize` 包含文字矩阵缩放，不能只使用 PDF 声明的字号（示例论文中常为 1）。基线转换到与版面相同的显示页坐标。
 2. `document-analysis/formulas.ts` 在文档语义中建立 `SemanticFormula` 区域：独立公式来自 Heron，行内候选来自希腊字母、数学字体/短斜体变量与基线位移。来源引用保存文档、页码、区域及字形索引，语义保存行内/行间形式、基线和有效字号。页面投影时生成 `FormulaFragment` 并为简单单基线与上下标恢复 `native-candidate`；分数等二维结构不根据字符顺序猜测。LaTeX 不进入权威语义缓存。
-3. `selection-translation/select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此兼容的来源与观测缓存无需重新跑 Heron/PDFium。框选只接受完整单元，半个行间公式或未完整框入的段落不会产生公式资产。文字模式部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式；普通半词选择仍不补全。
+3. `extensions/selection-translation/select-region.ts` 将公式位置写为 `[[formula:ID]]`，保留在原阅读顺序中，同时从页面字形缓存补入该公式的 `characters`。因此兼容的来源与观测缓存无需重新跑 Heron/PDFium。框选只接受完整单元，半个行间公式或未完整框入的段落不会产生公式资产。文字模式部分选中时创建裁剪来源，撤销 LaTeX 候选、标记 `partial`，只保留实际选中的字符证据与 `nativeText`，禁止扩大为完整公式；普通半词选择仍不补全。
 4. OCR 调度基础设施中的 [`src/infrastructure/pdf/formula-source.ts`](../src/infrastructure/pdf/formula-source.ts)，使用 PDF.js 在首次翻译时按需生成 4×（约 288 dpi）、无损 PNG，独立于阅读器缩放；每区域上限 400 万像素。原始 PDF 与归一化裁剪是外观依据。`services.formulas.exportPdf(fragment)` 在 Worker 中导入原 PDF 页资源，转换坐标并设置 CropBox/MediaBox，保留字体、路径、图片与原旋转。此操作是可见区域裁剪，不是内容删改；不可作为安全删除页外内容的功能。
-5. 用户框选并启动翻译后，`ocr/reconstruct-formulas.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，返回校验候选后，由 `selection-translation/translate-region.ts` 翻译正文。`ocr/settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`domain/formula-evidence.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
+5. 用户框选并启动翻译后，`ocr/reconstruct-formulas.ts` 将未识别且完整选中的区域交给独立选择的 OCR 模型，返回校验候选后，由 `extensions/selection-translation/translate-region.ts` 翻译正文。`ocr/settings.ts` 读取独立的 `formulaOcrModel` 设置；旧安装未配置时保留翻译模型的图像转写方式。GLM 版面接口逐张提交 PNG，专用 Chat OCR 逐张提交固定任务 `Formula Recognition:`，多模态 LLM 证据方案每批最多 12 个。不在页面分析时调用远端模型，也不额外安装本地公式 OCR 权重。`domain/formula-evidence.ts` 负责截图与 PDFium 辅助证据的固定 prompt：字符 Unicode、字形索引、框、基线、有效字号与字体；坐标转换为裁剪区域内的 PDF 点，独立于屏幕缩放。明确告知模型 PDF 存储顺序不等于阅读顺序，字符身份来自 Unicode，二维结构结合坐标与截图恢复。明显分离的右侧数字编号单独标为 `equation-label`。
 6. 多模态 LLM 的 JSON/唯一 ID 或专用 OCR 规范化结果通过后，`ocr/validate-latex.ts` 校验 KaTeX 语法，还比较 MathML 可见叶节点和原生字母/数字的计数，拦截丢字、大小写或 0/o 等替换；排除独立编号和 generated 字符，不把 LaTeX 命令名当作内容。允许额外字符以兼容路径/图片导致的原生提取缺失。因此这只是必要条件，不能证明没有新增符号、结构正确或数学等价；结果仍为 `model-candidate`。文字模型可以复用新版候选，不发送图像载荷。识别失败、返回 null/无效 LaTeX、字符检查失败时保留原图并报告原因；服务商错误正文沿用平台的脱敏与 i18n。识别请求失败后停止后续识别批次，不自动重试；正文仍可以使用原图和公式标记翻译。
-7. `selection-translation/formula-slots.ts` 从 OCR 返回资产生成翻译用候选说明；翻译请求包含正文位置标记和 LaTeX 阅读候选。`selection-translation/formula-slots.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
+7. `extensions/selection-translation/formula-slots.ts` 从 OCR 返回资产生成翻译用候选说明；翻译请求包含正文位置标记和 LaTeX 阅读候选。`extensions/selection-translation/formula-slots.ts` 校验返回标记的数量、ID 和顺序，漏掉、重复、增加或重排则拒绝结果。`TranslationResult` 提供 markdown 与来源资产；重建原文和译文中的 `MathMarkdown.tsx` 都按原位置使用同一份已准备的 LaTeX，正文翻译模型不改写公式。未识别/部分选中的公式显示来源 PNG，并按原基线对齐行内公式。原始图像与矢量资源继续保留供核对，保真 PDF 裁剪导出仍使用原始资源。
 8. `translateRegion` 经 `onPhase` 回传准备/翻译状态，`onPrepared` 回传这次翻译实际使用的候选与失败原因。翻译弹窗为三栏：PDF 图片、重建原文、译文。中栏与右栏显式使用 `MathMarkdown` 的 `latex-candidate` 显示方式，中栏可切换到 LaTeX 源文本；识别完成立即更新，不等待正文翻译结束，翻译失败后也能继续核对原文。取消旧的折叠“查看提取的文字”入口。
 
 公式资产保存在独立浏览器 IndexedDB `cachalot-formulas/assets`，桌面复用 SQLite `page_analysis` 与外键级联。缓存含坐标，坐标变化会失效；多模态 LLM 候选按 `transcribe-v2-native:<providerId>:<modelId>` 保存，专用 OCR 按 `formula-ocr-v1:<protocol>:<providerId>:<modelId>` 保存。显式 OCR 选择只使用该模型的候选，停用、删除或协议不匹配时报错；旧文字模型的候选兼容路径仅在未配置独立 OCR 时使用。只复用新版且字符检查通过的结果。旧 image-only 候选不冒充新证据方案的结果，原图资产继续复用；读缓存时合并本次选区的字符元数据，避免旧资产覆盖新证据。原生提取、版面观测与文档语义分别使用 `PAGE_FACTS_KEY`、`LAYOUT_OBSERVATIONS_KEY`、`DOCUMENT_SEMANTICS_KEY`。公式资产还校验来源提取版本；修改语义规则可复用提取及模型观测，修改转写规则只影响候选。
@@ -189,7 +206,7 @@ GLM 预设可用于智谱官方地址 `https://open.bigmodel.cn/api/paas/v4` 或
 
 ### 标题结构的翻译与重排
 
-`selection-translation/select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`selection-translation/headings.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
+`extensions/selection-translation/select-region.ts` 同时生成 `SelectedTextBlock[]`，保存选中块的类型、标题层级及是否只选中部分内容。`selection.text` 继续作为纯文本上下文。`extensions/selection-translation/headings.ts` 在原文预览中生成 Markdown 标题，在翻译请求中用 `[[heading:ID]]…[[/heading:ID]]` 包住标题。模型只翻译其内容，返回后校验 ID、成对边界、顺序及非空内容，再由程序按原层级转为 `#`–`######`。标题标记遗漏、重复、错序或新增会显示中英错误并阻止复制，标题内的公式位置仍经过公式校验。流式预览隐藏标题协议标记；导出的译文 Markdown 不含标题协议。
 
 Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h1；重叠的 title/heading 预测优先保留标题语义（示例论文存在空 title 与有文字的 heading 重合）。章节标题默认 h2，数字编号深度和罗马章节下的字母小节推为更深层级；未来解析器可通过 `ContentBlock.headingLevel` 直接提供层级。无法判断的标题保留为 h2，识别错误或不常见的编号体系仍可能需要人工核对。依据来自完整原始块，不依赖翻译后的文字或裁剪后的编号。多行标题合并为一个标题；只选中半个标题仍按标题格式显示实际选中的文字，不补回未选中内容。标题层级由文档语义构建器统一推断，选区翻译只读取结果；修改层级规则可复用原始版面观测。
 
@@ -208,11 +225,11 @@ const semantics = await session.getDocumentSemantics(); // 当前部分/完整�
 session.dispose();
 ```
 
-组件负责展示与事件。PDF 显示可替换为其他阅读器；应继续使用归一化选区 DTO 和 `selectRegion`。模型服务配置、会话 CRUD、流式翻译/问答都通过 `services` 调用。提示词和检索规则由应用层管理。异步 UI 回调要处理视图卸载、文档切换和新的选区覆盖旧请求。
+组件负责展示与事件。替换 PDF 阅读器时保留归一化的 `ReaderGesture/ReaderSelection`、通用工具和动作契约；完整单元选取策略由翻译插件决定。本体的模型配置、会话 CRUD 和问答通过 `services` 调用；插件的模型请求通过 SDK。翻译提示词与上下文规则归插件，问答规则归本体应用层。异步 UI 回调要处理视图卸载、文档切换和新的选区覆盖旧请求。
 
-界面样式使用 Tailwind CSS 4：`src/styles/app.css` 提供主题变量，`src/components/ui/styles.ts` 提供共用控件样式，页面布局直接位于 TSX。PDF.js 文字层兼容 CSS 单独保留。修改样式、格式化和浏览器截图验证的约定见 [样式维护指南](styles.md)。
+界面样式使用 Tailwind CSS 4：`src/styles/app.css` 提供主题变量，`src/sdk/ui/styles.ts` 提供共用控件样式，页面布局直接位于 TSX。PDF.js 文字层兼容 CSS 单独保留。修改样式、格式化和浏览器截图验证的约定见 [样式维护指南](styles.md)。
 
-界面多语言使用 i18next/react-i18next，词典集中在 `src/i18n/locales/`。业务服务与 Worker 的提示通过 `src/domain/messages.ts` 编码，由显示层转换成当前语言；解析缓存不因界面语言变化而失效。语言偏好通过现有设置接口保存，维护约定见 [i18n 指南](i18n.md)。
+界面多语言使用 i18next/react-i18next，本体词典在 `src/i18n/locales/`，插件词典在各插件包内并通过 SDK 注册。业务服务与 Worker 的提示通过 `src/domain/messages.ts` 编码，由显示层转换成当前语言；解析缓存不因界面语言变化而失效。语言偏好通过现有设置接口保存，维护约定见 [i18n 指南](i18n.md)。
 
 ## 验证与当前边界
 

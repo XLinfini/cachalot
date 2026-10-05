@@ -5,8 +5,8 @@ import type { SemanticPageView } from "../../../src/domain/document-semantics";
 import {
   selectRegion,
   selectRegionUnits,
-} from "../../../src/application/selection-translation/select-region";
-import type { LocaleResource } from "../../../src/i18n/locales/en";
+} from "../../../src/extensions/selection-translation/select-region";
+import type { LocaleResource } from "../../fixtures/locales";
 
 export async function verifyContinuousReader(
   page: Page,

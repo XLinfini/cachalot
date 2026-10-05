@@ -3,7 +3,7 @@ import { Check, ChevronRight, ChevronUp, Eye, Search, Settings2 } from "lucide-r
 import { useTranslation } from "react-i18next";
 import type { Provider } from "../domain/records";
 import { chatModels, ocrModels } from "../domain/provider-models";
-import { cx, ui } from "./ui/styles";
+import { cx, ui } from "../sdk/ui/styles";
 
 interface Props {
   providers: Provider[];

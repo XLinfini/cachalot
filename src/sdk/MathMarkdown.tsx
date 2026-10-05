@@ -4,7 +4,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { cx } from "./ui/styles";
 import type { FormulaAsset } from "../domain/analysis";
-import { FORMULA_PATTERN } from "../application/selection-translation";
+import { FORMULA_PATTERN } from "../domain/formula-markers";
 import { useTranslation } from "react-i18next";
 
 export default function MathMarkdown({
@@ -49,7 +49,7 @@ export default function MathMarkdown({
             const asset = formulas.find((a) => src === `cachalot-formula:${a.formula.id}`);
             if (!asset) return <img src={src} alt={alt || ""} />;
             if (!asset.imageDataUrl)
-              return <span className="text-muted">[{t("translation.originalFormula")}]</span>;
+              return <span className="text-muted">[{t("formulas.original")}]</span>;
             const formula = asset.formula,
               emSize = formula.emSize || 10;
             const baselineOffset =
@@ -62,10 +62,8 @@ export default function MathMarkdown({
                 data-formula-id={formula.id}
                 data-mode={formula.mode}
                 src={asset.imageDataUrl}
-                alt={t("translation.originalFormula")}
-                title={t(
-                  formula.partial ? "translation.partialFormula" : "translation.originalFormula",
-                )}
+                alt={t("formulas.original")}
+                title={t(formula.partial ? "formulas.partial" : "formulas.original")}
                 className={
                   formula.mode === "display"
                     ? "my-2 block h-auto max-w-full"

@@ -1,5 +1,5 @@
 import { message } from "../domain/messages";
-import type { SelectedRegion } from "../domain/analysis";
+import type { ReaderSelection } from "../domain/reader";
 import type { ChatMessage, DocumentRecord, Provider } from "../domain/records";
 import { platform } from "../infrastructure/platform";
 import { supportsImages } from "./model-catalog";
@@ -30,7 +30,7 @@ export async function askPaper(
   input: {
     document: DocumentRecord;
     page: number;
-    selection: SelectedRegion | null;
+    selection: ReaderSelection | null;
     provider: Provider;
     question: string;
     history: ChatMessage[];

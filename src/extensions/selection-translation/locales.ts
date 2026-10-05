@@ -1,0 +1,96 @@
+export const locales = {
+  zh: {
+    translation: {
+      originalFormula: "PDF 原始公式",
+      partialFormula: "公式仅被部分选中，不推测或补全",
+      formulaPreservation:
+        "共 {{count}} 处公式；重建成功的使用 LaTeX，其余保留原图。请对照原文核查。",
+      eyebrow: "选区翻译 · 第 {{page}} 页",
+      title: "选区翻译",
+      close: "关闭翻译",
+      source: "原文选区",
+      imageAlt: "论文第 {{page}} 页所选区域",
+      reconstructedSource: "重建原文",
+      noExtractedText: "未提取到正文，请对照左侧原图。",
+      showRenderedSource: "显示排版后的原文",
+      preparing: "正在准备原文、识别复杂公式…",
+      latexSource: "查看原文与 LaTeX 源文本",
+      formulaFallback: "{{count}} 处公式未能重建，仍保留原图。",
+      formulaIssue: {
+        request: "公式识别请求失败。",
+        invalid: "模型未返回可用的 LaTeX。",
+        characters: "重建结果丢失或改变了 PDF 中的字母或数字，已弃用该结果。",
+        "vision-unavailable": "当前模型不支持图像理解，且没有可复用的识别结果。",
+      },
+      result: "译文",
+      noModel: "未配置模型",
+      running: "正在翻译选区…",
+      verify: "图表与公式请对照原图核查",
+      copy: "复制译文",
+    },
+    settings: {
+      translation: "阅读与翻译",
+      translationEyebrow: "阅读与翻译",
+      translationTitle: "按你的习惯翻译。",
+      translationDescription: "修改用于框选翻译的提示词。模型会收到原文选区和这段要求。",
+      prompt: "翻译提示词",
+      restorePrompt: "恢复默认",
+      savePrompt: "保存提示词",
+    },
+    reader: {
+      region: "框选翻译",
+      regionTitle: "完整框入段落或行间公式进行翻译",
+      translate: "翻译选区",
+      translateIcon: "译",
+    },
+  },
+  en: {
+    translation: {
+      originalFormula: "Original PDF equation",
+      partialFormula: "Partially selected equation; no completion is inferred",
+      formulaPreservation:
+        "{{count}} equation region(s). Reconstructed equations use LaTeX; others retain original images. Check against the source.",
+      eyebrow: "SELECTION TRANSLATION · PAGE {{page}}",
+      title: "Selection translation",
+      close: "Close translation",
+      source: "Original selection",
+      imageAlt: "Selected region on page {{page}} of the paper",
+      reconstructedSource: "Reconstructed source",
+      noExtractedText: "No body text was extracted. Refer to the image on the left.",
+      showRenderedSource: "Show rendered source",
+      preparing: "Preparing source and recognizing complex equations…",
+      latexSource: "Show source text with LaTeX",
+      formulaFallback:
+        "{{count}} equation(s) could not be reconstructed; original images are retained.",
+      formulaIssue: {
+        request: "The equation recognition request failed.",
+        invalid: "The model did not return usable LaTeX.",
+        characters:
+          "The reconstruction lost or changed letters or digits from the PDF and was discarded.",
+        "vision-unavailable":
+          "The current model cannot read images and no reusable recognition result is available.",
+      },
+      result: "Translation",
+      noModel: "No model configured",
+      running: "Translating the selection…",
+      verify: "Check figures and equations against the original",
+      copy: "Copy translation",
+    },
+    settings: {
+      translation: "Reading & translation",
+      translationEyebrow: "READING & TRANSLATION",
+      translationTitle: "Translate your way.",
+      translationDescription:
+        "Edit the prompt for selection translation. The model receives the original selection and these instructions.",
+      prompt: "Translation prompt",
+      restorePrompt: "Restore default",
+      savePrompt: "Save prompt",
+    },
+    reader: {
+      region: "Region",
+      regionTitle: "Fully enclose paragraphs or display equations to translate",
+      translate: "Translate selection",
+      translateIcon: "T",
+    },
+  },
+} as const;

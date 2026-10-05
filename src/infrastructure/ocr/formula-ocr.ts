@@ -10,12 +10,13 @@ export async function recognizeFormulas(
   adapterId: string,
   provider: Provider,
   formulas: OcrFormulaInput[],
+  signal?: AbortSignal,
 ): Promise<OcrCandidate[]> {
   const adapter = ocrAdapters.require(adapterId);
   if (!formulas.length || formulas.length > adapter.batchSize)
     throw new Error(message("ocrRequestInvalid"));
   for (const formula of formulas) validateOcrImage(formula.imageDataUrl);
-  return adapter.recognize(ocrContext(provider), formulas);
+  return adapter.recognize(ocrContext(provider, signal), formulas);
 }
 export async function recognizeFormula(
   adapterId: string,

@@ -5,8 +5,8 @@ import {
   buildDocumentSemantics,
   projectSemanticPage,
 } from "../../src/application/document-analysis/document-semantics";
-import { selectTextRegion } from "../../src/application/selection-translation/select-region";
-import { translationContext } from "../../src/application/selection-translation/context";
+import { selectTextRegion } from "../../src/extensions/selection-translation/select-region";
+import { translationContext } from "../../src/extensions/selection-translation/context";
 import { validDocumentSemantics } from "../../src/infrastructure/analysis/validation";
 import { nativeText } from "../../src/domain/page-facts";
 

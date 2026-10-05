@@ -89,15 +89,6 @@ export interface ContentBlock extends LayoutDetection {
 }
 
 export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
-export interface SelectedTextBlock {
-  id: string;
-  kind: BlockKind;
-  text: string;
-  headingLevel?: HeadingLevel;
-  /** Formatting survives partial selection; unselected text never does. */
-  partial: boolean;
-}
-
 /** Original glyphs/paths remain available for comparison and faithful export.
  * Reconstructed source and translation can render the same LaTeX candidate;
  * syntax/character checks do not prove mathematical correctness. */
@@ -133,64 +124,10 @@ export interface FormulaAsset {
   scale: number;
 }
 
-export interface TranslationResult {
-  /** Stable formula references survive model translation and later reflow. */
-  markdown: string;
-  formulas: FormulaAsset[];
-}
-
-export type TranslationPhase = "preparing" | "translating";
 export interface FormulaPreparationIssue {
   formulaId: string;
   reason: "request" | "invalid" | "characters" | "vision-unavailable";
-  /** Transport errors are already credential-redacted by the platform adapter. */
   details?: string;
-}
-export interface PreparedTranslationSource {
-  formulas: FormulaAsset[];
-  issues: FormulaPreparationIssue[];
-}
-
-/** UI-neutral selection DTO. Image is a temporary preview, not a cached PDF. */
-export interface SelectedRegion {
-  documentId: string;
-  page: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  imageDataUrl: string;
-  blockIds: string[];
-  blocks?: SelectedTextBlock[];
-  formulas?: FormulaFragment[];
-  source?: SelectionSource;
-  context?: TranslationContext;
-  /** Complete semantic units accepted by rectangle selection. */
-  units?: SelectionUnit[];
-}
-
-export interface SelectionUnit {
-  id: string;
-  kind: BlockKind;
-  box: Box;
-}
-
-/** Exact output scope, independently of the broader context used to translate. */
-export interface SelectionSource {
-  factsKey: string;
-  semanticsKey: string;
-  semanticRevision: number;
-  characterIndices: number[];
-}
-
-export interface TranslationContext {
-  semanticRevision: number;
-  complete: boolean;
-  title?: string;
-  abstract?: string;
-  sectionPath: string[];
-  passages: { nodeId: string; pages: number[]; text: string }[];
 }
 
 export interface AnalysisProgress {

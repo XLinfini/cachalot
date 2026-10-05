@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MoreVertical } from "lucide-react";
-import { cx, ui } from "./styles";
+import { cx, ui } from "../../sdk/ui/styles";
 
 export const menuItem =
   "flex w-full items-center gap-2 rounded-md border-0 bg-transparent px-3 py-2 text-left text-[12px] text-[#466484] hover:bg-[#edf3fb] focus:bg-[#edf3fb] focus:outline-none";
