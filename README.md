@@ -12,6 +12,7 @@
 | 管理论文、阅读、翻译和问答     | [用户指南](docs/README.md#用户指南)       |
 | 安装或管理本地插件             | [插件管理](docs/user-guide/extensions.md) |
 | 开发一个插件                   | [插件开发入口](docs/extensions.md)        |
+| 重构 UI、交接前端工作          | [前端重构交接](docs/frontend-handoff.md)  |
 | 修改本体或新增 OCR 厂商        | [开发与贡献](docs/development.md)         |
 | 查找某个问题或数据契约         | [文档总目录](docs/README.md)              |
 

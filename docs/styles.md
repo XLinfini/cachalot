@@ -2,7 +2,7 @@
 
 [文档目录](README.md) · 相关：[开发与贡献](development.md)、[插件交互约定](extension-api/ux-guidelines.md)
 
-本页约束本体与可信内置 React 视图的样式。社区 Webview 自带 HTML/CSS，不自动继承本体 Tailwind 或主题，接入方式见[视图指南](extension-api/views.md)。
+整体 UI 重构从[前端交接](frontend-handoff.md)进入，功能与状态验收见[配套清单](frontend-acceptance.md)。本页约束本体与可信内置 React 视图的样式。社区 Webview 自带 HTML/CSS，不自动继承本体 Tailwind 或主题，接入方式见[视图指南](extension-api/views.md)。
 
 界面使用 Tailwind CSS 4，由 `@tailwindcss/vite` 在构建时生成样式。组件使用 TypeScript；样式变更通常只涉及下列文件。
 

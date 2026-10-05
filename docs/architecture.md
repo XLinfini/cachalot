@@ -2,7 +2,7 @@
 
 [文档目录](README.md) · 相关：[开发与贡献](development.md)、[数据契约](document-analysis.md)、[插件开发](extensions.md)
 
-本页解释当前实现的分层与数据流。用户操作从[快速开始](get-started.md)进入；插件作者使用公开 SDK，不需要复制本体服务。
+本页解释当前实现的分层与数据流。UI 重构者先读[前端交接](frontend-handoff.md)，按[验收矩阵](frontend-acceptance.md#功能验收矩阵)保留交互与生命周期。用户操作从[快速开始](get-started.md)进入；插件作者使用公开 SDK，不需要复制本体服务。
 
 ## 按主题阅读
 

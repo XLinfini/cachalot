@@ -2,6 +2,8 @@
 
 [文档目录](../docs/README.md) · 相关：[开发与贡献](../docs/development.md)、[验证记录](../docs/validation.md)
 
+UI 重构可从[前端验收矩阵](../docs/frontend-acceptance.md#功能验收矩阵)找到现有能力模块；运行与夹具规则仍以本页为准。
+
 测试按验证边界组织，不按开发任务或提交时间增加 `verify-*.ts` 脚本。
 
 | 位置             | 验证内容                                 | 运行器                             |
