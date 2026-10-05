@@ -1,28 +1,43 @@
-# 开发交接：阅读器本体、文档理解与插件
+# 架构与数据流程
+
+[文档目录](README.md) · 相关：[开发与贡献](development.md)、[数据契约](document-analysis.md)、[插件开发](extensions.md)
+
+本页解释当前实现的分层与数据流。用户操作从[快速开始](get-started.md)进入；插件作者使用公开 SDK，不需要复制本体服务。
+
+## 按主题阅读
+
+| 主题             | 入口                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| 依赖与运行时边界 | [分层](#分层与入口)、[插件宿主](#插件宿主与工作台)、[安装与依赖](#本地插件安装与依赖生命周期) |
+| PDF 到结构化文档 | [分析流程](#文档分析流程)、[固定模型](#固定模型与资源)、[详细数据契约](document-analysis.md)  |
+| 持久化与恢复     | [缓存](#缓存与恢复)、[缓存管理](#缓存管理)、[用户数据说明](user-guide/data-and-cache.md)      |
+| 阅读、模型与公式 | [连续阅读](#连续阅读视图)、[问答图片](#模型选择与问答图片)、[公式流程](#公式定位语义与保真)   |
+| 修改界面         | [接入示例](#新界面接入示例)、[样式](styles.md)、[多语言](i18n.md)                             |
+| 测试证据         | [测试维护](../tests/README.md)、[历史验证记录](validation.md)                                 |
 
 ## 分层与入口
 
 这是本地应用：业务服务以 TypeScript 接口提供，桌面存储与网络由 Rust/Tauri 承接。浏览器预览使用同一业务服务和同一分析 Worker，只替换存储及网络适配器。当前没有独立 HTTP 服务进程。
 
-| 目录 / 文件 | 职责 | 界面重构时的处理 |
-| --- | --- | --- |
-| `src/domain/` | 文档、会话、版面 DTO；坐标和模型版本约定 | 复用数据契约，保持无 React / Tauri 依赖 |
-| `src/application/services.ts` | 本体的文献库、设置、模型服务、会话、解析与问答入口 | 本体界面调用这里；插件不可访问 |
-| `src/application/document-analysis/` | 文档分析生命周期、页内组装、全文语义及公式定位 | 建立/释放 session；规则变化时更新对应缓存版本 |
-| `src/application/ocr/` | 独立 OCR 配置、公式裁图调度、识别、校验及候选缓存 | 通过公式区域 DTO 调用，不依赖翻译协议 |
-| `src/sdk/` | 插件公开类型、能力接口和可选 React 工具包 | 插件唯一的本体依赖 |
-| `src/application/extensions/` | 安装计划、依赖图、激活、能力检查、资源归属、状态与本体服务适配 | `runtime.ts` 是唯一内置插件组合入口 |
-| `src/infrastructure/extensions/` | 包校验、持久安装仓库、独立 Worker 和受限消息桥 | 不反向依赖应用层 |
-| `src/components/extensions/` | 通用侧栏、底部面板、状态栏、树视图、Webview 和插件设置 | 按注册内容呈现，不包含翻译业务 |
-| `src/extensions/selection-translation/` | 完整单元/文字选取、背景、协议、翻译流程、结果和设置界面、文案 | 首个预装插件，仅通过 SDK 使用本体 |
-| `src/application/paper-assistant.ts` | 论文问答检索、会话上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
-| `src/application/model-catalog.ts` | 已添加模型配置、临时模型列表请求、逐模型图像能力 | 通过 services 获取，能力不按模型名称猜测 |
-| `src/infrastructure/pdf/document-preview.ts` | 独立生成并缓存 PDF 第一页预览 | 通过 services.library.preview 调用 |
-| `src/infrastructure/analysis/` | PDFium、ONNX、Worker RPC、缓存适配器 | UI 不直接访问 |
-| `src/infrastructure/platform.ts` | 桌面命令与浏览器持久化/网络适配器 | UI 不直接访问 |
-| `src-tauri/src/` | SQLite、PDF 文件、密钥库、模型 HTTP 请求 | 可独立演进；命令参数与 DTO 保持一致 |
-| `src/hooks/useDocumentAnalysis.ts` | 服务与 React 生命周期的衔接 | 换框架时替换该桥接层 |
-| `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件 | 可重新设计 |
+| 目录 / 文件                                     | 职责                                                           | 界面重构时的处理                              |
+| ----------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| `src/domain/`                                   | 文档、会话、版面 DTO；坐标和模型版本约定                       | 复用数据契约，保持无 React / Tauri 依赖       |
+| `src/application/services.ts`                   | 本体的文献库、设置、模型服务、会话、解析与问答入口             | 本体界面调用这里；插件不可访问                |
+| `src/application/document-analysis/`            | 文档分析生命周期、页内组装、全文语义及公式定位                 | 建立/释放 session；规则变化时更新对应缓存版本 |
+| `src/application/ocr/`                          | 独立 OCR 配置、公式裁图调度、识别、校验及候选缓存              | 通过公式区域 DTO 调用，不依赖翻译协议         |
+| `src/sdk/`                                      | 插件公开类型、能力接口和可选 React 工具包                      | 插件唯一的本体依赖                            |
+| `src/application/extensions/`                   | 安装计划、依赖图、激活、能力检查、资源归属、状态与本体服务适配 | `runtime.ts` 是唯一内置插件组合入口           |
+| `src/infrastructure/extensions/`                | 包校验、持久安装仓库、独立 Worker 和受限消息桥                 | 不反向依赖应用层                              |
+| `src/components/extensions/`                    | 通用侧栏、底部面板、状态栏、树视图、Webview 和插件设置         | 按注册内容呈现，不包含翻译业务                |
+| `src/extensions/selection-translation/`         | 完整单元/文字选取、背景、协议、翻译流程、结果和设置界面、文案  | 首个预装插件，仅通过 SDK 使用本体             |
+| `src/application/paper-assistant.ts`            | 论文问答检索、会话上下文与模型请求组装                         | 提供输入 DTO 和流式回调                       |
+| `src/application/model-catalog.ts`              | 已添加模型配置、临时模型列表请求、逐模型图像能力               | 通过 services 获取，能力不按模型名称猜测      |
+| `src/infrastructure/pdf/document-preview.ts`    | 独立生成并缓存 PDF 第一页预览                                  | 通过 services.library.preview 调用            |
+| `src/infrastructure/analysis/`                  | PDFium、ONNX、Worker RPC、缓存适配器                           | UI 不直接访问                                 |
+| `src/infrastructure/platform.ts`                | 桌面命令与浏览器持久化/网络适配器                              | UI 不直接访问                                 |
+| `src-tauri/src/`                                | SQLite、PDF 文件、密钥库、模型 HTTP 请求                       | 可独立演进；命令参数与 DTO 保持一致           |
+| `src/hooks/useDocumentAnalysis.ts`              | 服务与 React 生命周期的衔接                                    | 换框架时替换该桥接层                          |
+| `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件                          | 可重新设计                                    |
 
 ### 本体能力与插件流程
 
@@ -34,7 +49,7 @@
 
 调用方向为插件 → 公开 SDK → 插件宿主 → 本体能力 → infrastructure。文档分析、OCR、领域与基础设施不依赖插件；本体界面只读取宿主的通用注册项。唯一能够导入内置插件的本体文件是 `application/extensions/runtime.ts`，负责安装清单、加载模块和旧设置迁移。测试对静态导入、动态导入与间接依赖分别检查。
 
-`createFormulaReconstructor(ports)` 继续提供 OCR 的隔离测试端口。问答保留在 `paper-assistant.ts`，通过 `services.assistant.askPaper` 供本体聊天栏使用；`services.assistant.translateRegion` 已移除。选区翻译的业务 DTO 保存在插件自己的 `types.ts`，本体仅使用 `domain/reader.ts` 的来源预览 `ReaderSelection`。本次拆分不改变事实、语义或公式候选的缓存版本。
+`createFormulaReconstructor(ports)` 继续提供 OCR 的隔离测试端口。问答保留在 `paper-assistant.ts`，通过 `services.assistant.askPaper` 供本体聊天栏使用；`services.assistant.translateRegion` 已移除。选区翻译的业务 DTO 保存在插件自己的 `types.ts`，本体仅使用 `domain/reader.ts` 的来源预览 `ReaderSelection`。纯职责拆分不改变事实、语义或公式候选的缓存版本；规则变化另按版本契约处理。
 
 ## 插件宿主与工作台
 
@@ -42,13 +57,13 @@
 
 插件清单采用 `publisher/name/version/engines.cachalot/activationEvents/capabilities/contributes`。公开 API 使用 `activate(context)`、`context.subscriptions`、`Disposable`、命令注册、视图提供者与树数据提供者；取消使用标准 `AbortSignal`。具体约定和可执行的开发示例见 [插件开发指南](extensions.md)。这不是 VS Code 插件的二进制兼容层。
 
-宿主以激活作用域管理命令、工具、动作、视图、状态项、背景、覆盖框、事件与文案资源。所有注册自动归属，即使插件没有手动加入 subscriptions。停用先取消作用域，再释放全部资源并调用 deactivate；激活失败回滚已注册内容。重复启用不会累积注册。配置和 globalState 使用插件 ID 命名空间保存，停用保留这些数据。原来的 `translationPrompt` 首次迁入翻译插件的 `config:prompt`，已有插件设置不会被旧键覆盖。
+宿主以激活作用域管理命令、工具、动作、视图、状态项、背景、覆盖框、事件与文案资源。所有 SDK 注册自动归属，即使插件没有手动加入 subscriptions。社区 Worker 自建 Disposable 使用 signal 或 deactivate 清理，详见[生命周期](extension-api/lifecycle.md)。停用先取消作用域，再释放全部资源并调用 deactivate；激活失败回滚已注册内容。重复启用不会累积注册。配置和 globalState 使用插件 ID 命名空间保存，停用保留这些数据。原来的 `translationPrompt` 首次迁入翻译插件的 `config:prompt`，已有插件设置不会被旧键覆盖。
 
 预装/不可卸载由宿主安装清单的 `builtIn` 字段决定，不由插件自报。插件设置可停用或启用选区翻译，没有内置插件卸载入口，宿主也拒绝卸载。停用翻译不关闭阅读、分析、OCR 配置或本体问答。关闭结果窗口会取消该视图请求；停用插件会取消该插件全部请求。浏览器传输接收组合 AbortSignal，桌面使用 `ai_requests.rs` 的登记/取消机制，让 OCR 或 LLM 的 reqwest future 真正停止；即使适配器忽略信号，宿主也立即结束调用并屏蔽迟到的流式数据。页面分析是本体共享任务，不因单个插件停用而取消。
 
 工作台区分 `sidebar.left`、`sidebar.right`、`panel`、`settings` 与 `modal`。底部 panel 是可滚动内容区，statusbar 是独立状态行。侧栏和 panel 支持标签切换、关闭、重新展开、鼠标调整尺寸和移动位置；尺寸、位置及用户关闭状态由本体设置保存。树视图支持展开与命令，HTML Webview 在不带 same-origin 的 sandbox iframe 内，通过自己的消息通道与提供者交互；sandbox 禁止访问本体 DOM、顶层导航和弹出窗口，当前 HTML 的 CSP 禁止 fetch、外部脚本和表单提交。iframe 自身导航并未作为强网络隔离实现。复杂本地 React 视图只挂载在其拥有的内容根节点中。
 
-内置模块保留可信进程内加载；社区包通过安装预览、独立持久目录、opaque-origin Worker 与受限消息桥接入，同进程加载器不执行外部包。安装代码和 Webview UI 是两条独立隔离边界。当前仅支持本地包，没有在线市场或签名验证；浏览器隔离并非操作系统资源配额或完整恶意代码沙箱，详见下文与插件指南。
+内置模块保留可信进程内加载；社区包通过安装预览、独立持久安装仓库、opaque-origin Worker 与受限消息桥接入，同进程加载器不执行外部包。安装代码和 Webview UI 是两条独立隔离边界。当前仅支持本地包，没有在线市场或签名验证；浏览器隔离并非操作系统资源配额或完整恶意代码沙箱，详见下文与插件指南。
 
 ## 文献分类
 
@@ -103,12 +118,12 @@
 
 `src/domain/analysis.ts` 定义页面事实、版面观测及选区/公式展示 DTO；`src/domain/document-semantics.ts` 定义文档语义及来源引用。
 
-| 数据 | 包含内容 | 不应混入的内容 |
-| --- | --- | --- |
-| `PageFacts` | PDF 来源、提取版本、页面、原始字符/对象及坐标 | 段落、标题层级、阅读顺序、公式候选 |
-| `LayoutObservations` | 原始 Heron 检测框、类别、置信度、模型版本 | 接受后的文档结构与字符归属 |
-| `DocumentSemantics` | 节点、文字/公式内容片段、来源引用、阅读顺序、章节、关系、覆盖状态与推断依据 | OCR/LaTeX 候选和译文 |
-| `SemanticPageView` | 页面事实引用及文档结构的页面投影 | 独立持久化的页面树 |
+| 数据                 | 包含内容                                                                    | 不应混入的内容                     |
+| -------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
+| `PageFacts`          | PDF 来源、提取版本、页面、原始字符/对象及坐标                               | 段落、标题层级、阅读顺序、公式候选 |
+| `LayoutObservations` | 原始 Heron 检测框、类别、置信度、模型版本                                   | 接受后的文档结构与字符归属         |
+| `DocumentSemantics`  | 节点、文字/公式内容片段、来源引用、阅读顺序、章节、关系、覆盖状态与推断依据 | OCR/LaTeX 候选和译文               |
+| `SemanticPageView`   | 页面事实引用及文档结构的页面投影                                            | 独立持久化的页面树                 |
 
 `SourceRef` 保存文档 ID、页面、事实版本、坐标、字符索引与对象 ID；一个语义节点可以引用多页的多个片段。节点 ID 只在相应来源/语义版本内有效。来源引用不反向改写页面事实。LaTeX 原生候选在投影时重建，远端候选仍由公式资产仓库独立管理。
 
@@ -149,14 +164,14 @@
 
 UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-management.ts`；浏览器适配器为 `infrastructure/cache-management.ts`，桌面适配器为 Rust `cache.rs`。类别契约在 `domain/cache.ts`，浏览器缓存 schema 集中在 `infrastructure/cache-stores.ts`。
 
-| 类别 | 浏览器 | 桌面 | 清除后的恢复 |
-| --- | --- | --- | --- |
-| PDF 原生提取 | `cachalot-analysis/pages` 中原生版本 | `page_analysis` 的原生版本 | 重新打开时由 PDFium 提取，并重新建立依赖它的文档结构 |
-| 版面分析 | 同一 store 中的 Heron 原始观测 | `page_analysis` 的观测版本 | 重新运行 Heron，可复用原生数据 |
-| 文档语义 | `cachalot-semantics/documents` | `document_semantics` | 重新组装，可复用事实与原始观测 |
-| 问答文字索引 | localStorage `cachalot:page:` | `page_text` | 重新打开时从已有解析或新提取结果建立 |
-| 论文首页预览 | `cachalot-previews/previews`，兼容旧 `setting:preview:` | `settings` 中 `preview:` 项 | 返回文献库后由 PDF.js 渲染 |
-| 公式裁图与 OCR | `cachalot-formulas/assets` | `page_analysis` 中 `formula-assets:` 项 | 框选时重新裁图；复杂公式按设置请求远端识别 |
+| 类别           | 浏览器                                                  | 桌面                                    | 清除后的恢复                                         |
+| -------------- | ------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------- |
+| PDF 原生提取   | `cachalot-analysis/pages` 中原生版本                    | `page_analysis` 的原生版本              | 重新打开时由 PDFium 提取，并重新建立依赖它的文档结构 |
+| 版面分析       | 同一 store 中的 Heron 原始观测                          | `page_analysis` 的观测版本              | 重新运行 Heron，可复用原生数据                       |
+| 文档语义       | `cachalot-semantics/documents`                          | `document_semantics`                    | 重新组装，可复用事实与原始观测                       |
+| 问答文字索引   | localStorage `cachalot:page:`                           | `page_text`                             | 重新打开时从已有解析或新提取结果建立                 |
+| 论文首页预览   | `cachalot-previews/previews`，兼容旧 `setting:preview:` | `settings` 中 `preview:` 项             | 返回文献库后由 PDF.js 渲染                           |
+| 公式裁图与 OCR | `cachalot-formulas/assets`                              | `page_analysis` 中 `formula-assets:` 项 | 框选时重新裁图；复杂公式按设置请求远端识别           |
 
 公式原图与 OCR 候选是同一条记录，作为一组清除，界面单独展示候选数量，并提示重新识别的服务商费用。桌面公式记录写入时带有 `schemaVersion/documentId/page/cacheKey` 包装，符合共享 SQLite 保存接口的身份校验。
 
@@ -213,6 +228,8 @@ Heron 没有给出精确层级，当前采用保守规则：明确 `title` 为 h
 
 ## 新界面接入示例
 
+以下为本体界面生命周期片段；document、currentPage 与回调由调用组件提供。插件使用 SDK 的 documents/reader 接口，不直接创建此会话。
+
 ```ts
 import { services } from "../application/services";
 
@@ -234,25 +251,7 @@ session.dispose();
 
 ## 验证与当前边界
 
-```bash
-npm run test:types
-npm run test:all
-npm run test:e2e:paper -- /absolute/path/reference.pdf
-npm run build
-cd src-tauri && cargo check
-```
-
-测试的分层、单项命令、夹具与浏览器环境说明集中在 [测试维护指南](../tests/README.md)。
-
-参考论文：`Design_Control_and_Performance_of_Tracking_Power_Supply_for_a_Linear_Power_Amplifier.pdf`（用户提供，7 页）。检查双栏、矢量电路/曲线、位图波形、公式、说明、第 7 页表格。脚本将结构和截图保存到忽略 Git 的 `test-results/`；论文不打包、不提交。
-
-历史基线（2026-09-26，旧混合缓存）：7 页直接解析（WASM CPU 单线程）约 37 秒，包括模型初始化；这个耗时只代表当前开发机。生产构建 Chromium 集成测试通过了框选正文左半边、缓存重开（不请求模型/PDFium 二进制）、仅缺失第 7 页时续解析、模型文件不可用后的重试。原生提取加完整分析的 JSON 序列化大小约 **7.7 MB**，这不是 IndexedDB/SQLite 实际磁盘占用；另外保存原始 PDF。模型约 171 MB，为应用共享资源，每篇论文不重复保存。
-
-2026-10-04 双层架构验证：类型检查、单元/集成测试、9 项 Rust 测试、生产构建和格式检查通过。隔离 Chromium 的全部 12 个界面用例通过，另行验证模型文件不可用后的重试；七页论文缓存重开不加载 PDFium/Heron，仅删除第 7 页观测后只补该页。公式原始矢量导出通过 CropBox 偏移与 0/90/180/270 度旋转验证。新增用例还覆盖全文标题证据、缺页、跨页节点来源投影、上下文与精确选区分离、缓存清除代次、Worker 并发恢复和缓存打开失败后的重试。
-
-2026-10-04 完整单元框选验证：类型、单元/集成、生产构建和格式检查通过；6 个相关 Chromium 用例通过。覆盖完整包含与部分排除、行内公式随段落选中、拖动中的蓝紫覆盖框、反向拖动、缩放、中英文、两种横屏宽度、连续阅读、公式 OCR 与缓存恢复。实时七页分析的完整段落选区与应用生成的内容一致，浏览器无未捕获错误。
-
-2026-10-05 本地插件安装验证：类型、单元/集成、11 项 Rust 测试、生产构建和格式检查通过。插件浏览器用例覆盖多包补依赖、公开 API、升级与级联生命周期、持久恢复、独立事件订阅、隔离和无响应 Worker 恢复；生产构建的中英文安装用例保持原 PDF 节点及等待中的本体聊天请求。既有阅读、公式、缓存、模型与文献库回归通过；真实论文布局检查包含两种语言、两种横屏宽度和 56 张截图，没有水平溢出。Chromium 结果不代替桌面 WebKit 实际打包验证。
+类型、单元、集成、浏览器及 Rust 的命令和夹具集中在[测试维护指南](../tests/README.md)。按改动风险选择运行范围，开发流程见[开发与贡献](development.md)。已执行的论文、布局和插件回归移至[验证记录](validation.md)；历史耗时和旧缓存尺寸不作为当前版本的性能指标。
 
 当前支持版面识别、原生字符提取、选区正文过滤、公式来源保留与按需转写、持久缓存和可视区域核对。PDF.js 继续负责显示。尚未接入扫描件全文 OCR、TableFormer，尚未实现整篇图文混排译文导出；公式矢量区域导出已有服务接口。图表原图保留在翻译预览中。模型区域预测与阅读顺序可能出错，“版面”开关用于核对。桌面 Chromium 的通过结果不能替代 iPad Safari/WebView 真机测试。
 

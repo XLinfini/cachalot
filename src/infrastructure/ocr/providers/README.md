@@ -1,5 +1,7 @@
 # 公式 OCR 适配器
 
+[文档目录](../../../../docs/README.md) · 相关：[用户 OCR 设置](../../../../docs/user-guide/models-and-ocr.md)、[架构](../../../../docs/architecture.md)
+
 每个文件默认导出一个 `OcrAdapter`。Vite 的 `register-providers.ts` 自动加载此目录的 `*.ts`；新增常规 JSON / OpenAI Chat 接口只需新增一个适配器文件，不必改注册表、设置组件、模型类型联合或 Rust 厂商分支。这是构建时扩展点，新增文件后需要重新构建应用，不是运行时下载插件。
 
 现有实现：

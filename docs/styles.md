@@ -1,11 +1,15 @@
 # 界面样式维护
 
+[文档目录](README.md) · 相关：[开发与贡献](development.md)、[插件交互约定](extension-api/ux-guidelines.md)
+
+本页约束本体与可信内置 React 视图的样式。社区 Webview 自带 HTML/CSS，不自动继承本体 Tailwind 或主题，接入方式见[视图指南](extension-api/views.md)。
+
 界面使用 Tailwind CSS 4，由 `@tailwindcss/vite` 在构建时生成样式。组件使用 TypeScript；样式变更通常只涉及下列文件。
 
-| 位置 | 修改内容 |
-| --- | --- |
-| `src/styles/app.css` 的 `@theme` | 全局字体、主题色、圆角、阴影、断点 |
-| `src/sdk/ui/styles.ts` | 按钮、输入框、导航等通用控件的样式组合 |
+| 位置                                  | 修改内容                                 |
+| ------------------------------------- | ---------------------------------------- |
+| `src/styles/app.css` 的 `@theme`      | 全局字体、主题色、圆角、阴影、断点       |
+| `src/sdk/ui/styles.ts`                | 按钮、输入框、导航等通用控件的样式组合   |
 | `src/App.tsx`、`src/components/*.tsx` | 页面布局、间距、组件特有的样式和交互状态 |
 
 例如，修改 `--color-brand` 会更新所有 `bg-brand`、`text-brand`、`border-brand` 的使用位置；修改 `ui.primaryButton` 会更新共用该样式的主要按钮。旧版色值与尺寸保留在组件中，重设计时可逐步收敛为主题变量。
@@ -17,7 +21,7 @@
 - `cx()` 只连接类名，不处理冲突。同一个元素的同一种属性应明确选择一个值；类名在字符串中的先后顺序不决定覆盖关系。
 - 运行时坐标继续使用 `style`：PDF 缩放尺寸、框选矩形、版面区域、截图位置和目录层级缩进。不要把这些数值生成动态 Tailwind 类名。
 - `data-ui` 是浏览器测试的稳定定位标记。调整布局和类名时保留标记，测试不依赖某个颜色或样式类。
-- 本体业务服务仍在 `src/application/`，插件通过 `src/sdk/` 接入；持久化与模型调用由本体适配器提供。界面重构保持这个边界，详见 [开发交接文档](architecture.md)。
+- 本体业务服务仍在 `src/application/`，插件通过 `src/sdk/` 接入；持久化与模型调用由本体适配器提供。界面重构保持这个边界，详见 [架构文档](architecture.md)。
 
 当前断点为 `compact: 940px`、`desktop: 1200px`，沿用桌面和 iPad 横屏的布局。没有增加竖屏专用布局。
 
@@ -57,7 +61,7 @@ npm run test:styles -- /absolute/path/reference.pdf
 
 用例在 1440×1000 和 1194×834 两个尺寸下检查文献库、阅读器、翻译弹窗、模型设置、连续阅读、文字选择与公式来源重排。截图在 `test-results/styles-after/` 和 `test-results/styles-en/`，作为人工审阅材料；行为由独立断言检查。测试运行方式及夹具缓存见 [测试维护指南](../tests/README.md)。
 
-2026-09-26：连续阅读、多语言、问答图片模型切换和公式原图重排的生产构建检查通过，生成 56 张截图，无未捕获的浏览器错误。这些桌面浏览器检查不能代替 iPad 真机验证。
+既有截图与回归结果见[验证记录](validation.md)。桌面浏览器检查不能代替 iPad 真机验证。
 
 Tailwind 参考：[Vite 接入](https://tailwindcss.com/docs/installation/using-vite)、[主题变量](https://tailwindcss.com/docs/theme)、[类名扫描规则](https://tailwindcss.com/docs/detecting-classes-in-source-files)。
 

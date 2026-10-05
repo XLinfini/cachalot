@@ -1,5 +1,7 @@
 # 本体应用层目录与依赖
 
+[文档目录](../../docs/README.md) · 相关：[开发与贡献](../../docs/development.md)、[数据契约](../../docs/document-analysis.md)
+
 本体负责阅读、文档理解、OCR、模型配置、文献库和问答，选区翻译已迁到 `src/extensions/selection-translation/`。不要把插件业务重新放回 services 或阅读器组件。
 
 ```text
