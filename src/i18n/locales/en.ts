@@ -1,4 +1,19 @@
 export const en = {
+  workbench: {
+    commands: "Commands",
+    shortcuts: "Keyboard Shortcuts",
+    search: "Search commands or items",
+    keybinding: "Keybinding",
+    restore: "Restore default",
+    empty: "No matching commands",
+    submit: "Submit",
+    cancel: "Cancel",
+    close: "Close",
+    contextMenu: "Reader actions",
+    configuration: "Extension Configuration",
+    save: "Save",
+    saved: "Saved",
+  },
   extensions: {
     moveView: "Move view",
     positions: {

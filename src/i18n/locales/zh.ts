@@ -1,5 +1,20 @@
 import type { LocaleResource } from "./en";
 export const zh = {
+  workbench: {
+    commands: "命令面板",
+    shortcuts: "键盘快捷键",
+    search: "搜索命令或选项",
+    keybinding: "快捷键",
+    restore: "恢复默认",
+    empty: "没有匹配的命令",
+    submit: "确定",
+    cancel: "取消",
+    close: "关闭",
+    contextMenu: "阅读器操作",
+    configuration: "插件配置",
+    save: "保存",
+    saved: "已保存",
+  },
   extensions: {
     moveView: "移动视图",
     positions: {

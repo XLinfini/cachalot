@@ -26,6 +26,21 @@ npm run tauri build -- --debug --no-bundle
 
 build 首先离线校验固定权重，不应在安装后的用户操作中下载模型。构建产物在 dist 与 src-tauri/target，依赖、权重、数据库和测试输出不提交。
 
+## 并行开发工作树
+
+多个对话或开发者应使用不同 Git worktree 与开发分支。工作树隔离文件、暂存区和 HEAD，仍共享仓库对象与分支引用；不要在同一 checkout 中相互切换分支。
+
+每个工作树使用不同预览端口与 Vite 缓存：
+
+```sh
+CACHALOT_VITE_CACHE=/tmp/cachalot-feature-vite npm run dev -- --host 127.0.0.1 --port 1431 --strictPort
+CACHALOT_URL=http://127.0.0.1:1431 npm run test:e2e
+```
+
+自行准备依赖；若本机通过链接共享 node_modules，尤其要隔离 Vite 缓存。模型与构建输出不从另一个工作树提交。最终集成到 main 与开发工作树的提交是不同操作。
+
+插件脚手架和本地 SDK 导出命令见[插件教程](extension-api/get-started.md)；生成输出属于独立插件项目，不提交回本体作为临时构建产物。
+
 ## 目录与依赖方向
 
 ```text

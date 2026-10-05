@@ -1,3 +1,4 @@
+import { ExtensionConfiguration } from "./ExtensionConfiguration";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { extensionHost, extensionInstaller } from "../../application/extensions/runtime";
@@ -316,6 +317,10 @@ export function ExtensionSettings() {
               })}
             </p>
           )}
+          <ExtensionConfiguration
+            owner={item.id}
+            declarations={item.manifest.contributes?.configuration ?? []}
+          />
           {item.error && (
             <p role="alert" className={ui.formError}>
               {item.error}

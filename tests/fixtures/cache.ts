@@ -2,26 +2,51 @@ import { buildDocumentSemantics } from "../../src/application/document-analysis/
 import type { ContentBlock, NativePage } from "../../src/domain/analysis";
 import type { FormulaRecord } from "../../src/infrastructure/formula-repository";
 
-// A valid one-page PDF makes preview regeneration testable without a real paper.
-const content = "BT /F1 14 Tf 30 350 Td (Cache fixture paper) Tj ET\n";
-const objects = [
-  "<< /Type /Catalog /Pages 2 0 R >>",
-  "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-  "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-  `<< /Length ${content.length} >>\nstream\n${content}endstream`,
-  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-];
-let pdf = "%PDF-1.4\n";
-const offsets = [0];
-objects.forEach((object, index) => {
-  offsets.push(pdf.length);
-  pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-});
-const xref = pdf.length;
-pdf += `xref\n0 6\n0000000000 65535 f \n${offsets
-  .slice(1)
-  .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
-  .join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+// A small synthetic PDF supports storage and reader navigation without a real paper.
+export function cacheFixturePdf(pageCount = 1): Uint8Array {
+  const content = "BT /F1 14 Tf 30 350 Td (Cache fixture paper) Tj ET\n";
+  const kids = Array.from(
+    { length: pageCount },
+    (_, index) => (index === 0 ? 3 : 4 + index * 2) + " 0 R",
+  );
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + pageCount + " >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    "<< /Length " + content.length + " >>\nstream\n" + content + "endstream",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  for (let index = 1; index < pageCount; index++) {
+    objects.push(
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents " +
+        (5 + index * 2) +
+        " 0 R >>",
+      "<< /Length " + content.length + " >>\nstream\n" + content + "endstream",
+    );
+  }
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += index + 1 + " 0 obj\n" + object + "\nendobj\n";
+  });
+  const xref = pdf.length,
+    size = objects.length + 1;
+  pdf +=
+    "xref\n0 " +
+    size +
+    "\n0000000000 65535 f \n" +
+    offsets
+      .slice(1)
+      .map((offset) => String(offset).padStart(10, "0") + " 00000 n \n")
+      .join("") +
+    "trailer\n<< /Size " +
+    size +
+    " /Root 1 0 R >>\nstartxref\n" +
+    xref +
+    "\n%%EOF";
+  return new TextEncoder().encode(pdf);
+}
 
 // Historical payloads intentionally retain the old mixed shape for migration
 // and all-version cache clearing. Production exports no legacy analysis type.
@@ -82,6 +107,6 @@ export const cacheFixture = {
     },
   } satisfies FormulaRecord,
   preview: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-  pdfBytes: [...new TextEncoder().encode(pdf)],
+  pdfBytes: [...cacheFixturePdf()],
 };
 export type CacheFixture = typeof cacheFixture;

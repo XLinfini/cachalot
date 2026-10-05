@@ -68,6 +68,12 @@
 
 内置模块保留可信进程内加载；社区包通过安装预览、独立持久安装仓库、opaque-origin Worker 与受限消息桥接入，同进程加载器不执行外部包。安装代码和 Webview UI 是两条独立隔离边界。当前仅支持本地包，没有在线市场或签名验证；浏览器隔离并非操作系统资源配额或完整恶意代码沙箱，详见下文与插件指南。
 
+命令、菜单、快捷键与视图条件共享 domain/context-keys 的有限表达式解析器，不执行 eval。命令 enablement 在调用端和宿主执行时都检查。插件只能发布自己的上下文键；配置默认值和持久值进入宿主管理的标量条件。命令面板可展示尚未激活的已声明命令，执行走原有按命令激活机制。
+
+有类型的配置由 domain/extension-configuration 校验，旧字符串存储兼容。设置界面与插件 API 共用宿主按键排队写入，成功提交后通知本插件。公共输入、选择、通知与进度由 application/extensions/interactions 管理，每项归属激活作用域；停止插件取消交互，与本体阅读/聊天生命周期分离。
+
+PdfReader 将当前页、缩放、滚动与视口尺寸发布为 ReaderViewState。宿主通过 documents.read 控制公开读取与事件；滚动不触发整份工作台快照重建，页码变化则刷新上下文。WorkbenchServices 全局挂载命令面板、快捷键和公共交互；社区消息桥转发同一组接口。外部 bookmarks 示例用于验证公共 SDK，不使用内置 React 特权。
+
 ## 文献分类
 
 `services.categories.list/create/remove` 管理自建分类，`services.library.move(id, categoryId)` 修改归属，`null` 表示未分类。`DocumentRecord.categoryId` 是可选的兼容字段；旧文献自动归入未分类。每篇论文只归属一个普通分类，“我的收藏”按既有 `starred` 标记汇集论文，收藏和移动互不影响。“全部文献”不按分类或收藏过滤。

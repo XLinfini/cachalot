@@ -130,3 +130,89 @@ export const eventPackage = () => {
     ),
   };
 };
+
+export function workbenchPackage() {
+  const manifest: ExtensionManifest = {
+    ...extensionFixtureManifest,
+    name: "workbench",
+    engines: { cachalot: "^0.1.1" },
+    displayName: "Workbench fixture",
+    capabilities: ["documents.read", "reader.interact"],
+    contributes: {
+      commands: [
+        {
+          command: "fixture.workbench.run",
+          title: { zh: "插件交互", en: "Plugin interaction" },
+          enablement:
+            "reader.documentOpen && fixture.workbench.ready && config.fixture.workbench.enabled",
+        },
+        {
+          command: "fixture.workbench.ping",
+          title: "Context ping",
+          enablement: "reader.documentOpen",
+        },
+      ],
+      menus: [
+        {
+          location: "reader.toolbar",
+          command: "fixture.workbench.run",
+          when: "reader.documentOpen",
+        },
+        {
+          location: "reader.context",
+          command: "fixture.workbench.ping",
+          when: "reader.documentOpen",
+        },
+      ],
+      keybindings: [
+        { command: "fixture.workbench.ping", key: "ctrl+alt+b", when: "reader.documentOpen" },
+      ],
+      configuration: [
+        {
+          key: "enabled",
+          title: { zh: "启用交互", en: "Enable interaction" },
+          type: "boolean",
+          default: true,
+        },
+        {
+          key: "limit",
+          title: { zh: "结果数量", en: "Result limit" },
+          type: "integer",
+          default: 3,
+          minimum: 1,
+          maximum: 10,
+        },
+      ],
+    },
+  };
+  return {
+    manifest,
+    buffer: extensionArchive(
+      manifest,
+      [
+        "export async function activate(ctx) {",
+        "  const status = ctx.window.createStatusBarItem('fixture.workbench.status');",
+        "  status.show();",
+        "  const render = async () => { status.text = 'Config=' + await ctx.workspace.getConfiguration().get('enabled') + ';page=' + (ctx.reader.viewState?.page ?? 'none') + ';zoom=' + (ctx.reader.viewState?.zoom ?? 'none'); };",
+        "  await ctx.commands.setContext('fixture.workbench.ready', true);",
+        "  ctx.workspace.onDidChangeConfiguration(render);",
+        "  ctx.reader.onDidChangeViewState(render);",
+        "  ctx.commands.registerCommand('fixture.workbench.ping', () => ctx.window.showInformationMessage('Context command ran'));",
+        "  ctx.commands.registerCommand('fixture.workbench.run', async () => {",
+        "    const item = await ctx.window.showQuickPick([{id:'one',label:'First item'},{id:'two',label:'Second item'}], {title:'Pick fixture'});",
+        "    if (!item) return;",
+        "    const value = await ctx.window.showInputBox({title:'Name fixture',value:item.id});",
+        "    if (value === undefined) return;",
+        "    await ctx.window.withProgress({title:'Progress fixture',cancellable:true}, async (progress,signal) => {",
+        "      progress.report({increment:40,message:value});",
+        "      await new Promise((resolve,reject) => { const timer=setTimeout(resolve,600); signal.addEventListener('abort',()=>{clearTimeout(timer);reject(new Error('Cancelled'));},{once:true}); });",
+        "      progress.report({increment:60});",
+        "    });",
+        "    ctx.window.showInformationMessage('Completed ' + value);",
+        "  });",
+        "  await render();",
+        "}",
+      ].join("\n"),
+    ),
+  };
+}

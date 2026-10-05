@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionContext, ExtensionModule, ReaderSelection } from "../../src/sdk";
+import type {
+  ExtensionContext,
+  ExtensionManifest,
+  ExtensionModule,
+  ReaderSelection,
+} from "../../src/sdk";
 import { ExtensionHost, type HostPorts } from "../../src/application/extensions/host";
 import { extensionFixtureManifest, fixtureExtension } from "../fixtures/extensions";
 import { manifest as translatorManifest } from "../../src/extensions/selection-translation/manifest";
@@ -587,5 +592,167 @@ test("local installation and targeted restart do not retry unrelated failed exte
     host.getSnapshot().extensions.find((item) => item.id === "fixture.unrelated-failure")!.status,
     "error",
   );
+  await host.dispose();
+});
+
+test("context gates direct commands and menus, and owner keys are released on restart", async () => {
+  let runs = 0;
+  const manifest = structuredClone(extensionFixtureManifest);
+  manifest.contributes!.commands = [
+    {
+      command: "fixture.reader-tools.navigate",
+      title: "Navigate",
+      enablement: "reader.documentOpen && fixture.reader-tools.ready",
+    },
+  ];
+  manifest.contributes!.menus = [
+    {
+      location: "reader.toolbar",
+      command: "fixture.reader-tools.navigate",
+      when: "reader.documentOpen",
+    },
+  ];
+  manifest.contributes!.keybindings = [
+    { command: "fixture.reader-tools.navigate", key: "ctrl+alt+b", when: "reader.documentOpen" },
+  ];
+  const { host, context } = harness(
+    {
+      activate(ctx) {
+        ctx.commands.registerCommand("fixture.reader-tools.navigate", () => ++runs);
+      },
+    },
+    manifest,
+  );
+  await host.start();
+  assert.equal(host.getMenu("reader.toolbar").length, 0);
+  await assert.rejects(host.executeCommand("fixture.reader-tools.navigate"), /disabled/);
+  host.setActiveDocument("paper");
+  await context().commands.setContext("fixture.reader-tools.ready", true);
+  assert.equal(host.getMenu("reader.toolbar")[0].command.enabled, true);
+  assert.equal(host.resolveKeybinding("ctrl+alt+b"), "fixture.reader-tools.navigate");
+  assert.equal(host.resolveKeybinding("ctrl+alt+b", false, true), undefined);
+  assert.equal(await host.executeCommand("fixture.reader-tools.navigate"), 1);
+  await assert.rejects(context().commands.setContext("reader.documentOpen", false), /namespace/);
+  await host.setKeybinding("fixture.reader-tools.navigate", "ctrl+alt+n");
+  assert.equal(host.resolveKeybinding("ctrl+alt+b"), undefined);
+  assert.equal(host.resolveKeybinding("ctrl+alt+n"), "fixture.reader-tools.navigate");
+  await host.restart("fixture.reader-tools");
+  assert.equal(host.getSnapshot().context["fixture.reader-tools.ready"], undefined);
+  assert.equal(host.getMenu("reader.toolbar")[0].command.enabled, false);
+  assert.equal(runs, 1);
+  await host.dispose();
+});
+
+test("typed configuration persists, emits only scoped committed changes, and retains legacy settings", async () => {
+  const manifest = structuredClone(extensionFixtureManifest);
+  manifest.contributes!.configuration!.push({
+    key: "enabled",
+    title: "Enabled",
+    type: "boolean",
+    default: true,
+  });
+  const { host, context, saved } = harness({ activate() {} }, manifest);
+  await host.start();
+  const changed: unknown[] = [];
+  context().workspace.onDidChangeConfiguration((event) => changed.push(event));
+  assert.equal(await context().workspace.getConfiguration().get<boolean>("enabled"), true);
+  await context().workspace.getConfiguration().update("enabled", false);
+  await context().workspace.getConfiguration().update("enabled", false);
+  assert.deepEqual(changed, [{ key: "enabled", value: false }]);
+  assert.equal(saved.get("extensions:fixture.reader-tools:config:enabled"), "false");
+  assert.equal(host.getSnapshot().context["config.fixture.reader-tools.enabled"], false);
+  await assert.rejects(context().workspace.getConfiguration().update("enabled", "false"), /type/);
+  await host.restart();
+  assert.equal(await context().workspace.getConfiguration().get<boolean>("enabled"), false);
+  await host.updateConfigurationValue("fixture.reader-tools", "enabled", true);
+  assert.equal(changed.length, 1, "Old listener is released during restart");
+  await host.dispose();
+});
+
+test("reading state is copied, document scoped and reset on close", async () => {
+  const { host, context } = harness({ activate() {} });
+  await host.start();
+  host.setActiveDocument("paper");
+  const state = {
+    documentId: "paper",
+    page: 2,
+    pageCount: 5,
+    zoom: 1.5,
+    scrollTop: 400,
+    viewportHeight: 800,
+  };
+  host.publishReaderState(state);
+  const copied = context().reader.viewState!;
+  copied.page = 4;
+  assert.equal(context().reader.viewState!.page, 2);
+  host.publishReaderState({ ...state, documentId: "other", page: 3 });
+  assert.equal(context().reader.viewState!.page, 2);
+  assert.equal(host.getSnapshot().context["reader.page"], 2);
+  host.setActiveDocument(null);
+  assert.equal(context().reader.viewState, null);
+  await host.dispose();
+});
+
+test("plugin dialogs and progress are cancelled without owning core services", async () => {
+  const { host, context } = harness({ activate() {} });
+  await host.start();
+  const pick = context().window.showQuickPick([{ id: "one", label: "One" }]);
+  host.interactions.respond(host.getSnapshot().interactions[0].id, "one");
+  assert.equal((await pick)!.id, "one");
+  const input = context().window.showInputBox({ title: "Name", value: "old" });
+  host.interactions.respond(host.getSnapshot().interactions[0].id);
+  assert.equal(await input, undefined);
+  const progress = context().window.withProgress(
+    { title: "Work", cancellable: true },
+    async (reporter, signal) => {
+      reporter.report({ increment: 40, message: "Running" });
+      await new Promise<void>((_, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("Cancelled", "AbortError")),
+          { once: true },
+        ),
+      );
+      return 7;
+    },
+  );
+  const progressItem = host.getSnapshot().interactions[0];
+  assert.equal(progressItem.percent, 40);
+  host.interactions.dismiss(progressItem.id);
+  await assert.rejects(progress, { name: "AbortError" });
+  context().window.showInformationMessage("Notification");
+  const waiting = context().window.showInputBox({ title: "Pending" });
+  const rejection = assert.rejects(waiting, { name: "AbortError" });
+  await host.setEnabled("fixture.reader-tools", false);
+  await rejection;
+  assert.equal(host.getSnapshot().interactions.length, 0);
+  await host.dispose();
+});
+
+test("direct command initialization loads persisted conditions before activation", async () => {
+  let runs = 0;
+  const manifest: ExtensionManifest = dependencyManifest("lazy");
+  manifest.activationEvents = ["onCommand:fixture.lazy.run"];
+  manifest.contributes = {
+    ...manifest.contributes,
+    commands: [
+      { command: "fixture.lazy.run", title: "Run", enablement: "config.fixture.lazy.enabled" },
+    ],
+    configuration: [{ key: "enabled", title: "Enabled", type: "boolean", default: false }],
+  };
+  const saved = new Map([["extensions:fixture.lazy:config:enabled", "true"]]);
+  const { host } = harness(
+    {
+      activate(ctx) {
+        ctx.commands.registerCommand("fixture.lazy.run", () => ++runs);
+      },
+    },
+    manifest,
+    saved,
+  );
+  assert.equal(await host.executeCommand("fixture.lazy.run"), 1);
+  await host.updateConfigurationValue("fixture.lazy", "enabled", false);
+  await assert.rejects(host.executeCommand("fixture.lazy.run"), /disabled/);
+  assert.equal(runs, 1);
   await host.dispose();
 });

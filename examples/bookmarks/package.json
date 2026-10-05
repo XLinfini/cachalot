@@ -1,0 +1,94 @@
+{
+  "publisher": "example",
+  "name": "bookmarks",
+  "version": "0.1.0",
+  "displayName": {
+    "zh": "阅读书签",
+    "en": "Reading Bookmarks"
+  },
+  "description": {
+    "zh": "通过公开 SDK 保存当前阅读页并跳转，展示插件交互和配置。",
+    "en": "Save and navigate reading positions using the public SDK."
+  },
+  "engines": {
+    "cachalot": "^0.1.1"
+  },
+  "main": "extension.ts",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": [
+    "documents.read",
+    "reader.interact"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "example.bookmarks.add",
+        "title": {
+          "zh": "添加阅读书签",
+          "en": "Add Reading Bookmark"
+        },
+        "category": {
+          "zh": "书签",
+          "en": "Bookmarks"
+        },
+        "enablement": "reader.documentOpen && config.example.bookmarks.enabled"
+      },
+      {
+        "command": "example.bookmarks.open",
+        "title": {
+          "zh": "跳转到书签",
+          "en": "Go to Bookmark"
+        },
+        "enablement": "reader.documentOpen"
+      }
+    ],
+    "menus": [
+      {
+        "location": "reader.toolbar",
+        "command": "example.bookmarks.add",
+        "when": "reader.documentOpen"
+      },
+      {
+        "location": "view.title",
+        "command": "example.bookmarks.add",
+        "when": "view.id == example.bookmarks.tree"
+      },
+      {
+        "location": "reader.context",
+        "command": "example.bookmarks.add",
+        "when": "reader.documentOpen"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "example.bookmarks.add",
+        "key": "ctrl+alt+b",
+        "mac": "meta+alt+b",
+        "when": "reader.documentOpen"
+      }
+    ],
+    "views": [
+      {
+        "id": "example.bookmarks.tree",
+        "title": {
+          "zh": "书签",
+          "en": "Bookmarks"
+        },
+        "location": "sidebar.left"
+      }
+    ],
+    "configuration": [
+      {
+        "key": "enabled",
+        "title": {
+          "zh": "启用添加书签",
+          "en": "Enable adding bookmarks"
+        },
+        "type": "boolean",
+        "default": true
+      }
+    ]
+  }
+}

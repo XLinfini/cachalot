@@ -47,6 +47,7 @@
 | 服务商与密钥        | [ProviderEditor](../src/components/ProviderEditor.tsx)、[ApiKeyField](../src/components/ApiKeyField.tsx)                                                                     | 未保存草稿、临时模型目录、接口地址与真实密钥读取                  |
 | OCR 与缓存          | [OcrSettings](../src/components/OcrSettings.tsx)、[CacheSettings](../src/components/CacheSettings.tsx)                                                                       | 独立选择、连接检查、六类缓存、确认与统计错误                      |
 | 通用插件工作台      | [ExtensionWorkbench](../src/components/extensions/ExtensionWorkbench.tsx)、[ExtensionSettings](../src/components/extensions/ExtensionSettings.tsx)                           | 外部订阅、动态登记、树/Webview、视图实例、安装与依赖预览          |
+| 插件公共交互        | [WorkbenchServices](../src/components/extensions/WorkbenchServices.tsx)、[ExtensionConfiguration](../src/components/extensions/ExtensionConfiguration.tsx)                   | 命令面板/快捷键、右键菜单、输入/选择/进度及声明配置字段           |
 | 选区翻译插件 UI     | [TranslationPopup](../src/extensions/selection-translation/TranslationPopup.tsx)、[TranslationSettings](../src/extensions/selection-translation/TranslationSettings.tsx)     | 结果与提示词属于插件；经 SDK 挂载，不在 App 中直接导入            |
 | 共享显示与基础控件  | [MathMarkdown](../src/sdk/MathMarkdown.tsx)、[Modal](../src/components/ui/Modal.tsx)、[ActionMenu](../src/components/ui/ActionMenu.tsx)                                      | 数学/图片回退、原生 dialog、菜单 portal 与键盘行为                |
 
@@ -150,6 +151,8 @@ ProviderSettings 保留的是模型服务编辑器和已注册插件设置视图
 
 useExtensions 通过 useSyncExternalStore 订阅宿主。本体外壳启动宿主、同步活动文档与模型、订阅选区/错误；分析 hook 绑定 session 并发布语义；阅读器响应导航请求。移动这些职责时保留订阅释放与完整桥接，不能只保留视觉容器。
 
+ExtensionModals 同时挂载 WorkbenchServices，全局命令面板和插件输入不依赖当前阅读器侧栏是否打开。宿主 snapshot 的 context/interactions 是声明条件与公共 UI 来源；类型配置编辑调用宿主提交方法，不能绕过校验直接写平台键。PdfReader 发布 ReaderViewState 并在文档离开时清空，频繁滚动事件不应重挂载阅读工作区。命令、菜单、快捷键和自动配置的契约见[命令指南](extension-api/commands-and-context.md)与[配置指南](extension-api/configuration-and-ui.md)。
+
 每次 view.instance 拥有 data、signal 与 close。关闭或替换释放内容和请求；settings 栏目切换保留对应插件设置实例，停用插件会撤销注册。重启/更新插件最多重建相关插件实例，本体阅读和聊天继续存在。
 
 社区视图用 Tree/Webview；直接 HTMLElement/React 挂载仅供可信内置模块。替换 Webview 外壳时保持 sandbox、CSP、来源/消息校验；不为套主题加入 allow-same-origin 或绕过 SDK。社区 HTML 当前不自动继承 Tailwind、主题和本体文案。组件主题调整不等于已经提供新的社区主题 API。
@@ -164,7 +167,7 @@ useExtensions 通过 useSyncExternalStore 订阅宿主。本体外壳启动宿�
 
 本体词典在 src/i18n/locales，翻译词典在插件；清单与树/状态标签使用双语 Label。界面切语言不改变 PDF 内容、用户消息、翻译目标或已配置模型。
 
-通用 Modal 已用原生 dialog 提供 Escape、焦点限制和恢复；ActionMenu 有 portal、外部关闭、方向键和焦点恢复。当前插件 modal 并未由工作台统一提供这些可访问行为，新外壳可补齐，不能将它描述为所有插件已经自动具备。状态/错误可被读出，禁用原因、输入标签与操作名称都维护中英文。
+通用 Modal 已用原生 dialog 提供 Escape、焦点限制和恢复；ActionMenu 有 portal、外部关闭、方向键和焦点恢复。公共命令面板和输入/选择对话框已提供 Escape、焦点限制与恢复；任意插件 modal 并未由工作台统一提供这些可访问行为，新外壳可补齐，不能将它描述为所有插件已经自动具备。状态/错误可被读出，禁用原因、输入标签与操作名称都维护中英文。
 
 测试优先使用角色与可访问名称；现有 data-ui、data-document-id、data-page、data-extension-view 与 data-location 是跨视觉修改的稳定接口。迁移节点时保持标记含义，不能为让旧测试通过把同一标记复制到无关节点；业务变更在原有验证边界更新断言。
 

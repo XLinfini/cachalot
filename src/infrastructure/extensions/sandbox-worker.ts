@@ -162,9 +162,10 @@ export function sandboxWorker(module: ExtensionModule) {
         update: (key: string, value: Any) => invoke("globalState.update", key, value),
       },
       workspace: {
+        onDidChangeConfiguration: event("configuration"),
         getConfiguration: () => ({
-          get: (key: string) => invoke("configuration.get", key),
-          update: (key: string, value: string) => invoke("configuration.update", key, value),
+          get: (key: string, fallback?: Any) => invoke("configuration.get", key, fallback),
+          update: (key: string, value: Any) => invoke("configuration.update", key, value),
         }),
       },
       localization: {
@@ -179,11 +180,19 @@ export function sandboxWorker(module: ExtensionModule) {
         },
       },
       commands: {
+        setContext: (key: string, value: Any) => invoke("commands.setContext", key, value),
         registerCommand: (id: string, handler: Any) => resource("command", id, handler),
         executeCommand: (id: string, ...args: Any[]) =>
           invoke("commands.executeCommand", id, ...args),
       },
       window: {
+        showInformationMessage: (message: string) =>
+          queue(invoke("window.showInformationMessage", message)),
+        showWarningMessage: (message: string) =>
+          queue(invoke("window.showWarningMessage", message)),
+        showQuickPick: (...args: Any[]) => invoke("window.showQuickPick", ...args),
+        showInputBox: (...args: Any[]) => invoke("window.showInputBox", ...args),
+        withProgress: (options: Any, task: Any) => invoke("window.withProgress", options, task),
         registerViewProvider() {
           throw new Error(
             "Installed extensions use TreeDataProvider or WebviewViewProvider; direct DOM views are bundled-only",
@@ -273,6 +282,12 @@ export function sandboxWorker(module: ExtensionModule) {
         onDidChangeDocument: event("document"),
       },
       reader: {
+        get viewState() {
+          if (!state.extension.manifest.capabilities.includes("documents.read"))
+            throw new Error("Capability not declared: documents.read");
+          return state.viewState ? { ...state.viewState } : null;
+        },
+        onDidChangeViewState: event("readerState"),
         get activeDocumentId() {
           if (!state.extension.manifest.capabilities.includes("documents.read"))
             throw new Error("Capability not declared: documents.read");
@@ -350,6 +365,7 @@ export function sandboxWorker(module: ExtensionModule) {
             if (args[0] === "activeDocument") state.activeDocumentId = args[1];
             if (args[0] === "selection") state.selection = args[1];
             if (args[0] === "model") state.model = args[1];
+            if (args[0] === "readerState") state.viewState = args[1];
             if (message.method === "event") events.get(args[2])?.(decode(args[1]));
             break;
           case "webviewMessage":

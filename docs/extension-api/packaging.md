@@ -15,11 +15,13 @@ npm run extension:pack -- examples/reader-tools /tmp/example.reader-tools.cachx
 
 独立目录传给同一打包器；其依赖需先在开发环境准备好。打包器不会执行该插件的 npm scripts 或自动安装依赖。
 
+独立项目推荐用 `npm run extension:create -- /absolute/path/new-project publisher.name` 创建，或 `npm run extension:sdk -- /absolute/path/sdk` 导出本地 SDK。导出包含可安装的 package.json、公开声明依赖闭包和浏览器纯工具；不是另一个插件宿主。入门步骤见[教程](get-started.md#用脚手架创建独立项目)。
+
 ## 打包器契约
 
 [package-extension.ts](../../scripts/package-extension.ts) 读取源 package.json，用 esbuild 将入口、第三方库和 SDK 纯工具合并为浏览器 IIFE，导出全局 `cachalotExtension`。包内 main 改为 `extension.js`。
 
-- `cachalot` 入口由工具识别；SDK 尚未发布 npm 包，类型工程需要本地映射。
+- `cachalot` 入口由工具识别；SDK 尚未发布 npm 包；脚手架附带自包含本地 SDK，也支持手动类型映射。
 - 源码类型导入会移除，运行依赖应打入入口，不保留外部 runtime import。
 - Node 原生模块不属于浏览器运行环境；`cachalot/react` 被拒绝，社区 UI 使用 Webview。
 - `files` 只列需要的包内资源文件或目录；不要将 node_modules、真实凭据、模型权重或测试输出列入。
@@ -69,7 +71,7 @@ export async function readNote(context: ExtensionContext) {
 
 ## 运行边界
 
-社区代码运行在 opaque-origin iframe 启动的 Blob Worker，主代码不在 UI 线程，也没有 document、Tauri、同源 IndexedDB 或任意网络访问。操作通过限定 SDK 桥校验能力、归属和展示数据。树与 Webview 是社区视图入口。
+社区代码运行在 opaque-origin iframe 启动的 Blob Worker，主代码不在 UI 线程，也没有 document、Tauri、同源 IndexedDB 或任意网络访问。操作通过限定 SDK 桥校验能力、归属和展示数据。树与 Webview 是社区视图入口。不要假定主页面的所有 Web API 都在此可用，例如 opaque-origin Worker 中 crypto.randomUUID 可能缺失；书签示例用 crypto.getRandomValues 生成局部 ID。
 
 当前约束还包括每插件最多 1,024 个桥注册、最多 256 个待完成 RPC、每秒 2,000 个入站 SDK 消息、激活 15 秒超时；宿主发起的 RPC 调用有 120 秒上限。心跳停滞在可见窗口中检测并终止，隐藏窗口避免因节流误判。正常停止最多等待 deactivate 250 ms。
 

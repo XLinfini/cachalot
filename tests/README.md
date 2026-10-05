@@ -56,6 +56,8 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 
 应用层目录边界由 `unit/application-boundaries.test.ts` 检查，包括静态导入、目录公开入口和动态导入的间接依赖；文档分析不能依赖 OCR/插件，OCR 不能依赖插件，domain/infrastructure 不能反向依赖 application。插件只能依赖自己的包和公开 SDK；只有宿主组合入口能导入内置插件。纯选区、标题、位置标记仍在既有单元模块维护。`unit/analysis.test.ts` 区分完整段落/行间公式框选与文字模式精确选择；`e2e/reader-navigation.spec.ts` 独立验证实时蓝紫覆盖框、未命中时无翻译入口、反向拖动、缩放及中英文行为。OCR 流程编排由 `integration/formula-reconstruction.test.ts` 通过生产服务的副作用端口验证精确区域、独立模型、字符校验、模型/版本缓存隔离、失败停止与原图回退；共享 Unicode/公式夹具在 `fixtures/formulas.ts`。厂商协议继续在既有 OCR 适配器测试维护，不为目录迁移新建按任务命名的脚本。
 
+上下文解析、组合键与配置 schema 的纯规则在 `unit/context-keys.test.ts`；命令 enablement、命名空间、配置提交事件、阅读状态副本与交互取消在既有 `integration/extensions.test.ts`。清单条件、SDK 导出与脚手架不覆盖已有目录在 `integration/extension-packages.test.ts`。真实安装 Worker 的配置编辑、命令面板、快捷键、QuickPick/InputBox/Progress 调用链及停用清理在 `e2e/extension-installation.spec.ts`，同时验证中英文和本体阅读保持。该模块还实际打包 examples/bookmarks，验证右键/视图标题菜单、双页跳转和重载后保存状态；双页 PDF 复用 fixtures/cache.ts 的生成器。
+
 插件宿主的新验证边界在 `integration/extensions.test.ts`：自动资源归属、事件释放、命令激活、停用/再启用、配置迁移、能力检查、不可卸载内置插件、激活失败回滚、激活期间取消以及 OCR/LLM 的迟到结果屏蔽。`fixtures/extensions.ts` 是独立 SDK 使用者，提供背景、悬停、树侧栏、Webview panel 与状态项。`e2e/extensions.spec.ts` 使用合成 PDF 和本地 SSE 夹具验证真实工作台、插件设置保留以及停用翻译后本体问答仍可使用；浏览器开发加载器只在隔离测试内通过宿主安装该夹具，不进入生产安装清单。
 
 桌面网络取消的路由测试维护在既有 `native-ocr.test.ts`，浏览器 OCR/LLM 的 fetch 信号传递在 `ocr.test.ts` 验证。Rust `ai_requests::tests` 验证取消早于请求执行及中断 pending future，OCR 流程测试验证取消不产生后续批次或缓存写入。插件浏览器回归还覆盖延迟激活不覆盖用户主动选择的文字模式；未保存的设置草稿跨栏目/语言切换由既有布局回归验证。SDK 类型和插件自身业务 DTO 都参加 `test:types`。

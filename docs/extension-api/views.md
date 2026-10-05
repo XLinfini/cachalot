@@ -18,7 +18,7 @@
 
 ## 命令与菜单
 
-清单用 `contributes.commands` 声明命令，在 activate 中注册处理函数。可以将同一命令加入 `contributes.menus` 的 `reader.toolbar`，也可由树节点或状态项引用。
+清单用 `contributes.commands` 声明命令，在 activate 中注册处理函数。同一命令可加入阅读工具栏、阅读右键、视图标题或命令面板菜单，也可由树节点或状态项引用。菜单与视图可声明 when，命令可声明 enablement。
 
 ```ts
 import type { ExtensionContext } from "cachalot";
@@ -31,7 +31,7 @@ export function activate(context: ExtensionContext) {
 }
 ```
 
-该命令的清单需声明 `documents.read`、`reader.interact` 与匹配的 command ID。`executeCommand` 返回 Promise，可调用已声明的命令激活入口；它不是任意系统命令接口。当前没有通用命令面板或任意快捷键贡献点。
+该命令的清单需声明 `documents.read`、`reader.interact` 与匹配的 command ID。`executeCommand` 返回 Promise，可调用已声明的命令激活入口；它不是任意系统命令接口。Ctrl+Shift+P（macOS 为 Cmd+Shift+P）打开命令面板；清单可贡献单组合快捷键，用户可覆盖。完整条件语法和菜单位置见[命令与上下文](commands-and-context.md)。
 
 ## 树视图
 
@@ -131,6 +131,10 @@ HTML 在无 same-origin 的 sandbox iframe 中执行，禁止顶层导航、弹�
 `window.showView(id, data)` 展示自己的已注册视图，并为新实例传入 data。`ViewHandle` 有 `data`、`signal`、`close()`；关闭或替换实例会取消旧 signal。
 
 设置视图在同一设置窗口内切换栏目或语言时保持挂载，便于保存未提交草稿；离开设置或停用插件时释放。关闭侧栏或 panel 不卸载整插件，重新打开应能创建新视图实例。
+
+## 公共交互服务
+
+临时选择、输入、通知与进度优先使用 window.showQuickPick、showInputBox、showInformationMessage、showWarningMessage、withProgress，无需建立 Webview。简单声明配置由宿主自动生成设置字段；复杂配置仍可用 settings 视图。调用、结果与取消见[配置与公共交互](configuration-and-ui.md)。
 
 ## 状态栏
 

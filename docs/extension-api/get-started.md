@@ -17,7 +17,25 @@ examples/reader-tools/
 
 仓库示例使用 `../../src/sdk` 作为类型入口，参与 `npm run test:types`。独立项目可用 `import type { ExtensionContext } from "cachalot"`，并在自己的 tsconfig 中将 `paths.cachalot` 映射到本地 Cachalot 仓库的 `src/sdk/index.ts`。这只是类型解析，当前不能把 `npm install cachalot` 当作已经发布的 SDK 安装步骤。
 
-## 独立项目的类型检查
+## 用脚手架创建独立项目
+
+在 Cachalot 仓库运行：
+
+```sh
+npm run extension:create -- /tmp/my-extension example.my-extension
+```
+
+目标目录必须不存在；工具不会覆盖已有项目。它生成双语清单、src/extension.ts、tsconfig、package.json，以及自包含的 sdk/ 类型与纯工具，不留下指向本体源码的绝对路径。生成项目中运行 npm install 与 npm run check；依赖中 cachalot 使用本地 file:./sdk。
+
+打包仍从 Cachalot 仓库运行：
+
+```sh
+npm run extension:pack -- /tmp/my-extension /tmp/example.my-extension.cachx
+```
+
+安装后打开命令面板执行“你好”。SDK 未发布 npm 包，不使用 npm install cachalot 从公共 registry 获取它。已有项目可用 npm run extension:sdk -- /tmp/cachalot-sdk 单独导出 SDK；或继续使用下面的源码类型映射。
+
+## 手动配置独立项目的类型检查
 
 若插件目录与 Cachalot 仓库并列，例如 cachalot/ 和 my-extension/，在插件目录安装 TypeScript 开发依赖：
 

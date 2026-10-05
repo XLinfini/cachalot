@@ -12,7 +12,7 @@ import {
 import * as pdfjs from "pdfjs-dist";
 import type { RefProxy } from "pdfjs-dist/types/src/display/api";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { onRevealPage } from "../application/extensions/runtime";
+import { extensionHost, onRevealPage } from "../application/extensions/runtime";
 import { ExtensionToolbar, label, useExtensions } from "./extensions/ExtensionWorkbench";
 import { services } from "../application/services";
 import type { ReaderSelection } from "../domain/reader";
@@ -192,7 +192,34 @@ export default function PdfReader({
     return () => subscription.dispose();
   }, [document.id, positions, scrollRoot]);
 
+  const publishViewState = (number: number) => {
+    if (!scrollRoot) return;
+    extensionHost.publishReaderState({
+      documentId: document.id,
+      page: number,
+      pageCount: document.pageCount,
+      zoom,
+      scrollTop: scrollRoot.scrollTop,
+      viewportHeight: scrollRoot.clientHeight,
+    });
+  };
+  useEffect(() => {
+    publishViewState(page);
+    if (!scrollRoot) return;
+    const resize = new ResizeObserver(() => publishViewState(reportedPage.current));
+    resize.observe(scrollRoot);
+    return () => resize.disconnect();
+  }, [document.id, page, zoom, scrollRoot, positions, extensions.context["reader.documentId"]]);
+  useEffect(
+    () => () => {
+      if (extensionHost.getSnapshot().context["reader.documentId"] === document.id)
+        extensionHost.publishReaderState(null);
+    },
+    [document.id],
+  );
+
   const reportPage = (number: number) => {
+    publishViewState(number);
     if (reportedPage.current === number) return;
     reportedPage.current = number;
     onPageChange(number);
