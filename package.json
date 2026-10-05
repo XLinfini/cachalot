@@ -39,15 +39,17 @@
     "test:category-ui": "node --import tsx scripts/run-paper-tests.ts tests/e2e/library-categories.spec.ts",
     "test:library-sort": "node --import tsx tests/unit/library-sort.test.ts",
     "test:library-sort-ui": "playwright test tests/e2e/library-sort.spec.ts",
-    "format": "prettier --write src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions vite.config.ts",
-    "format:check": "prettier --check src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions vite.config.ts",
+    "format": "prettier --write src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
+    "format:check": "prettier --check src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "extension:pack": "node --import tsx scripts/package-extension.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.22",
     "@embedpdf/pdfium": "2.15.1",
     "@tauri-apps/api": "^2.11.1",
+    "fflate": "^0.8.3",
     "i18next": "26.4.2",
     "katex": "^0.18.9",
     "lucide-react": "^1.48.0",
@@ -58,7 +60,8 @@
     "react-i18next": "17.0.15",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
@@ -67,7 +70,9 @@
     "@types/katex": "^0.16.8",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/semver": "^7.8.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
     "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",

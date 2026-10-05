@@ -11,7 +11,8 @@
 | `src/application/document-analysis/` | 文档分析生命周期、页内组装、全文语义及公式定位 | 建立/释放 session；规则变化时更新对应缓存版本 |
 | `src/application/ocr/` | 独立 OCR 配置、公式裁图调度、识别、校验及候选缓存 | 通过公式区域 DTO 调用，不依赖翻译协议 |
 | `src/sdk/` | 插件公开类型、能力接口和可选 React 工具包 | 插件唯一的本体依赖 |
-| `src/application/extensions/` | 插件清单、激活、能力检查、资源归属、状态与本体服务适配 | `runtime.ts` 是唯一内置插件组合入口 |
+| `src/application/extensions/` | 安装计划、依赖图、激活、能力检查、资源归属、状态与本体服务适配 | `runtime.ts` 是唯一内置插件组合入口 |
+| `src/infrastructure/extensions/` | 包校验、持久安装仓库、独立 Worker 和受限消息桥 | 不反向依赖应用层 |
 | `src/components/extensions/` | 通用侧栏、底部面板、状态栏、树视图、Webview 和插件设置 | 按注册内容呈现，不包含翻译业务 |
 | `src/extensions/selection-translation/` | 完整单元/文字选取、背景、协议、翻译流程、结果和设置界面、文案 | 首个预装插件，仅通过 SDK 使用本体 |
 | `src/application/paper-assistant.ts` | 论文问答检索、会话上下文与模型请求组装 | 提供输入 DTO 和流式回调 |
@@ -47,7 +48,7 @@
 
 工作台区分 `sidebar.left`、`sidebar.right`、`panel`、`settings` 与 `modal`。底部 panel 是可滚动内容区，statusbar 是独立状态行。侧栏和 panel 支持标签切换、关闭、重新展开、鼠标调整尺寸和移动位置；尺寸、位置及用户关闭状态由本体设置保存。树视图支持展开与命令，HTML Webview 在不带 same-origin 的 sandbox iframe 内，通过自己的消息通道与提供者交互；sandbox 禁止访问本体 DOM、顶层导航和弹出窗口，当前 HTML 的 CSP 禁止 fetch、外部脚本和表单提交。iframe 自身导航并未作为强网络隔离实现。复杂本地 React 视图只挂载在其拥有的内容根节点中。
 
-当前加载器服务于经过信任的打包模块和开发安装清单；尚无社区插件安装 UI、商店、签名、文件系统包管理或独立 Extension Host 进程。能力声明与只读清单约束 SDK 调用，但同进程 JavaScript 不是恶意插件安全沙箱。开放任意第三方执行代码前，必须增加独立运行时、消息桥和安装授权；SDK、宿主注册表与通用工作台已作为该边界分离。Webview 已隔离 HTML UI，不等同于隔离插件主代码。
+内置模块保留可信进程内加载；社区包通过安装预览、独立持久目录、opaque-origin Worker 与受限消息桥接入，同进程加载器不执行外部包。安装代码和 Webview UI 是两条独立隔离边界。当前仅支持本地包，没有在线市场或签名验证；浏览器隔离并非操作系统资源配额或完整恶意代码沙箱，详见下文与插件指南。
 
 ## 文献分类
 
@@ -251,4 +252,16 @@ cd src-tauri && cargo check
 
 2026-10-04 完整单元框选验证：类型、单元/集成、生产构建和格式检查通过；6 个相关 Chromium 用例通过。覆盖完整包含与部分排除、行内公式随段落选中、拖动中的蓝紫覆盖框、反向拖动、缩放、中英文、两种横屏宽度、连续阅读、公式 OCR 与缓存恢复。实时七页分析的完整段落选区与应用生成的内容一致，浏览器无未捕获错误。
 
+2026-10-05 本地插件安装验证：类型、单元/集成、11 项 Rust 测试、生产构建和格式检查通过。插件浏览器用例覆盖多包补依赖、公开 API、升级与级联生命周期、持久恢复、独立事件订阅、隔离和无响应 Worker 恢复；生产构建的中英文安装用例保持原 PDF 节点及等待中的本体聊天请求。既有阅读、公式、缓存、模型与文献库回归通过；真实论文布局检查包含两种语言、两种横屏宽度和 56 张截图，没有水平溢出。Chromium 结果不代替桌面 WebKit 实际打包验证。
+
 当前支持版面识别、原生字符提取、选区正文过滤、公式来源保留与按需转写、持久缓存和可视区域核对。PDF.js 继续负责显示。尚未接入扫描件全文 OCR、TableFormer，尚未实现整篇图文混排译文导出；公式矢量区域导出已有服务接口。图表原图保留在翻译预览中。模型区域预测与阅读顺序可能出错，“版面”开关用于核对。桌面 Chromium 的通过结果不能替代 iPad Safari/WebView 真机测试。
+
+## 本地插件安装与依赖生命周期
+
+`extensions/installer.ts` 根据本地包与当前宿主目录生成安装计划，验证传递依赖、插件组合、循环和内置插件保护，持久化提交后调用 `host.installBatch`。`dependencies.ts` 在开始任何激活 Promise 前检查完整可达依赖图，按消费者 → 提供者顺序释放、按提供者 → 消费者顺序重新激活。`extensionDependencies` 是硬依赖，`extensionPack` 只是安装组合；启用会恢复所需依赖，停用/卸载提供者需处理消费者。API 返回值通过 SDK `extensions.getExtension` 访问，不跨包导入。
+
+`infrastructure/extensions/repository.ts` 使用独立 IndexedDB 安装目录（桌面 Webview 和浏览器相同契约），多个包写入一个事务，不把安装代码当论文缓存。`package.ts` 校验 ZIP 元数据、路径、条目尺寸与 CRC、清单及 SemVer；`package.worker.ts` 使展开不占阅读器线程。`sandbox.ts` 为每个安装插件创建 opaque-origin iframe 中的独立 Worker，`sandbox-worker.ts` 提供 SDK 消息客户端，`rpc.ts` 处理有界调用、错误与清理。任意安装代码不会进入可信内置插件 `load`。
+
+安装、更新和手动重启只更换插件作用域，不重新创建本体服务或刷新窗口。App 在设置页打开时保留不可交互的阅读工作区；当前 DocumentAnalysisSession、PDF 节点和本体聊天请求保持挂载。注册工具、异步预览/选取和动作条件由阅读器做代次检查，迟到结果无法覆盖新选取。树/Webview 是安装插件的 UI 通道；直接 DOM 挂载仅用于可信内置模块。
+
+开发打包器 `scripts/package-extension.ts` 生成 `.cachx`，示例见 `examples/reader-tools`，包格式、能力授权、依赖错误处理及尚未实现的在线分发/签名见 [插件指南](extensions.md)。

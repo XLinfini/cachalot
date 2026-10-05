@@ -19,3 +19,6 @@ src-tauri/gen/schemas/
 *.sqlite
 *.sqlite3
 .DS_Store
+
+# Locally packaged extensions are build artifacts.
+*.cachx

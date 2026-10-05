@@ -6,6 +6,8 @@
     "scripts/inspect-paper.ts",
     "scripts/run-paper-tests.ts",
     "playwright.config.ts",
-    "vite.config.ts"
+    "vite.config.ts",
+    "scripts/package-extension.ts",
+    "examples/**/*.ts"
   ]
 }

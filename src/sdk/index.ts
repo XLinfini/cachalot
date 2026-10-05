@@ -47,7 +47,13 @@ export interface ExtensionManifest {
   version: string;
   displayName: Label;
   description: Label;
-  engines: { cachalot: "^0.1.0" };
+  engines: { cachalot: string };
+  /** Hard dependencies, activated before this extension (VS Code semantics). */
+  extensionDependencies?: string[];
+  /** Installation group; members remain independently manageable. */
+  extensionPack?: string[];
+  /** Bundled browser IIFE entry, exporting global cachalotExtension. */
+  main?: string;
   activationEvents: ("onStartupFinished" | "onDocumentOpen" | `onCommand:${string}`)[];
   capabilities: Capability[];
   contributes?: {
@@ -76,14 +82,17 @@ export interface InteractionTool {
   tooltip?: Label;
   icon?: Label;
   mode: "rectangle";
-  preview(page: SemanticPageView, box: Box): ReaderDecoration[];
-  select(page: SemanticPageView, gesture: ReaderGesture): ReaderSelection | null;
+  preview(page: SemanticPageView, box: Box): ReaderDecoration[] | Promise<ReaderDecoration[]>;
+  select(
+    page: SemanticPageView,
+    gesture: ReaderGesture,
+  ): ReaderSelection | null | Promise<ReaderSelection | null>;
 }
 export interface SelectionAction {
   id: string;
   title: Label;
   icon?: Label;
-  when?(selection: ReaderSelection): boolean;
+  when?(selection: ReaderSelection): boolean | Promise<boolean>;
   run(selection: ReaderSelection, signal: AbortSignal): void | Promise<void>;
 }
 export interface HoverProvider {
@@ -133,6 +142,12 @@ export interface ExtensionContext {
   extension: { id: string; manifest: ExtensionManifest };
   subscriptions: Disposable[];
   signal: AbortSignal;
+  extensions: {
+    /** APIs are available only for declared hard dependencies. Cross-runtime methods are async. */
+    getExtension<T = unknown>(id: string): Extension<T> | undefined;
+  };
+  /** Read an installed package asset. No access to arbitrary host files. */
+  resources: { read(path: string): Promise<Uint8Array> };
   localization: {
     readonly language: "zh" | "en";
     onDidChangeLanguage: Event<"zh" | "en">;
@@ -205,6 +220,15 @@ export interface ExtensionContext {
   };
 }
 export interface ExtensionModule {
-  activate(context: ExtensionContext): void | Promise<void>;
+  activate(context: ExtensionContext): unknown | Promise<unknown>;
   deactivate?(): void | Promise<void>;
+  /** Host runtime adapter only; not an extension entry-point export. */
+  onDidFail?: Event<Error>;
+}
+export interface Extension<T = unknown> {
+  readonly id: string;
+  readonly manifest: ExtensionManifest;
+  readonly isActive: boolean;
+  readonly exports: T;
+  activate(): Promise<T>;
 }

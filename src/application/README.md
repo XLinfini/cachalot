@@ -14,6 +14,8 @@ ocr/                           明确公式区域 → 原图、识别候选与�
   settings.ts / catalog.ts     OCR 模型选择、预设和端点
 extensions/                    公开 SDK 与本体能力之间的宿主
   host.ts                      安装元数据、激活作用域、注册、事件与状态
+  dependencies.ts              依赖图校验、消费者释放顺序
+  installer.ts                 本地包安装计划、持久化与运行目录更新
   events.ts                    Disposable、事件与取消适配
   runtime.ts                   唯一内置插件组合入口与本体服务适配
 services.ts                    本体界面的副作用服务入口，不向插件公开
@@ -30,3 +32,5 @@ cache-management.ts            缓存统计与分类清除
 跨层使用领域 DTO、公开 API 和窄副作用端口。`createFormulaReconstructor(ports)` 供隔离测试连接裁图、识别、设置与候选仓库；生产逻辑与校验不替换。凭据、Tauri 命令名和网络适配器只存在于本体。SDK 配置、状态和事件均有插件作用域。
 
 目录调整同时维护 [架构文档](../../docs/architecture.md)、[插件开发指南](../../docs/extensions.md) 和 [测试约定](../../tests/README.md)，不保留旧路径转发。纯移动不改变缓存版本，提取、语义或识别规则变化时再更新相应版本。
+
+本地安装包通过 infrastructure/extensions 的 ZIP 校验、独立仓库和沙箱 Worker 接入；外部代码不使用内置模块的可信 load。依赖插件只能通过 SDK extensions.getExtension 访问公开 API。安装与重启只换插件作用域，不能重启本体、卸载文档分析会话或取消本体问答。

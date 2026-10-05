@@ -96,6 +96,7 @@ export function PdfPageView({
   }, [scrollRoot]);
 
   useEffect(() => {
+    selectionGeneration.current++;
     dragStart.current = null;
     setBox(null);
     setBoxGeneration(null);
@@ -262,22 +263,21 @@ export function PdfPageView({
     setBoxGeneration(generation);
     onBusy(true);
     void getSemanticPage(number)
-      .then((view) => {
+      .then(async (view) => {
         if (generation !== selectionGeneration.current) return;
-        onSelection(
-          tool?.select(view, {
-            documentId,
-            page: number,
-            mode: "rectangle",
-            box: [
-              normalized.x,
-              normalized.y,
-              normalized.x + normalized.width,
-              normalized.y + normalized.height,
-            ],
-            imageDataUrl,
-          }) || null,
-        );
+        const selected = await tool?.select(view, {
+          documentId,
+          page: number,
+          mode: "rectangle",
+          box: [
+            normalized.x,
+            normalized.y,
+            normalized.x + normalized.width,
+            normalized.y + normalized.height,
+          ],
+          imageDataUrl,
+        });
+        if (generation === selectionGeneration.current) onSelection(selected || null);
       })
       .catch((cause: unknown) => {
         if (generation === selectionGeneration.current) onError(String(cause));
@@ -385,23 +385,71 @@ export function PdfPageView({
     : mode === "region" && boxGeneration === selectionGeneration.current
       ? box
       : null;
-  const selectedUnits =
-    mode === "region" && visibleBox && semanticPage && tool
-      ? tool.preview(semanticPage, [
-          visibleBox.x / width,
-          visibleBox.y / height,
-          (visibleBox.x + visibleBox.width) / width,
-          (visibleBox.y + visibleBox.height) / height,
-        ])
-      : [];
+  const [selectedUnits, setSelectedUnits] = useState<ReaderDecoration[]>([]);
+  const left = visibleBox?.x,
+    top = visibleBox?.y,
+    boxWidth = visibleBox?.width,
+    boxHeight = visibleBox?.height;
+  useEffect(() => {
+    let current = true;
+    setSelectedUnits([]);
+    if (
+      mode === "region" &&
+      left !== undefined &&
+      top !== undefined &&
+      boxWidth !== undefined &&
+      boxHeight !== undefined &&
+      semanticPage &&
+      tool
+    )
+      void Promise.resolve()
+        .then(() =>
+          tool.preview(semanticPage, [
+            left / width,
+            top / height,
+            (left + boxWidth) / width,
+            (top + boxHeight) / height,
+          ]),
+        )
+        .then((result) => {
+          if (current) setSelectedUnits(result);
+        })
+        .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [mode, left, top, boxWidth, boxHeight, semanticPage, tool, width, height]);
   useEffect(() => {
     hoverJob.current?.abort();
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setHover(null);
   }, [extensions.revision]);
-  const selectionActions = ownSelection
-    ? extensions.actions.filter(({ action }) => !action.when || action.when(ownSelection))
-    : [];
+  const [selectionActions, setSelectionActions] = useState<typeof extensions.actions>([]);
+  useEffect(() => {
+    let current = true;
+    setSelectionActions([]);
+    if (ownSelection)
+      void Promise.all(
+        extensions.actions.map(async (entry) => {
+          try {
+            return {
+              entry,
+              visible: !entry.action.when || (await entry.action.when(ownSelection)),
+            };
+          } catch {
+            return { entry, visible: false };
+          }
+        }),
+      )
+        .then((result) => {
+          if (current)
+            setSelectionActions(result.filter((item) => item.visible).map((item) => item.entry));
+        })
+        .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [ownSelection, extensions.actions]);
   const stopHover = () => {
     hoverJob.current?.abort();
     if (hoverTimer.current) clearTimeout(hoverTimer.current);

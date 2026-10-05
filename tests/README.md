@@ -55,3 +55,5 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 插件宿主的新验证边界在 `integration/extensions.test.ts`：自动资源归属、事件释放、命令激活、停用/再启用、配置迁移、能力检查、不可卸载内置插件、激活失败回滚、激活期间取消以及 OCR/LLM 的迟到结果屏蔽。`fixtures/extensions.ts` 是独立 SDK 使用者，提供背景、悬停、树侧栏、Webview panel 与状态项。`e2e/extensions.spec.ts` 使用合成 PDF 和本地 SSE 夹具验证真实工作台、插件设置保留以及停用翻译后本体问答仍可使用；浏览器开发加载器只在隔离测试内通过宿主安装该夹具，不进入生产安装清单。
 
 桌面网络取消的路由测试维护在既有 `native-ocr.test.ts`，浏览器 OCR/LLM 的 fetch 信号传递在 `ocr.test.ts` 验证。Rust `ai_requests::tests` 验证取消早于请求执行及中断 pending future，OCR 流程测试验证取消不产生后续批次或缓存写入。插件浏览器回归还覆盖延迟激活不覆盖用户主动选择的文字模式；未保存的设置草稿跨栏目/语言切换由既有布局回归验证。SDK 类型和插件自身业务 DTO 都参加 `test:types`。
+
+插件依赖顺序、共享提供者、API 暴露、缺失/停用/循环/失败、级联停用/卸载与局部重启仍在 `integration/extensions.test.ts`。包压缩边界、CRC、路径、SemVer 和持久批量事务在 `integration/extension-packages.test.ts`。`fixtures/extension-packages.ts` 生成真实独立 IIFE 包，不替换生产消息桥。`e2e/extension-installation.spec.ts` 验证本地多包补依赖、升级及重载、树/Webview/流式模型/包资源、多个事件监听器的独立触发与释放、持久恢复、隔离与卡死 Worker 终止，并在两个语言中保持正在等待的本体聊天和 PDF 节点。读写仅使用隔离浏览器/IndexedDB，不读取用户已安装插件或真实凭据。

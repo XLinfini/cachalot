@@ -16,15 +16,25 @@ import type {
   WebviewViewProvider,
 } from "../../sdk";
 import { Emitter, cancellable, cancelled, disposable } from "./events";
+import { validateManifest, extensionId } from "../../infrastructure/extensions/manifest";
+import {
+  dependencyProblem,
+  dependentsFirst,
+  type DependencyProblem,
+  type DependencyEntry,
+} from "./dependencies";
+export { extensionId } from "../../infrastructure/extensions/manifest";
 
 export interface ExtensionInstallation {
   manifest: ExtensionManifest;
   /** Supplied by the installation catalog, never by an extension manifest. */
   builtIn: boolean;
   configurationMigrations?: Record<string, string>;
+  readResource?(path: string): Promise<Uint8Array>;
   load(): Promise<ExtensionModule>;
 }
 export interface HostPorts {
+  catalog?: { load(): Promise<ExtensionInstallation[]>; remove(ids: string[]): Promise<void> };
   localization?: {
     language(): "zh" | "en";
     onDidChangeLanguage: ExtensionContext["localization"]["onDidChangeLanguage"];
@@ -48,8 +58,11 @@ export interface HostPorts {
 }
 interface Runtime {
   installation: ExtensionInstallation;
-  status: "disabled" | "inactive" | "activating" | "active" | "error";
+  status: "disabled" | "inactive" | "activating" | "active" | "error" | "blocked";
   enabled: boolean;
+  requested?: boolean;
+  exports?: unknown;
+  problem?: DependencyProblem;
   error?: string;
   controller?: AbortController;
   context?: ExtensionContext;
@@ -89,6 +102,7 @@ export interface HostSnapshot {
     enabled: boolean;
     status: Runtime["status"];
     error?: string;
+    problem?: DependencyProblem;
   }[];
   tools: { owner: string; tool: InteractionTool }[];
   actions: { owner: string; action: SelectionAction }[];
@@ -102,8 +116,6 @@ export interface HostSnapshot {
     decorations: ReaderDecoration[];
   }[];
 }
-export const extensionId = (manifest: ExtensionManifest) =>
-  `${manifest.publisher}.${manifest.name}`;
 
 /** One owner scope per activation. All registrations are automatically tracked,
  * even if an extension forgets to add them to context.subscriptions. */
@@ -151,13 +163,12 @@ export class ExtensionHost {
   /** Privileged installation entry used by the host catalog/developer loader.
    * It is deliberately absent from ExtensionContext. */
   private registerInstallation(input: ExtensionInstallation) {
-    const installation = { ...input, manifest: freezeManifest(structuredClone(input.manifest)) };
+    const installation = { ...input, manifest: freezeManifest(validateManifest(input.manifest)) };
 
     const { manifest } = installation,
       id = extensionId(manifest);
     if (!/^[a-z0-9-]+\.[a-z0-9-]+$/.test(id) || this.runtimes.has(id))
       throw new Error(`Invalid or duplicate extension ID: ${id}`);
-    if (manifest.engines.cachalot !== "^0.1.0") throw new Error(`Unsupported extension API: ${id}`);
     const ids = [
       ...(manifest.contributes?.commands?.map((item) => item.command) || []),
       ...(manifest.contributes?.views?.map((item) => item.id) || []),
@@ -178,20 +189,85 @@ export class ExtensionHost {
     this.emit();
   }
   async install(installation: ExtensionInstallation) {
-    this.registerInstallation(installation);
+    return this.installBatch([installation]);
+  }
+  /** Replace packages together, restarting their consumers without touching core services. */
+  async installBatch(installations: ExtensionInstallation[]) {
     await this.initialize();
-    const id = extensionId(installation.manifest),
-      runtime = this.require(id);
-    runtime.enabled = (await this.ports.getSetting(`extensions:${id}:enabled`)) !== "false";
-    runtime.status = runtime.enabled ? "inactive" : "disabled";
-    if (
-      runtime.enabled &&
-      (installation.manifest.activationEvents.includes("onStartupFinished") ||
-        (this._activeDocumentId &&
-          installation.manifest.activationEvents.includes("onDocumentOpen")))
-    )
-      await this.activate(id);
+    await this.enqueue("catalog", async () => {
+      const inputs = installations.map((input) => ({
+        ...input,
+        manifest: validateManifest(input.manifest),
+      }));
+      const ids = inputs.map((input) => extensionId(input.manifest));
+      if (new Set(ids).size !== ids.length)
+        throw new Error("Duplicate extension in installation batch");
+      for (const id of ids)
+        if (this.runtimes.get(id)?.installation.builtIn)
+          throw new Error("Built-in extensions cannot be replaced");
+      const affected = dependentsFirst(ids, this.dependencyCatalog());
+      const requested = new Set(affected.filter((id) => this.runtimes.get(id)?.requested));
+      const enabled = new Map<string, boolean>();
+      for (const id of ids)
+        enabled.set(
+          id,
+          this.runtimes.get(id)?.enabled ??
+            (await this.ports.getSetting(`extensions:${id}:enabled`)) !== "false",
+        );
+      for (const id of affected) {
+        const runtime = this.runtimes.get(id);
+        if (runtime) await this.stopRuntime(runtime);
+      }
+      for (const input of inputs) {
+        const id = extensionId(input.manifest);
+        this.runtimes.delete(id);
+        this.registerInstallation(input);
+        const runtime = this.require(id);
+        runtime.enabled = enabled.get(id)!;
+        runtime.status = runtime.enabled ? "inactive" : "disabled";
+        runtime.requested = requested.has(id);
+      }
+      await this.reconcile(affected);
+    });
+  }
+  getDependents(id: string, enabledOnly = false): string[] {
+    return dependentsFirst([id], this.dependencyCatalog()).filter(
+      (value) => value !== id && (!enabledOnly || this.require(value).enabled),
+    );
+  }
+  private dependencyCatalog(): Map<string, DependencyEntry> {
+    return new Map(
+      [...this.runtimes].map(([id, runtime]) => [
+        id,
+        { manifest: runtime.installation.manifest, enabled: runtime.enabled },
+      ]),
+    );
+  }
+  private async reconcile(ids: Iterable<string>) {
+    for (const id of ids) {
+      const runtime = this.runtimes.get(id);
+      if (
+        runtime &&
+        runtime.enabled &&
+        (runtime.requested ||
+          runtime.installation.manifest.activationEvents.includes("onStartupFinished") ||
+          (this._activeDocumentId &&
+            runtime.installation.manifest.activationEvents.includes("onDocumentOpen")))
+      )
+        await this.activate(id);
+    }
     this.emit();
+  }
+  async restart(id?: string) {
+    await this.initialize();
+    await this.enqueue("catalog", async () => {
+      const affected = dependentsFirst(id ? [id] : this.runtimes.keys(), this.dependencyCatalog());
+      for (const value of affected) {
+        const runtime = this.runtimes.get(value);
+        if (runtime) await this.stopRuntime(runtime);
+      }
+      await this.reconcile(affected);
+    });
   }
   readonly subscribe = (listener: () => void) => {
     const sub = this.changes.event(listener);
@@ -209,6 +285,7 @@ export class ExtensionHost {
         enabled: runtime.enabled,
         status: runtime.status,
         error: runtime.error,
+        problem: runtime.problem,
       })),
       tools: [...this.tools.values()],
       actions: [...this.actions.values()],
@@ -221,6 +298,14 @@ export class ExtensionHost {
   }
   private initialize(): Promise<void> {
     return (this.initialized ||= (async () => {
+      if (this.ports.catalog) {
+        try {
+          for (const installation of await this.ports.catalog.load())
+            this.registerInstallation(installation);
+        } catch (error) {
+          this.ports.showError(String(error));
+        }
+      }
       for (const [id, runtime] of this.runtimes) {
         for (const [key, legacy] of Object.entries(
           runtime.installation.configurationMigrations || {},
@@ -258,23 +343,60 @@ export class ExtensionHost {
     );
     return next;
   }
-  async setEnabled(id: string, enabled: boolean): Promise<void> {
+  async setEnabled(
+    id: string,
+    enabled: boolean,
+    options: { cascade?: boolean } = {},
+  ): Promise<void> {
     await this.initialize();
-    await this.enqueue(id, async () => {
-      const runtime = this.require(id);
-      await this.ports.setSetting(`extensions:${id}:enabled`, String(enabled));
-      runtime.enabled = enabled;
-      if (!enabled) await this.stopRuntime(runtime);
-      else await this.activate(id);
+    await this.enqueue("catalog", async () => {
+      this.require(id);
+      if (!enabled) {
+        const consumers = this.getDependents(id, true);
+        if (consumers.length && !options.cascade)
+          throw new Error(`Enabled dependents: ${consumers.join(", ")}`);
+        for (const value of [...consumers, id]) {
+          const runtime = this.require(value);
+          await this.ports.setSetting(`extensions:${value}:enabled`, "false");
+          runtime.enabled = false;
+          await this.stopRuntime(runtime);
+        }
+      } else {
+        const seen = new Set<string>();
+        const enable = async (value: string) => {
+          if (seen.has(value)) return;
+          seen.add(value);
+          const runtime = this.runtimes.get(value);
+          if (!runtime) return;
+          for (const dependency of runtime.installation.manifest.extensionDependencies || [])
+            await enable(dependency);
+          await this.ports.setSetting(`extensions:${value}:enabled`, "true");
+          runtime.enabled = true;
+        };
+        await enable(id);
+        await this.activate(id);
+        await this.reconcile(dependentsFirst(seen, this.dependencyCatalog()));
+      }
       this.emit();
     });
   }
-  async uninstall(id: string): Promise<void> {
-    const runtime = this.require(id);
-    if (runtime.installation.builtIn) throw new Error("Built-in extensions cannot be uninstalled");
-    await this.setEnabled(id, false);
-    this.runtimes.delete(id);
-    this.emit();
+  async uninstall(id: string, options: { cascade?: boolean } = {}): Promise<void> {
+    await this.initialize();
+    await this.enqueue("catalog", async () => {
+      this.require(id);
+      const consumers = this.getDependents(id);
+      if (consumers.length && !options.cascade)
+        throw new Error(`Installed dependents: ${consumers.join(", ")}`);
+      const ids = [...consumers, id];
+      if (ids.some((value) => this.require(value).installation.builtIn))
+        throw new Error("Built-in extensions cannot be uninstalled");
+      await this.ports.catalog?.remove(ids);
+      for (const value of ids) {
+        await this.stopRuntime(this.require(value));
+        this.runtimes.delete(value);
+      }
+      this.emit();
+    });
   }
   private require(id: string) {
     const runtime = this.runtimes.get(id);
@@ -284,9 +406,19 @@ export class ExtensionHost {
   private activate(id: string): Promise<void> {
     const runtime = this.require(id);
     if (this.stopped || !runtime.enabled || runtime.status === "active") return Promise.resolve();
+    runtime.requested = true;
+    const problem = dependencyProblem(id, this.dependencyCatalog());
+    if (problem) {
+      runtime.status = "blocked";
+      runtime.problem = problem;
+      runtime.error = undefined;
+      this.emit();
+      return Promise.resolve();
+    }
     if (runtime.status === "activating") return runtime.activation || Promise.resolve();
     runtime.status = "activating";
     runtime.error = undefined;
+    runtime.problem = undefined;
     const controller = new AbortController();
     runtime.controller = controller;
     const context = this.createContext(id, runtime, controller);
@@ -294,10 +426,32 @@ export class ExtensionHost {
     this.emit();
     const job = (async () => {
       try {
+        for (const dependency of runtime.installation.manifest.extensionDependencies || []) {
+          await cancellable(controller.signal, () => this.activate(dependency));
+          if (this.require(dependency).status !== "active") {
+            if (runtime.controller === controller) {
+              await this.stopRuntime(runtime);
+              runtime.status = "blocked";
+              runtime.problem = { kind: "failed", path: [id, dependency] };
+              this.emit();
+            }
+            return;
+          }
+        }
         const module = await cancellable(controller.signal, () => runtime.installation.load());
         if (controller.signal.aborted) cancelled();
         runtime.module = module;
-        await cancellable(controller.signal, () => Promise.resolve(module.activate(context)));
+        if (module.onDidFail)
+          context.subscriptions.push(
+            module.onDidFail((error) => {
+              if (runtime.controller !== controller) return;
+              void this.failRuntime(id, runtime, controller, error);
+            }),
+          );
+        const exports = await cancellable(controller.signal, () =>
+          Promise.resolve(module.activate(context)),
+        );
+        if (runtime.controller === controller) runtime.exports = exports;
         if (runtime.controller === controller) runtime.status = "active";
       } catch (error) {
         if (runtime.controller !== controller) return;
@@ -312,6 +466,28 @@ export class ExtensionHost {
     runtime.activation = job;
     return job;
   }
+  private async failRuntime(
+    id: string,
+    runtime: Runtime,
+    controller: AbortController,
+    error: Error,
+  ) {
+    if (runtime.controller !== controller) return;
+    const affected = dependentsFirst([id], this.dependencyCatalog());
+    const scopes = new Map(affected.map((value) => [value, this.require(value).controller]));
+    // Abort every affected scope immediately, before asynchronous cleanup.
+    for (const value of affected) scopes.get(value)?.abort();
+    for (const value of affected) {
+      const current = this.runtimes.get(value);
+      if (!current || current.controller !== scopes.get(value)) continue;
+      await this.stopRuntime(current);
+      if (current.controller || !current.enabled) continue;
+      current.status = value === id ? "error" : "blocked";
+      current.error = value === id ? String(error) : undefined;
+      current.problem = value === id ? undefined : { kind: "failed", path: [value, id] };
+    }
+    this.emit();
+  }
   private async stopRuntime(runtime: Runtime) {
     const controller = runtime.controller;
     runtime.controller = undefined;
@@ -325,13 +501,19 @@ export class ExtensionHost {
     }
     if (runtime.module?.deactivate) {
       try {
-        await runtime.module.deactivate();
+        await Promise.race([
+          Promise.resolve(runtime.module.deactivate()),
+          new Promise<void>((resolve) => setTimeout(resolve, 500)),
+        ]);
       } catch (error) {
         runtime.error = String(error);
       }
     }
     runtime.module = undefined;
     runtime.context = undefined;
+    runtime.exports = undefined;
+    runtime.problem = undefined;
+    runtime.activation = undefined;
     runtime.status = runtime.enabled ? "inactive" : "disabled";
   }
   async dispose() {
@@ -438,6 +620,48 @@ export class ExtensionHost {
       extension: { id, manifest },
       subscriptions,
       signal: controller.signal,
+      resources: {
+        read: async (path) => {
+          active();
+          if (!runtime.installation.readResource) throw new Error("No installed package resources");
+          const bytes = await cancellable(controller.signal, () =>
+            runtime.installation.readResource!(path),
+          );
+          active();
+          return bytes;
+        },
+      },
+      extensions: {
+        getExtension<T>(dependencyId: string) {
+          active();
+          if (!manifest.extensionDependencies?.includes(dependencyId))
+            throw new Error(`Undeclared extension dependency: ${dependencyId}`);
+          const dependency = host.runtimes.get(dependencyId);
+          if (!dependency) return undefined;
+          return {
+            id: dependencyId,
+            manifest: dependency.installation.manifest,
+            get isActive() {
+              active();
+              return dependency.status === "active";
+            },
+            get exports() {
+              active();
+              if (dependency.status !== "active")
+                throw new Error(`Dependency is not active: ${dependencyId}`);
+              return dependency.exports as T;
+            },
+            async activate() {
+              active();
+              await cancellable(controller.signal, () => host.activate(dependencyId));
+              active();
+              if (dependency.status !== "active")
+                throw new Error(`Dependency is not active: ${dependencyId}`);
+              return dependency.exports as T;
+            },
+          };
+        },
+      },
       localization: {
         get language() {
           return host.ports.localization?.language() || "zh";

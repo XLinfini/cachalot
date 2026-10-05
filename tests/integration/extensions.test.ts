@@ -70,7 +70,7 @@ function harness(
           ...module,
           activate: async (next) => {
             context = next;
-            await module.activate(next);
+            return await module.activate(next);
           },
         }),
       },
@@ -79,6 +79,7 @@ function harness(
   );
   return {
     host,
+    ports,
     saved,
     counters,
     context: () => context,
@@ -298,4 +299,293 @@ test("legacy configuration is migrated once and does not overwrite a plugin sett
   await second.host.start();
   assert.equal(await second.context().workspace.getConfiguration().get("theme"), "#abcdef");
   await second.host.dispose();
+});
+
+function dependencyManifest(name: string, dependencies: string[] = [], pack: string[] = []) {
+  return {
+    ...extensionFixtureManifest,
+    name,
+    displayName: name,
+    extensionDependencies: dependencies,
+    extensionPack: pack,
+    contributes: { commands: [{ command: `fixture.${name}.run`, title: "Run" }] },
+  };
+}
+function installation(
+  manifest: ReturnType<typeof dependencyManifest>,
+  activate: ExtensionModule["activate"],
+  builtIn = false,
+) {
+  return { manifest, builtIn, load: async () => ({ activate }) };
+}
+
+test("hard dependencies activate before consumers, share activation and expose declared APIs; packs are independent", async () => {
+  const { ports } = harness({ activate() {} });
+  const order: string[] = [];
+  const host = new ExtensionHost(
+    [
+      installation(
+        dependencyManifest("consumer", ["fixture.left", "fixture.right"]),
+        async (ctx) => {
+          const api = ctx.extensions.getExtension<{ add(a: number, b: number): number }>(
+            "fixture.left",
+          )!.exports;
+          assert.equal(api.add(2, 3), 5);
+          assert.throws(() => ctx.extensions.getExtension("fixture.pack"), /Undeclared/);
+          ctx.commands.registerCommand("fixture.consumer.run", () => "consumer");
+          order.push("consumer");
+        },
+      ),
+      installation(dependencyManifest("left", ["fixture.shared"]), () => {
+        order.push("left");
+        return { add: (a: number, b: number) => a + b };
+      }),
+      installation(dependencyManifest("right", ["fixture.shared"]), () => {
+        order.push("right");
+      }),
+      installation(dependencyManifest("shared"), () => {
+        order.push("shared");
+      }),
+      installation(
+        { ...dependencyManifest("pack", [], ["fixture.consumer"]), activationEvents: [] },
+        () => {
+          throw new Error("A pack must not activate its members as hard dependencies");
+        },
+      ),
+    ],
+    ports,
+  );
+  await host.start();
+  assert.equal(order.filter((value) => value === "shared").length, 1);
+  assert.ok(order.indexOf("shared") < order.indexOf("left"));
+  assert.ok(order.indexOf("left") < order.indexOf("consumer"));
+  assert.ok(order.indexOf("right") < order.indexOf("consumer"));
+  await host.uninstall("fixture.pack");
+  assert.equal(await host.executeCommand("fixture.consumer.run"), "consumer");
+  await host.dispose();
+});
+
+test("missing, disabled, failing and circular dependencies block consumers without hanging unrelated extensions", async () => {
+  const { ports } = harness({ activate() {} });
+  let consumers = 0,
+    healthy = 0;
+  const host = new ExtensionHost(
+    [
+      installation(dependencyManifest("missing-user", ["fixture.absent"]), () => {
+        consumers++;
+      }),
+      installation(dependencyManifest("cycle-a", ["fixture.cycle-b"]), () => {
+        consumers++;
+      }),
+      installation(dependencyManifest("cycle-b", ["fixture.cycle-a"]), () => {
+        consumers++;
+      }),
+      installation(dependencyManifest("failing-user", ["fixture.failing"]), () => {
+        consumers++;
+      }),
+      installation(dependencyManifest("failing"), () => {
+        throw new Error("dependency failure");
+      }),
+      installation(dependencyManifest("healthy"), () => {
+        healthy++;
+      }),
+    ],
+    ports,
+  );
+  await host.start();
+  assert.equal(consumers, 0);
+  assert.equal(healthy, 1);
+  const find = (id: string) =>
+    host.getSnapshot().extensions.find((item) => item.id === `fixture.${id}`)!;
+  assert.equal(find("missing-user").problem?.kind, "missing");
+  assert.equal(find("cycle-a").problem?.kind, "cycle");
+  assert.equal(find("failing-user").problem?.kind, "failed");
+  await host.install(installation(dependencyManifest("absent"), () => undefined));
+  assert.equal(find("missing-user").status, "active");
+  assert.equal(consumers, 1);
+  await host.dispose();
+
+  const saved = new Map([["extensions:fixture.provider:enabled", "false"]]);
+  const isolated = harness({ activate() {} }, extensionFixtureManifest, saved);
+  const disabled = new ExtensionHost(
+    [
+      installation(dependencyManifest("consumer", ["fixture.provider"]), () => undefined),
+      installation(dependencyManifest("provider"), () => undefined),
+    ],
+    isolated.ports,
+  );
+  await disabled.start();
+  assert.equal(disabled.getSnapshot().extensions[0].problem?.kind, "disabled");
+  await disabled.setEnabled("fixture.consumer", true);
+  assert.ok(
+    disabled.getSnapshot().extensions.every((item) => item.enabled && item.status === "active"),
+  );
+  await disabled.dispose();
+});
+
+test("disable and uninstall require explicit dependent handling; updates restart consumers and preserve unrelated scopes", async () => {
+  const { ports } = harness({ activate() {} });
+  let providerRuns = 0,
+    consumerRuns = 0,
+    unrelatedRuns = 0;
+  const contexts: ExtensionContext[] = [];
+  const host = new ExtensionHost(
+    [
+      installation(dependencyManifest("provider"), (ctx) => {
+        providerRuns++;
+        contexts.push(ctx);
+        return { version: 1 };
+      }),
+      installation(dependencyManifest("consumer", ["fixture.provider"]), (ctx) => {
+        consumerRuns++;
+        contexts.push(ctx);
+        ctx.commands.registerCommand(
+          "fixture.consumer.run",
+          () =>
+            ctx.extensions.getExtension<{ version: number }>("fixture.provider")!.exports.version,
+        );
+      }),
+      installation(dependencyManifest("unrelated"), (ctx) => {
+        unrelatedRuns++;
+        contexts.push(ctx);
+      }),
+    ],
+    ports,
+  );
+  await host.start();
+  await assert.rejects(host.setEnabled("fixture.provider", false), /Enabled dependents/);
+  await assert.rejects(host.uninstall("fixture.provider"), /Installed dependents/);
+  const unrelated = contexts.find((ctx) => ctx.extension.id === "fixture.unrelated")!;
+  const old = contexts.find((ctx) => ctx.extension.id === "fixture.consumer")!;
+  await old.globalState.update("saved", "preserved");
+  await host.installBatch([
+    installation({ ...dependencyManifest("provider"), version: "0.2.0" }, () => {
+      providerRuns++;
+      return { version: 2 };
+    }),
+  ]);
+  assert.equal(await host.executeCommand("fixture.consumer.run"), 2);
+  assert.equal(old.signal.aborted, true);
+  assert.equal(unrelated.signal.aborted, false);
+  assert.equal(providerRuns, 2);
+  assert.equal(consumerRuns, 2);
+  assert.equal(unrelatedRuns, 1);
+  assert.equal(await contexts.at(-1)!.globalState.get("saved", "absent"), "preserved");
+  await host.setEnabled("fixture.provider", false, { cascade: true });
+  assert.equal(
+    host.getSnapshot().extensions.find((item) => item.id === "fixture.consumer")!.enabled,
+    false,
+  );
+  await host.setEnabled("fixture.consumer", true);
+  assert.equal(await host.executeCommand("fixture.consumer.run"), 2);
+  await host.restart("fixture.provider");
+  assert.equal(unrelatedRuns, 1);
+  await host.uninstall("fixture.provider", { cascade: true });
+  assert.deepEqual(
+    host.getSnapshot().extensions.map((item) => item.id),
+    ["fixture.unrelated"],
+  );
+  await host.dispose();
+});
+
+test("built-in consumers prevent cascading uninstall and an invalid update preserves existing registrations", async () => {
+  const { ports } = harness({ activate() {} });
+  const host = new ExtensionHost(
+    [
+      installation(dependencyManifest("provider"), (ctx) => {
+        ctx.reader.setBackground("blue");
+      }),
+      installation(dependencyManifest("built-in", ["fixture.provider"]), () => undefined, true),
+    ],
+    ports,
+  );
+  await host.start();
+  await assert.rejects(
+    host.uninstall("fixture.provider", { cascade: true }),
+    /cannot be uninstalled/,
+  );
+  await assert.rejects(
+    host.installBatch([
+      installation(
+        { ...dependencyManifest("provider"), engines: { cachalot: "^2.0.0" } },
+        () => undefined,
+      ),
+    ]),
+    /engines/,
+  );
+  assert.equal(host.getSnapshot().background, "blue");
+  assert.ok(host.getSnapshot().extensions.every((item) => item.status === "active"));
+  await host.dispose();
+});
+
+test("a provider runtime fault aborts consumers and leaves unrelated extensions active, then restart recovers", async () => {
+  const { ports } = harness({ activate() {} });
+  let fail!: (error: Error) => void;
+  const scopes = new Map<string, ExtensionContext>();
+  const host = new ExtensionHost(
+    [
+      {
+        manifest: dependencyManifest("provider"),
+        builtIn: false,
+        load: async () => ({
+          onDidFail(listener) {
+            fail = listener;
+            return { dispose() {} };
+          },
+          activate(ctx) {
+            scopes.set(ctx.extension.id, ctx);
+            return { value: 1 };
+          },
+        }),
+      },
+      installation(dependencyManifest("consumer", ["fixture.provider"]), (ctx) => {
+        scopes.set(ctx.extension.id, ctx);
+      }),
+      installation(dependencyManifest("unrelated"), (ctx) => {
+        scopes.set(ctx.extension.id, ctx);
+      }),
+    ],
+    ports,
+  );
+  await host.start();
+  fail(new Error("Worker fault fixture"));
+  await new Promise((resolve) => setImmediate(resolve));
+  const snapshot = host.getSnapshot();
+  assert.equal(snapshot.extensions.find((item) => item.id === "fixture.provider")!.status, "error");
+  assert.equal(
+    snapshot.extensions.find((item) => item.id === "fixture.consumer")!.problem?.kind,
+    "failed",
+  );
+  assert.equal(scopes.get("fixture.consumer")!.signal.aborted, true);
+  assert.equal(scopes.get("fixture.unrelated")!.signal.aborted, false);
+  await host.restart("fixture.provider");
+  assert.ok(host.getSnapshot().extensions.every((item) => item.status === "active"));
+  await host.dispose();
+});
+
+test("local installation and targeted restart do not retry unrelated failed extensions", async () => {
+  const { ports } = harness({ activate() {} });
+  let failedAttempts = 0;
+  const host = new ExtensionHost(
+    [
+      installation(dependencyManifest("provider"), () => undefined),
+      installation(dependencyManifest("consumer", ["fixture.provider"]), () => undefined),
+      installation(dependencyManifest("unrelated-failure"), () => {
+        failedAttempts++;
+        throw new Error("Unrelated failure");
+      }),
+    ],
+    ports,
+  );
+  await host.start();
+  assert.equal(failedAttempts, 1);
+  await host.install(installation(dependencyManifest("new"), () => undefined));
+  await host.restart("fixture.provider");
+  await host.setEnabled("fixture.consumer", true);
+  assert.equal(failedAttempts, 1);
+  assert.equal(
+    host.getSnapshot().extensions.find((item) => item.id === "fixture.unrelated-failure")!.status,
+    "error",
+  );
+  await host.dispose();
 });

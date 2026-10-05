@@ -1,0 +1,49 @@
+{
+  "publisher": "example",
+  "name": "reader-tools",
+  "version": "0.1.0",
+  "displayName": {
+    "zh": "阅读工具示例",
+    "en": "Reader tools example"
+  },
+  "description": {
+    "zh": "背景、树侧栏和状态栏的社区插件示例。",
+    "en": "An installed extension with reader background, tree sidebar and status bar."
+  },
+  "engines": {
+    "cachalot": "^0.1.0"
+  },
+  "main": "extension.ts",
+  "files": [
+    "README.md"
+  ],
+  "activationEvents": [
+    "onDocumentOpen"
+  ],
+  "capabilities": [
+    "documents.read",
+    "reader.interact",
+    "reader.decorate"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "example.reader-tools.first-page",
+        "title": {
+          "zh": "回到首页",
+          "en": "First page"
+        }
+      }
+    ],
+    "views": [
+      {
+        "id": "example.reader-tools.pages",
+        "title": {
+          "zh": "阅读工具",
+          "en": "Reader tools"
+        },
+        "location": "sidebar.left"
+      }
+    ]
+  }
+}

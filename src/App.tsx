@@ -73,6 +73,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const workspaceView = view === "settings" ? lastView : view;
   const activeDocument = documents.find((document) => document.id === activeId) || null;
   const configuredProvider =
     providers.find((provider) => provider.id === activeProviderId && provider.enabled) || null;
@@ -115,8 +116,8 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    extensionHost.setActiveDocument(view === "reader" ? activeId : null);
-  }, [view, activeId]);
+    extensionHost.setActiveDocument(workspaceView === "reader" ? activeId : null);
+  }, [workspaceView, activeId]);
   useEffect(() => {
     extensionHost.setModel(activeProvider);
   }, [activeProvider]);
@@ -344,7 +345,7 @@ export default function App() {
 
   return (
     <div
-      className="flex h-full w-full min-w-[760px] overflow-hidden"
+      className="relative flex h-full w-full min-w-[760px] overflow-hidden"
       onDragOver={(event) => {
         event.preventDefault();
       }}
@@ -366,238 +367,244 @@ export default function App() {
           if (event.target.files) void importFiles(event.target.files);
         }}
       />
-      {view === "settings" ? (
-        <ProviderSettings
-          providers={providers}
-          activeProviderId={activeProviderId}
-          onProvidersChange={setProviders}
-          onActiveProviderChange={setProvider}
-          onBack={() => setView(lastView)}
-          onError={setNotice}
-        />
-      ) : (
-        <>
-          <aside
-            data-ui="app-nav"
-            className="flex min-h-0 w-[204px] flex-none flex-col border-r border-[#e6ecf4] bg-panel px-[13px] pt-[25px] pb-[14px] max-desktop:w-[170px] max-compact:w-[150px]"
+      {view === "settings" && (
+        <div className="absolute inset-0 z-20">
+          <ProviderSettings
+            providers={providers}
+            activeProviderId={activeProviderId}
+            onProvidersChange={setProviders}
+            onActiveProviderChange={setProvider}
+            onBack={() => setView(lastView)}
+            onError={setNotice}
+          />
+        </div>
+      )}
+      <div
+        data-ui="workspace"
+        aria-hidden={view === "settings"}
+        inert={view === "settings"}
+        className={cx("flex h-full w-full", view === "settings" && "pointer-events-none invisible")}
+      >
+        <aside
+          data-ui="app-nav"
+          className="flex min-h-0 w-[204px] flex-none flex-col border-r border-[#e6ecf4] bg-panel px-[13px] pt-[25px] pb-[14px] max-desktop:w-[170px] max-compact:w-[150px]"
+        >
+          <button
+            className="flex h-[61px] items-center justify-start gap-[2px] border-0 bg-transparent pb-[30px]"
+            onClick={() => setView("library")}
           >
-            <button
-              className="flex h-[61px] items-center justify-start gap-[2px] border-0 bg-transparent pb-[30px]"
-              onClick={() => setView("library")}
-            >
-              <img
-                className="h-[42px] w-[58px] flex-none object-contain object-left"
-                src={logo}
-                alt=""
-              />
-              <span className="-ml-1 font-brand text-[22px] font-medium tracking-[-.055em] text-[#1d344e]">
-                cachalot
-              </span>
-            </button>
-            <div className="pt-5">
-              <div className={cx(ui.eyebrow, "flex items-center justify-between px-[13px] pb-3")}>
-                {t("nav.workspace")}
-              </div>
-              <button
-                className={ui.navButton}
-                aria-pressed={view === "library" && filter === "all"}
-                onClick={() => selectLibrary("all")}
-              >
-                <LayoutGrid size={18} />
-                {t("nav.all")}
-              </button>
-              <button
-                className={ui.navButton}
-                aria-pressed={view === "library" && filter === "recent"}
-                onClick={() => selectLibrary("recent")}
-              >
-                <BookOpen size={18} />
-                {t("nav.recent")}
-              </button>
-            </div>
-            <CategorySidebar
-              categories={categories}
-              selected={view === "library" ? filter : null}
-              onSelect={selectLibrary}
-              onCreate={() => setCreatingCategory(true)}
-              onRemove={(category) => void deleteCategory(category)}
+            <img
+              className="h-[42px] w-[58px] flex-none object-contain object-left"
+              src={logo}
+              alt=""
             />
-            <div className="flex-none border-t border-[#e4eaf1] pt-[9px]">
-              <button className={ui.navButton} onClick={openSettings}>
-                <Settings2 size={18} />
-                {t("common.settings")}
-              </button>
-              <div className="mt-3 flex items-center gap-[9px] border-t border-[#e4eaf1] px-[5px] pt-4">
-                <span className="grid size-[31px] place-items-center rounded-button bg-[#dce9fb] font-bold text-[#306aca]">
-                  W
-                </span>
-                <div className="min-w-0 flex-1">
-                  <strong className="block text-[10px]">{t("nav.myWorkspace")}</strong>
-                  <small className="mt-[3px] block text-[10px] text-[#9ca9ba]">
-                    {t("nav.localLibrary")}
-                  </small>
+            <span className="-ml-1 font-brand text-[22px] font-medium tracking-[-.055em] text-[#1d344e]">
+              cachalot
+            </span>
+          </button>
+          <div className="pt-5">
+            <div className={cx(ui.eyebrow, "flex items-center justify-between px-[13px] pb-3")}>
+              {t("nav.workspace")}
+            </div>
+            <button
+              className={ui.navButton}
+              aria-pressed={workspaceView === "library" && filter === "all"}
+              onClick={() => selectLibrary("all")}
+            >
+              <LayoutGrid size={18} />
+              {t("nav.all")}
+            </button>
+            <button
+              className={ui.navButton}
+              aria-pressed={workspaceView === "library" && filter === "recent"}
+              onClick={() => selectLibrary("recent")}
+            >
+              <BookOpen size={18} />
+              {t("nav.recent")}
+            </button>
+          </div>
+          <CategorySidebar
+            categories={categories}
+            selected={workspaceView === "library" ? filter : null}
+            onSelect={selectLibrary}
+            onCreate={() => setCreatingCategory(true)}
+            onRemove={(category) => void deleteCategory(category)}
+          />
+          <div className="flex-none border-t border-[#e4eaf1] pt-[9px]">
+            <button className={ui.navButton} onClick={openSettings}>
+              <Settings2 size={18} />
+              {t("common.settings")}
+            </button>
+            <div className="mt-3 flex items-center gap-[9px] border-t border-[#e4eaf1] px-[5px] pt-4">
+              <span className="grid size-[31px] place-items-center rounded-button bg-[#dce9fb] font-bold text-[#306aca]">
+                W
+              </span>
+              <div className="min-w-0 flex-1">
+                <strong className="block text-[10px]">{t("nav.myWorkspace")}</strong>
+                <small className="mt-[3px] block text-[10px] text-[#9ca9ba]">
+                  {t("nav.localLibrary")}
+                </small>
+              </div>
+              <MoreHorizontal className="text-[#9aa9bc]" size={17} />
+            </div>
+          </div>
+        </aside>
+        <main className="flex min-w-0 flex-1 bg-white">
+          {workspaceView === "library" || !activeDocument ? (
+            <div className="w-full overflow-y-auto">
+              <header className="flex h-[58px] items-center border-b border-[#edf0f5] px-[38px] text-[11px] text-[#99a8ba]">
+                <div className="flex min-w-0 items-center gap-[9px]">
+                  {t("common.library")} <ChevronRight size={15} />{" "}
+                  <strong className="min-w-0 truncate text-[#3b4f68]" title={filterLabel}>
+                    {filterLabel}
+                  </strong>
                 </div>
-                <MoreHorizontal className="text-[#9aa9bc]" size={17} />
+              </header>
+              <div className="mx-auto max-w-[1310px] px-[52px] py-[50px] max-desktop:px-[30px] max-desktop:py-10">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <div className={ui.eyebrowBlue}>{t("library.eyebrow")}</div>
+                    <h1 className="mt-[10px] mb-3 text-[31px] font-bold tracking-[-.04em] max-compact:text-[25px]">
+                      {t("library.title")}
+                      <span className="text-[#3676d1]">{t("library.punctuation")}</span>
+                    </h1>
+                    <p className="text-[12px] text-[#8b9aaf]">{t("library.description")}</p>
+                  </div>
+                  <button
+                    className={cx(ui.primaryButton, "mb-[2px] h-[39px]")}
+                    disabled={busy}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Plus size={19} />
+                    {busy ? t("library.importing") : t("library.import")}
+                  </button>
+                </div>
+                <div
+                  data-ui="library-search"
+                  className="mt-[42px] flex items-center justify-center gap-[10px]"
+                >
+                  <label className={cx(ui.searchBox, "h-[36px] w-[420px] min-w-0")}>
+                    <Search size={17} />
+                    <input
+                      className={ui.searchInput}
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={t("library.search")}
+                    />
+                  </label>
+                  <LibrarySortMenu
+                    value={sort}
+                    saving={savingSort}
+                    onChange={(next) => void changeSort(next)}
+                  />
+                </div>
+                {visible.length ? (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(235px,1fr))] gap-[22px] pt-[26px]">
+                    {visible.map((document, index) => (
+                      <LibraryDocumentCard
+                        key={document.id}
+                        document={document}
+                        index={index}
+                        onOpen={() => openDocument(document)}
+                        onStar={() => void toggleStar(document)}
+                        onMove={() => setMovingDocument(document)}
+                        onDelete={() => void deleteDocument(document)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center px-5 py-[100px] text-center">
+                    <div className="mb-[19px] grid size-[82px] place-items-center rounded-[23px] bg-[#edf4ff] text-[#6e9ad7]">
+                      <UploadCloud size={40} />
+                    </div>
+                    <h2 className="mb-2 text-[20px]">
+                      {documents.length ? t("library.noMatches") : t("library.firstPaper")}
+                    </h2>
+                    <p className="mb-[21px] text-[12px] text-[#8d9eb1]">
+                      {documents.length ? t("library.searchHint") : t("library.importHint")}
+                    </p>
+                    <button className={ui.primaryButton} onClick={() => fileRef.current?.click()}>
+                      <FilePlus2 size={17} />
+                      {t("library.importPdf")}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          </aside>
-          <main className="flex min-w-0 flex-1 bg-white">
-            {view === "library" || !activeDocument ? (
-              <div className="w-full overflow-y-auto">
-                <header className="flex h-[58px] items-center border-b border-[#edf0f5] px-[38px] text-[11px] text-[#99a8ba]">
-                  <div className="flex min-w-0 items-center gap-[9px]">
-                    {t("common.library")} <ChevronRight size={15} />{" "}
-                    <strong className="min-w-0 truncate text-[#3b4f68]" title={filterLabel}>
-                      {filterLabel}
-                    </strong>
-                  </div>
-                </header>
-                <div className="mx-auto max-w-[1310px] px-[52px] py-[50px] max-desktop:px-[30px] max-desktop:py-10">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <div className={ui.eyebrowBlue}>{t("library.eyebrow")}</div>
-                      <h1 className="mt-[10px] mb-3 text-[31px] font-bold tracking-[-.04em] max-compact:text-[25px]">
-                        {t("library.title")}
-                        <span className="text-[#3676d1]">{t("library.punctuation")}</span>
-                      </h1>
-                      <p className="text-[12px] text-[#8b9aaf]">{t("library.description")}</p>
-                    </div>
-                    <button
-                      className={cx(ui.primaryButton, "mb-[2px] h-[39px]")}
-                      disabled={busy}
-                      onClick={() => fileRef.current?.click()}
-                    >
-                      <Plus size={19} />
-                      {busy ? t("library.importing") : t("library.import")}
-                    </button>
-                  </div>
-                  <div
-                    data-ui="library-search"
-                    className="mt-[42px] flex items-center justify-center gap-[10px]"
+          ) : (
+            <div className="flex w-full min-w-0 flex-col">
+              <header className="flex h-[51px] flex-none items-center gap-4 border-b border-[#e8edf4] px-[17px]">
+                <button
+                  className={cx(ui.backLink, "whitespace-nowrap")}
+                  onClick={() => setView("library")}
+                >
+                  <ChevronLeft size={17} />
+                  {t("common.library")}
+                </button>
+                <div className="flex h-[38px] max-w-[245px] min-w-0 items-center gap-2 self-end rounded-t-lg border border-b-0 border-[#e9eef5] bg-[#f5f8fd] px-[10px] text-[11px] text-[#46668d]">
+                  <BookOpen size={16} />
+                  <span className="truncate" title={activeDocument.title}>
+                    {activeDocument.title}
+                  </span>
+                  <button
+                    className="border-0 bg-transparent p-[2px] text-[#a0afbf]"
+                    onClick={() => {
+                      setActiveId(null);
+                      setView("library");
+                    }}
+                    title={t("library.closeTab")}
                   >
-                    <label className={cx(ui.searchBox, "h-[36px] w-[420px] min-w-0")}>
-                      <Search size={17} />
-                      <input
-                        className={ui.searchInput}
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder={t("library.search")}
-                      />
-                    </label>
-                    <LibrarySortMenu
-                      value={sort}
-                      saving={savingSort}
-                      onChange={(next) => void changeSort(next)}
-                    />
-                  </div>
-                  {visible.length ? (
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(235px,1fr))] gap-[22px] pt-[26px]">
-                      {visible.map((document, index) => (
-                        <LibraryDocumentCard
-                          key={document.id}
-                          document={document}
-                          index={index}
-                          onOpen={() => openDocument(document)}
-                          onStar={() => void toggleStar(document)}
-                          onMove={() => setMovingDocument(document)}
-                          onDelete={() => void deleteDocument(document)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center px-5 py-[100px] text-center">
-                      <div className="mb-[19px] grid size-[82px] place-items-center rounded-[23px] bg-[#edf4ff] text-[#6e9ad7]">
-                        <UploadCloud size={40} />
-                      </div>
-                      <h2 className="mb-2 text-[20px]">
-                        {documents.length ? t("library.noMatches") : t("library.firstPaper")}
-                      </h2>
-                      <p className="mb-[21px] text-[12px] text-[#8d9eb1]">
-                        {documents.length ? t("library.searchHint") : t("library.importHint")}
-                      </p>
-                      <button className={ui.primaryButton} onClick={() => fileRef.current?.click()}>
-                        <FilePlus2 size={17} />
-                        {t("library.importPdf")}
-                      </button>
-                    </div>
-                  )}
+                    <X size={15} />
+                  </button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex w-full min-w-0 flex-col">
-                <header className="flex h-[51px] flex-none items-center gap-4 border-b border-[#e8edf4] px-[17px]">
-                  <button
-                    className={cx(ui.backLink, "whitespace-nowrap")}
-                    onClick={() => setView("library")}
-                  >
-                    <ChevronLeft size={17} />
-                    {t("common.library")}
-                  </button>
-                  <div className="flex h-[38px] max-w-[245px] min-w-0 items-center gap-2 self-end rounded-t-lg border border-b-0 border-[#e9eef5] bg-[#f5f8fd] px-[10px] text-[11px] text-[#46668d]">
-                    <BookOpen size={16} />
-                    <span className="truncate" title={activeDocument.title}>
-                      {activeDocument.title}
-                    </span>
-                    <button
-                      className="border-0 bg-transparent p-[2px] text-[#a0afbf]"
-                      onClick={() => {
-                        setActiveId(null);
-                        setView("library");
-                      }}
-                      title={t("library.closeTab")}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                  <div className="flex-1" />
-                  <button
-                    className={ui.iconButton}
-                    title={t("library.starPaper")}
-                    onClick={() => void toggleStar(activeDocument)}
-                  >
-                    <Bookmark size={18} fill={activeDocument.starred ? "currentColor" : "none"} />
-                  </button>
-                </header>
-                <div className="flex min-h-0 min-w-0 flex-1">
-                  <ExtensionDock location="sidebar.left" />
-                  {/* Sibling keys include the panel type so React can remove both
+                <div className="flex-1" />
+                <button
+                  className={ui.iconButton}
+                  title={t("library.starPaper")}
+                  onClick={() => void toggleStar(activeDocument)}
+                >
+                  <Bookmark size={18} fill={activeDocument.starred ? "currentColor" : "none"} />
+                </button>
+              </header>
+              <div className="flex min-h-0 min-w-0 flex-1">
+                <ExtensionDock location="sidebar.left" />
+                {/* Sibling keys include the panel type so React can remove both
                       panels when returning to the library or switching documents. */}
-                  <PdfReader
-                    key={`reader:${activeDocument.id}`}
+                <PdfReader
+                  key={`reader:${activeDocument.id}`}
+                  document={activeDocument}
+                  page={page}
+                  onPageChange={changePage}
+                  selection={selection}
+                  onSelection={(value, owner) => extensionHost.publishSelection(value, owner)}
+                  sidebarOpen={sidebarOpen}
+                  onToggleSidebar={() => setSidebarOpen((value) => !value)}
+                  chatOpen={chatOpen}
+                  onToggleChat={() => setChatOpen((value) => !value)}
+                />
+                <ExtensionDock location="sidebar.right" />
+                {chatOpen && (
+                  <ChatPanel
+                    key={`chat:${activeDocument.id}`}
+                    providers={providers}
+                    vision={vision}
+                    onSelectModel={chooseModel}
                     document={activeDocument}
                     page={page}
-                    onPageChange={changePage}
                     selection={selection}
-                    onSelection={(value, owner) => extensionHost.publishSelection(value, owner)}
-                    sidebarOpen={sidebarOpen}
-                    onToggleSidebar={() => setSidebarOpen((value) => !value)}
-                    chatOpen={chatOpen}
-                    onToggleChat={() => setChatOpen((value) => !value)}
+                    provider={activeProvider}
+                    onClose={() => setChatOpen(false)}
+                    onOpenSettings={openSettings}
+                    onError={setNotice}
                   />
-                  <ExtensionDock location="sidebar.right" />
-                  {chatOpen && (
-                    <ChatPanel
-                      key={`chat:${activeDocument.id}`}
-                      providers={providers}
-                      vision={vision}
-                      onSelectModel={chooseModel}
-                      document={activeDocument}
-                      page={page}
-                      selection={selection}
-                      provider={activeProvider}
-                      onClose={() => setChatOpen(false)}
-                      onOpenSettings={openSettings}
-                      onError={setNotice}
-                    />
-                  )}
-                </div>
-                <ExtensionDock location="panel" />
-                <ExtensionStatusBar />
+                )}
               </div>
-            )}
-          </main>
-        </>
-      )}
+              <ExtensionDock location="panel" />
+              <ExtensionStatusBar />
+            </div>
+          )}
+        </main>
+      </div>
       {notice && (
         <div
           className="fixed right-[18px] bottom-[18px] z-30 flex max-w-[460px] items-center gap-3 rounded-button bg-[#263b56] px-[15px] py-3 text-[11px] text-white shadow-[0_8px_24px_#18304d33]"

@@ -128,7 +128,13 @@ for (const language of ["zh", "en"] as const) {
       // Exercise a separate extension through the same SDK, with real dock/tree/webview UI.
       await page.evaluate(async () => {
         const load = (path: string) => import(/* @vite-ignore */ path);
-        const { extensionHost } = await load("/src/application/extensions/runtime.ts");
+        const runtimeUrl =
+          performance
+            .getEntriesByType("resource")
+            .find(
+              (entry) => new URL(entry.name).pathname === "/src/application/extensions/runtime.ts",
+            )?.name || "/src/application/extensions/runtime.ts";
+        const { extensionHost } = await load(runtimeUrl);
         const { extensionFixtureManifest, fixtureExtension } = await load(
           "/tests/fixtures/extensions.ts",
         );
@@ -137,6 +143,27 @@ for (const language of ["zh", "en"] as const) {
           builtIn: false,
           load: async () => fixtureExtension(),
         });
+      });
+      const installed = await page.evaluate(async () => {
+        const runtimeUrl =
+          performance
+            .getEntriesByType("resource")
+            .find(
+              (entry) => new URL(entry.name).pathname === "/src/application/extensions/runtime.ts",
+            )?.name || "/src/application/extensions/runtime.ts";
+        const { extensionHost } = await import(/* @vite-ignore */ runtimeUrl);
+        return extensionHost
+          .getSnapshot()
+          .extensions.map((item: { id: string; status: string; error?: string }) => ({
+            id: item.id,
+            status: item.status,
+            error: item.error,
+          }));
+      });
+      expect(installed).toContainEqual({
+        id: "fixture.reader-tools",
+        status: "active",
+        error: undefined,
       });
       await expect(page.getByRole("treeitem")).toContainText(
         language === "en" ? "Page 1" : "第 1 页",
@@ -161,7 +188,13 @@ for (const language of ["zh", "en"] as const) {
       ).toHaveCount(0);
       await page.evaluate(async () => {
         const load = (path: string) => import(/* @vite-ignore */ path);
-        const { extensionHost } = await load("/src/application/extensions/runtime.ts");
+        const runtimeUrl =
+          performance
+            .getEntriesByType("resource")
+            .find(
+              (entry) => new URL(entry.name).pathname === "/src/application/extensions/runtime.ts",
+            )?.name || "/src/application/extensions/runtime.ts";
+        const { extensionHost } = await load(runtimeUrl);
         await extensionHost.setEnabled("fixture.reader-tools", false);
       });
       await expect(page.locator('[data-ui="extension-dock"]')).toHaveCount(0);

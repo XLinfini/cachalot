@@ -4,9 +4,9 @@ Cachalot 本体是一款理解学术文档的 PDF 阅读器。文献库、PDF �
 
 ## 包与依赖
 
-公开入口是 `src/sdk/index.ts`，React 可选入口是 `src/sdk/react.tsx`。当前内置插件在 `src/extensions/`，开发安装清单在 `src/application/extensions/runtime.ts`。插件只依赖自己的包、公开 SDK 和外部库，不导入 services、基础设施、核心组件或其他插件。SDK 后续可以独立发布；当前未发布 npm 包，也不扫描用户目录安装任意代码。
+公开入口是 `src/sdk/index.ts`，React 可选入口是 `src/sdk/react.tsx`。当前内置插件在 `src/extensions/`，内置安装清单在 `src/application/extensions/runtime.ts`，社区插件安装目录单独持久化。插件只依赖自己的包、公开 SDK 和外部库，不导入 services、基础设施、核心组件或其他插件。SDK 后续可以独立发布；当前未发布 npm 包。设置 → 插件支持本地 `.cachx` / ZIP 包，可一次选择多个包补齐依赖。外部包不会进入可信模块加载器。
 
-每个插件提供 `manifest.ts` 和导出 `activate(context)` 的模块。宿主安装记录提供 `builtIn`、模块加载函数和兼容迁移；插件清单无法自行声明为不可卸载内置插件。清单/上下文命名遵循 VS Code 常见组织方式，但不直接兼容 VS Code 的二进制插件。公开 API 当前版本为 0.1，仅接受 `engines.cachalot: "^0.1.0"`。
+内置插件提供 `manifest.ts` 和导出 `activate(context)` 的模块；社区插件提供 `package.json` 和打包入口。宿主安装记录提供 `builtIn`、模块加载函数和兼容迁移；插件清单无法自行声明为不可卸载内置插件。清单/上下文命名遵循 VS Code 常见组织方式，但不直接兼容 VS Code 的二进制插件。公开 API 当前版本为 0.1.0，`engines.cachalot` 使用 SemVer 范围，并必须包含宿主版本（禁止完全通配的 `*`）。版本、依赖 ID、贡献声明、激活事件、包内路径均在执行代码之前校验。
 
 ```ts
 import type { ExtensionManifest } from "../../sdk";
@@ -58,7 +58,7 @@ export function activate(context: ExtensionContext) {
 | --- | --- |
 | `documents.getPageFacts/getLayoutObservations/getSemanticPage/getDocumentSemantics` | 获取当前已打开文档的事实、原始观测和语义；返回复制的数据，缺页按需分析。DocumentSemantics 可能部分覆盖，检查 coverage。 |
 | `documents.onDidChangeDocument` | 获取新语义快照，不自行拼接第二份权威文档树。 |
-| `reader.registerInteractionTool` | 注册矩形工具，preview 提供覆盖框，select 决定完整选取结果；本体处理手势、截图和坐标。 |
+| `reader.registerInteractionTool` | 注册矩形工具，preview 提供覆盖框，select 决定完整选取结果；可返回 Promise，本体屏蔽迟到手势结果。 |
 | `reader.registerSelectionAction/onDidChangeSelection` | 对通用来源预览注册动作。文字模式传递实际 DOM 字符索引，插件决定业务范围。 |
 | `reader.registerHoverProvider` | 基于当前页面投影和归一化点返回悬停文本，可异步并取消。 |
 | `reader.setDecorations/setBackground/revealPage` | 提供来源覆盖框、阅读区域背景或导航；资源按插件释放。 |
@@ -69,7 +69,7 @@ export function activate(context: ExtensionContext) {
 | `window.createStatusBarItem` | 左右状态项、优先级、命令；与底部内容 panel 区分。 |
 | `localization.registerResources/translate/onDidChangeLanguage` | 插件独立词典与语言变化；Label 对象由工作台翻译。 |
 
-能力声明包括 `documents.read`、`reader.interact`、`reader.decorate`、`ocr`、`lm`。未声明的 SDK 调用被拒绝；文档读取不授予模型调用，模型调用不提供底层命令或凭据。安装清单目前只接纳可信模块，这些声明不是同进程代码的强安全沙箱。
+能力声明包括 `documents.read`、`reader.interact`、`reader.decorate`、`ocr`、`lm`。未声明的 SDK 调用被拒绝；文档读取不授予模型调用，模型调用不提供底层命令或凭据。内置模块仍在可信进程内运行；安装包在独立 Worker 中运行，通过限定消息桥访问相同的能力检查，不接触本体 DOM、Tauri、真实 Key 或任意文件路径。能力声明也不代替用户对发布者的信任。
 
 所有 PDF 坐标使用显示页面的归一化 `[left, top, right, bottom]`，与屏幕像素/缩放分离。页面事实与语义不互相改写，OCR 候选不写入语义树。`ReaderSelection` 是本体共享的来源预览，特定业务 DTO 保存在插件内；选区翻译自己的版本绑定、上下文、公式/标题协议见 `selection-translation/types.ts` 和同目录实现。
 
@@ -91,4 +91,57 @@ Webview 提供者接收 `webview.html/postMessage/onDidReceiveMessage`。HTML �
 
 `tests/fixtures/extensions.ts` 是第二个 SDK 使用者示例：背景、悬停、树侧栏、Webview panel 和 statusbar。它只由隔离浏览器测试的开发加载器安装，不预装给用户。测试边界和命令见 [测试维护指南](../tests/README.md)。
 
-后续社区发布需要建设独立插件运行时、消息桥、开发工具、安装授权、包资源与签名/分发。当前已经分离 SDK、宿主、工作台和插件包，外部主代码执行环境尚未实现；不要把任意下载的 JavaScript 放入可信加载器。
+## 本地安装、更新与重启
+
+设置 → 插件 → 从插件包安装，支持多选。安装预览显示 ID、版本变化、权限、依赖和受影响的运行插件；缺少依赖时补充相应本地包，循环依赖或覆盖内置插件会阻止提交。所有包先校验，之后在一个 IndexedDB 事务中写入；检查失败不会改变安装目录。`cachalot-extensions/packages` 是用户安装数据，在 Tauri Webview 和浏览器均持久化，不属于可清理的论文缓存。卸载只移除代码，保留命名空间内的设置和状态。
+
+安装后按当前激活事件加载插件；更新按依赖顺序停止消费者和提供者，然后加载新作用域。失败的激活显示错误并释放部分注册，已安装包保留以便修复、更新或卸载。安装不会执行 npm scripts、修改本体文件、刷新页面或重启 Tauri。重启单个插件同时重启依赖它的插件；“重启插件宿主”重载全部启用插件，配置、数据和本体服务继续存在。设置页面覆盖并保留阅读工作区，阅读/分析会话、页码、缩放、本体聊天请求不随安装页面的打开或插件重启而卸载。
+
+第一版仅离线本地安装；没有市场、在线自动下载、签名验证或自动升级。SHA-256 用于记录包内容，不能证明发布者身份。
+
+## 依赖与插件 API
+
+采用 [VS Code 清单](https://code.visualstudio.com/api/references/extension-manifest) 的两种声明：
+
+- `extensionDependencies: ["publisher.provider"]` 是硬依赖。宿主在消费者激活前激活全部传递依赖，共享依赖只激活一次。缺失、停用、循环或激活失败会阻止消费者，不影响无关插件。缺失依赖安装完成后会重试已请求激活的消费者。
+- `extensionPack: ["publisher.member"]` 是安装组合。选择组合包时一并提供成员包；成员不是运行依赖，停用/卸载组合不会停用/卸载成员。只有提供 `extensionPack` 的组合包可以省略 `main`。
+
+两种声明都使用插件 ID，不混用 npm 依赖，也不在 ID 后拼版本范围；版本兼容范围由 `engines.cachalot` 控制。当前不额外支持依赖插件的版本约束，与 VS Code 的 ID 数组组织一致。插件作者应版本化公开 API。
+
+停用提供者前列出启用中的消费者，由用户选择一起停用；启用消费者时一起启用所需的已安装依赖。卸载提供者前列出全部已安装消费者（包括停用的消费者），可一起卸载；若其中包含内置插件则拒绝卸载。后台 Worker 崩溃或无响应时释放它及消费者的作用域，消费者显示依赖失败，可通过重启插件或安装修复包恢复。
+
+与 [VS Code API](https://code.visualstudio.com/api/references/vscode-api#extensions) 一样，`activate` 的返回值是公开 API，只能通过已声明硬依赖的 `context.extensions.getExtension(id).exports` / `.activate()` 使用，不导入其他插件源码：
+
+```ts
+// Provider
+export function activate(context: ExtensionContext) {
+  return { async describe(documentId: string) { return "..."; } };
+}
+// Consumer: package.json declares extensionDependencies: ["example.provider"]
+export async function activate(context: ExtensionContext) {
+  const api = await context.extensions.getExtension<{
+    describe(documentId: string): Promise<string>;
+  }>("example.provider")!.activate();
+  const description = await api.describe("current-document");
+}
+```
+
+跨 Worker 的 API 由消息桥代理；方法必须按异步方式使用，数据使用普通 JSON 对象/数组和 Uint8Array，不传递 DOM、类实例、Map/Set 或共享可变对象。更新提供者时重启消费者，使其取得新 API，不继续持有旧代理。
+
+## 打包与社区执行环境
+
+完整示例在 [examples/reader-tools](../examples/reader-tools/README.md)：
+
+```sh
+npm run extension:pack -- examples/reader-tools /tmp/example.reader-tools.cachx
+```
+
+开发目录的 `package.json` 使用上述清单字段，`main` 指向 TypeScript/JavaScript 入口，可用 `files` 列出附带资源文件或目录。打包器使用 esbuild 将依赖和 SDK 工具函数合并为浏览器 IIFE，导出 `cachalotExtension.activate`，将包内入口改为 `extension.js`，生成 ZIP 格式的 `.cachx`。独立工程可以导入 `cachalot`（打包器识别），SDK 尚未发布 npm 包；类型开发可参照示例使用仓库 SDK。不打包 node_modules，不允许 Node 原生模块、外部运行时 import、符号链接或安装脚本。
+
+ZIP 根目录包含 `package.json`、入口和资源文件。限制：压缩包 16 MiB、单文件 8 MiB、展开合计 32 MiB、最多 128 个文件、清单 128 KiB。检查路径穿越、重复条目、加密、跨卷/ZIP64、符号链接、局部头与目录不一致、实际展开长度和 CRC。解析在可终止的独立 Worker 内执行。插件用 `context.resources.read("assets/note.txt")` 取得包内 Uint8Array；图片可编码为 data URL 放进 Webview，不可访问任意宿主文件。
+
+每次激活创建一个 opaque-origin sandbox iframe，iframe 只包含可信启动器；插件主代码在其创建的独立 Blob Worker 中运行，继承禁止外部脚本/网络的 CSP。主代码没有 DOM、本体 origin 存储或 Tauri 桥。宿主只接收明确列出的 SDK 操作并检查能力和归属；消息、注册数、激活时间有界，心跳检测无响应 Worker，终止整个实例即可解除卡死。释放 SDK 注册与中断请求由宿主保证，正常停止会调用 `deactivate`，最多等待 250 ms 后终止 Worker；插件自行启动的后台任务不会获得完成保证。
+
+安装插件使用树视图或 Webview UI，不能通过 `registerViewProvider` 取得本体 HTMLElement，也不能导入可信 `cachalot/react` 挂载工具。可把自己的 React 等库打包到 Webview HTML。工具 preview/select、动作 when、悬停和树数据允许异步返回，消息桥实现相同 SDK，页面更新带代次检查。插件事件和只读模型/文档/选区快照跟随本体变化，LLM 流式回调、每视图 AbortSignal 通过消息桥传递。
+
+这是浏览器运行时隔离，不是操作系统资源配额或恶意代码防护的完整保证。Webview HTML 沿用前述导航限制；仍只安装可信来源的包。当前浏览器回归覆盖 Chromium 的 Blob Worker/CSP/存储隔离；桌面 WebKit 平台应另做实际打包验证。

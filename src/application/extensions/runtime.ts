@@ -9,6 +9,9 @@ import { ExtensionHost } from "./host";
 import { manifest } from "../../extensions/selection-translation/manifest";
 import { message } from "../../domain/messages";
 import { Emitter, disposable } from "./events";
+import { ExtensionRepository } from "../../infrastructure/extensions/repository";
+import { ExtensionInstaller, packageInstallation } from "./installer";
+const extensionRepository = new ExtensionRepository();
 
 let documentSession: { documentId: string; session: DocumentAnalysisSession } | undefined;
 const errors = new Emitter<string>();
@@ -27,6 +30,20 @@ export const extensionHost = new ExtensionHost(
     },
   ],
   {
+    catalog: {
+      load: async () => {
+        const installed = [];
+        for (const pkg of await extensionRepository.list()) {
+          try {
+            installed.push(packageInstallation(pkg));
+          } catch (error) {
+            errors.fire(String(error));
+          }
+        }
+        return installed;
+      },
+      remove: (ids) => extensionRepository.change([], ids),
+    },
     localization: {
       language: () => (i18n.resolvedLanguage === "en" ? "en" : "zh"),
       onDidChangeLanguage: (listener) => {
@@ -72,6 +89,7 @@ export const extensionHost = new ExtensionHost(
     showError: (error) => errors.fire(error),
   },
 );
+export const extensionInstaller = new ExtensionInstaller(extensionHost, extensionRepository);
 export const onExtensionError = errors.event;
 export const onRevealPage = reveals.event;
 export function bindDocumentSession(documentId: string, current: DocumentAnalysisSession) {
