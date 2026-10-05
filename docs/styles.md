@@ -6,11 +6,13 @@
 
 界面使用 Tailwind CSS 4，由 `@tailwindcss/vite` 在构建时生成样式。组件使用 TypeScript；样式变更通常只涉及下列文件。
 
-| 位置                                  | 修改内容                                 |
-| ------------------------------------- | ---------------------------------------- |
-| `src/styles/app.css` 的 `@theme`      | 全局字体、主题色、圆角、阴影、断点       |
-| `src/sdk/ui/styles.ts`                | 按钮、输入框、导航等通用控件的样式组合   |
-| `src/App.tsx`、`src/components/*.tsx` | 页面布局、间距、组件特有的样式和交互状态 |
+| 位置                                               | 修改内容                                   |
+| -------------------------------------------------- | ------------------------------------------ |
+| `src/styles/app.css` 的 `@theme`                   | 全局字体、主题色、圆角、阴影、断点         |
+| `src/sdk/ui/styles.ts`                             | 按钮、输入框、导航等通用控件的样式组合     |
+| `src/components/library/`、`workspace/` 与其他组件 | 文献库、阅读工作台、侧栏及控件的布局与样式 |
+
+App.tsx 负责页面组装和导航，文献库/模型的状态与服务调用分别在 hooks/useLibrary.ts 与 useChatModel.ts，插件宿主同步在 useWorkspaceExtensions.ts。修改页面外观时从对应组件开始；状态归属见 [前端交接](frontend-handoff.md#工作区挂载与状态归属)。
 
 例如，修改 `--color-brand` 会更新所有 `bg-brand`、`text-brand`、`border-brand` 的使用位置；修改 `ui.primaryButton` 会更新共用该样式的主要按钮。旧版色值与尺寸保留在组件中，重设计时可逐步收敛为主题变量。
 
@@ -51,7 +53,7 @@ npm run format:check
 npm run build
 ```
 
-Prettier 配置了 Tailwind 插件，自动排序 TSX 的类名和 `cx()` 中的字面量。格式化脚本覆盖界面文件、样式、i18n 词典、公开 SDK、插件包、插件宿主、React 入口和 Vite 配置。
+Prettier 配置了 Tailwind 插件，自动排序 TSX 的类名和 `cx()` 中的字面量。格式化脚本覆盖界面文件、hooks、样式、i18n 词典、公开 SDK、插件包、插件宿主、React 入口和 Vite 配置。
 
 浏览器样式检查使用独立浏览器上下文和模拟模型接口，不读取用户的 API Key，也不改变正在使用的文献库。以用户提供的论文检查两种横屏宽度与中英文布局：
 

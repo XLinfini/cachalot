@@ -39,8 +39,8 @@
     "test:category-ui": "node --import tsx scripts/run-paper-tests.ts tests/e2e/library-categories.spec.ts",
     "test:library-sort": "node --import tsx tests/unit/library-sort.test.ts",
     "test:library-sort-ui": "playwright test tests/e2e/library-sort.spec.ts",
-    "format": "prettier --write src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
-    "format:check": "prettier --check src/App.tsx src/components src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
+    "format": "prettier --write src/App.tsx src/components src/hooks src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
+    "format:check": "prettier --check src/App.tsx src/components src/hooks src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "extension:pack": "node --import tsx scripts/package-extension.ts"

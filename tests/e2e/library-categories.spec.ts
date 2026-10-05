@@ -6,6 +6,7 @@ import type { LayoutObservations } from "../../src/domain/analysis";
 import { zh } from "../fixtures/locales";
 import { en } from "../fixtures/locales";
 import { loadReferencePaper } from "../support/reference-paper";
+import { libraryImportFiles } from "../fixtures/library";
 import { seedPaper } from "../support/seed-paper";
 
 test("Library categories @paper", async () => {
@@ -298,3 +299,50 @@ test("Library categories @paper", async () => {
     }
   }
 });
+
+for (const language of ["zh", "en"] as const) {
+  test(`Batch PDF import preserves all documents and opens the first (${language})`, async () => {
+    const labels = language === "zh" ? zh : en;
+    const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+    const context = await browser.newContext({ viewport: { width: 1194, height: 834 } });
+    const errors: string[] = [];
+    try {
+      const page = await context.newPage();
+      page.on("pageerror", (cause) => errors.push(cause.message));
+      await page.addInitScript(
+        (language) => localStorage.setItem("cachalot:setting:uiLanguage", language),
+        language,
+      );
+      await page.goto("/");
+      await expect(page.getByText(labels.library.firstPaper, { exact: true })).toBeVisible();
+      const input = page.locator('input[type="file"][accept="application/pdf,.pdf"]');
+      const tabHeader = page.locator("main header").filter({
+        has: page.getByTitle(labels.library.closeTab, { exact: true }),
+      });
+      const files = libraryImportFiles.map(({ bytes, ...file }) => ({
+        ...file,
+        buffer: Buffer.from(bytes),
+      }));
+      await input.setInputFiles(files);
+      await expect(tabHeader).toContainText("first");
+      await expect(page.locator('[data-ui="pdf-page"]')).toHaveCount(1);
+      await expect(input).toHaveValue("");
+      await page.getByTitle(labels.library.closeTab, { exact: true }).click();
+      const cards = page.locator('[data-ui="document-card"]');
+      await expect(cards).toHaveCount(2);
+      await expect(cards.locator("h3")).toHaveText(["second", "first"]);
+      await expect(page.locator('[data-ui="pdf-scroll"]')).toHaveCount(0);
+      // Refresh and re-importing the same files preserve both papers without duplicates.
+      await page.reload();
+      await expect(cards).toHaveCount(2);
+      await input.setInputFiles(files);
+      await expect(tabHeader).toContainText("first");
+      await page.getByRole("button", { name: labels.common.library, exact: true }).click();
+      await expect(cards).toHaveCount(2);
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
+}

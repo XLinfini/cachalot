@@ -33,7 +33,10 @@
 
 | 区域                | 当前入口                                                                                                                                                                     | 接手时关注                                                        |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| 应用外壳与文献库    | [App.tsx](../src/App.tsx)                                                                                                                                                    | library/reader/settings 导航，导入、筛选、模型选择与工作区保留    |
+| 应用外壳与导航      | [App.tsx](../src/App.tsx)、[AppSidebar](../src/components/workspace/AppSidebar.tsx)、[AppNotice](../src/components/workspace/AppNotice.tsx)                                  | 导航、活动文献身份、设置覆盖与全局提示                            |
+| 文献库页面与状态    | [LibraryPage](../src/components/library/LibraryPage.tsx)、[useLibrary](../src/hooks/useLibrary.ts)                                                                           | 页面布局与数据操作分开；导入、筛选、分类、排序和进度              |
+| 阅读工作台          | [ReaderWorkspace](../src/components/workspace/ReaderWorkspace.tsx)                                                                                                           | PDF、本体聊天和插件 docks 的共同生命周期                          |
+| 模型选择与宿主桥    | [useChatModel](../src/hooks/useChatModel.ts)、[useWorkspaceExtensions](../src/hooks/useWorkspaceExtensions.ts)                                                               | 已添加模型恢复、图像能力、模型与选区订阅                          |
 | 文献卡片与首页预览  | [LibraryDocumentCard](../src/components/LibraryDocumentCard.tsx)、[DocumentPreview](../src/components/DocumentPreview.tsx)                                                   | 收藏、移动、删除、异步预览、长标题与稳定文献身份                  |
 | 分类与排序          | [CategorySidebar](../src/components/CategorySidebar.tsx)、[CategoryDialogs](../src/components/CategoryDialogs.tsx)、[LibrarySortMenu](../src/components/LibrarySortMenu.tsx) | 普通分类与收藏独立，删除分类保留论文，四种排序与偏好              |
 | 阅读外壳与导航      | [PdfReader](../src/components/PdfReader.tsx)                                                                                                                                 | 原生目录、缩略图、页码、缩放、工具、滚动位置与共享分析            |
@@ -47,7 +50,7 @@
 | 选区翻译插件 UI     | [TranslationPopup](../src/extensions/selection-translation/TranslationPopup.tsx)、[TranslationSettings](../src/extensions/selection-translation/TranslationSettings.tsx)     | 结果与提示词属于插件；经 SDK 挂载，不在 App 中直接导入            |
 | 共享显示与基础控件  | [MathMarkdown](../src/sdk/MathMarkdown.tsx)、[Modal](../src/components/ui/Modal.tsx)、[ActionMenu](../src/components/ui/ActionMenu.tsx)                                      | 数学/图片回退、原生 dialog、菜单 portal 与键盘行为                |
 
-样式主题在 [app.css](../src/styles/app.css)，控件组合在 [sdk/ui/styles.ts](../src/sdk/ui/styles.ts)，PDF.js 文字层兼容规则在 [pdf-text-layer.css](../src/styles/pdf-text-layer.css)。当前 App 使用的品牌图为 [cachalot-icon.png](../assets/brand/cachalot-icon.png)；其他品牌与背景资源放在 assets 下，不都已经用于界面。
+样式主题在 [app.css](../src/styles/app.css)，控件组合在 [sdk/ui/styles.ts](../src/sdk/ui/styles.ts)，PDF.js 文字层兼容规则在 [pdf-text-layer.css](../src/styles/pdf-text-layer.css)。当前 AppSidebar 使用的品牌图为 [cachalot-icon.png](../assets/brand/cachalot-icon.png)；其他品牌与背景资源放在 assets 下，不都已经用于界面。
 
 ## 工作区挂载与状态归属
 
@@ -66,7 +69,10 @@ flowchart TD
 
 | 状态                                         | 当前拥有者                               | 持续时间与重构约定                                                            |
 | -------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------- |
-| 活动论文、页码、筛选、排序、当前模型         | App 与应用设置服务                       | 页面展示状态与已保存偏好分开；文献 ID 保持稳定                                |
+| 活动论文、页码、导航与面板开关               | App                                      | 文献 ID 是阅读工作区身份；设置打开时保留工作区                                |
+| 文献列表、分类、筛选、排序与导入状态         | useLibrary + 应用设置服务                | 页面展示状态与已保存偏好分开；读写通过 services                               |
+| 服务商、当前模型与图像能力                   | useChatModel + 应用设置服务              | 只选已添加聊天模型；能力按当前模型读取                                        |
+| 模型/活动文档同步与选区/错误订阅             | useWorkspaceExtensions                   | 保持宿主订阅，卸载时释放；不负责插件业务                                      |
 | PDF.js 文档、bytes、缩放、导航目标与工具模式 | PdfReader                                | 同一论文阅读期间复用；设置和插件安装不重建                                    |
 | 事实/语义快照、分析进度与 session            | useDocumentAnalysis + 应用会话           | 按 documentId/bytes 建立，页面和 revision 更新不重新创建模型/Worker           |
 | 当前选区及归属                               | 阅读器产生，extensionHost 发布，App 订阅 | 选区来源与工具作用域一致；插件释放时清理自己的选区                            |
@@ -74,6 +80,8 @@ flowchart TD
 | 模型表单草稿                                 | ProviderEditor                           | 模型服务编辑器在同一次设置窗口的栏目切换中隐藏而非卸载                        |
 | 插件设置草稿、结果与请求                     | 注册视图实例 / 插件作用域                | 由实例 signal 及插件 signal 管理；关闭、替换、停用有明确清理                  |
 | 视图位置、关闭状态和尺寸                     | 插件宿主与工作台设置                     | 不用一套只认识翻译插件的本地状态覆盖宿主目录                                  |
+
+App 负责组合页面和导航，LibraryPage/AppSidebar/ReaderWorkspace 负责对应布局；useLibrary/useChatModel 保留状态在应用外壳的整个生命周期中，切换页面不重新加载它们。模型/文献状态通过 useWorkspaceExtensions 同步到宿主。
 
 设置覆盖层目前使用保留挂载的工作区，并设 invisible、inert 与 aria-hidden。替换实现时继续屏蔽底下交互及键盘焦点；不要把 workspace 从条件渲染树中删除。路由/布局重构可改变实现方式，但应保持 PDF 节点、分析会话和等待中的本体聊天。
 

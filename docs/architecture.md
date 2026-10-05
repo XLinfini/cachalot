@@ -36,6 +36,9 @@
 | `src/infrastructure/analysis/`                  | PDFium、ONNX、Worker RPC、缓存适配器                           | UI 不直接访问                                 |
 | `src/infrastructure/platform.ts`                | 桌面命令与浏览器持久化/网络适配器                              | UI 不直接访问                                 |
 | `src-tauri/src/`                                | SQLite、PDF 文件、密钥库、模型 HTTP 请求                       | 可独立演进；命令参数与 DTO 保持一致           |
+| `src/App.tsx`                                   | 页面切换、活动文献、工作区挂载及组件组装                       | 设置覆盖时保留 ReaderWorkspace                |
+| `src/hooks/useLibrary.ts`、`useChatModel.ts`    | 文献库数据/操作、模型选择/图像能力的界面状态                   | 通过 services 访问持久化与网络                |
+| `src/hooks/useWorkspaceExtensions.ts`           | 当前文档/模型同步，选区与错误订阅                              | 宿主桥，不包含插件业务                        |
 | `src/hooks/useDocumentAnalysis.ts`              | 服务与 React 生命周期的衔接                                    | 换框架时替换该桥接层                          |
 | `src/components/`、`src/App.tsx`、`src/styles/` | 页面、视图状态、PDF.js 显示、操作事件                          | 可重新设计                                    |
 
