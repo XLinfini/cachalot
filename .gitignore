@@ -7,8 +7,9 @@ test-results/
 .test-cache/
 src-tauri/gen/schemas/
 
-# Local task worktrees.
+# Local task worktrees and workspace.
 .worktrees/
+cachalot.local.code-workspace
 
 # Machine-local credentials and runtime data.
 .env
