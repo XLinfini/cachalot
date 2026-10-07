@@ -9,13 +9,14 @@ import {
   Settings2,
   X,
 } from "lucide-react";
-import type { Provider } from "../domain/records";
+import type { ModelSelection, Provider } from "../domain/records";
 import { cx, ui } from "../sdk/ui/styles";
 import { useTranslation } from "react-i18next";
 import { changeUiLanguage, type UiLanguage } from "../i18n";
 import { message } from "../domain/messages";
 import OcrSettings from "./OcrSettings";
 import ProviderEditor from "./ProviderEditor";
+import DefaultModelSetting from "./DefaultModelSetting";
 import CacheSettings from "./CacheSettings";
 import {
   ExtensionSettings,
@@ -28,7 +29,8 @@ interface Props {
   providers: Provider[];
   activeProviderId: string | null;
   onProvidersChange: (providers: Provider[]) => void;
-  onActiveProviderChange: (id: string | null) => void;
+  defaultModel: ModelSelection | null;
+  onDefaultModelChange: (selection: ModelSelection | null) => Promise<void>;
   onError: (message: string) => void;
 }
 
@@ -36,7 +38,8 @@ export default function ProviderSettings({
   providers,
   activeProviderId,
   onProvidersChange,
-  onActiveProviderChange,
+  defaultModel,
+  onDefaultModelChange,
   onError,
 }: Props) {
   const { t, i18n } = useTranslation();
@@ -80,6 +83,7 @@ export default function ProviderSettings({
         t("settings.apiUrl"),
         t("settings.apiKey"),
         t("settings.modelId"),
+        t("settings.defaultModel"),
         t("settings.vision"),
       ],
     },
@@ -242,7 +246,6 @@ export default function ProviderSettings({
             providers={providers}
             activeProviderId={activeProviderId}
             onProvidersChange={onProvidersChange}
-            onActiveProviderChange={onActiveProviderChange}
             onError={onError}
           />
         ) : matches.length > 0 && section === "cache" ? (
@@ -263,10 +266,17 @@ export default function ProviderSettings({
         >
           <ProviderEditor
             purpose="llm"
+            headerSlot={
+              <DefaultModelSetting
+                providers={providers}
+                selection={defaultModel}
+                onChange={onDefaultModelChange}
+                onError={onError}
+              />
+            }
             providers={providers}
             activeProviderId={activeProviderId}
             onProvidersChange={onProvidersChange}
-            onActiveProviderChange={onActiveProviderChange}
             onError={onError}
           />
         </div>

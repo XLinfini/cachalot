@@ -246,7 +246,10 @@ test("OCR provider/model settings are shared, independently selected and safely 
     await assert.rejects(() =>
       recognizeFormula("glm-layout", provider, { imageDataUrl: "data:image/png;base64,AAAA" }),
     );
-    await saveConfiguredProvider({ ...provider, enabled: false });
+    await saveConfiguredProvider({
+      ...provider,
+      addedModels: provider.addedModels?.map((model) => ({ ...model, enabled: false })),
+    });
     await assert.rejects(() => selectedOcrModel({ providerId: provider.id, modelId: "glm-ocr" }));
     assert.equal(calls, 4, "Invalid OCR selection cannot trigger a fallback request");
     globalThis.fetch = async (url, options) => {
@@ -320,7 +323,9 @@ test("OCR provider/model settings are shared, independently selected and safely 
       enabled: true,
       addedModels: [],
     });
-    assert.deepEqual(ocrModels(custom), [{ id: "formula-model", formulaOcr: "formula-chat" }]);
+    assert.deepEqual(ocrModels(custom), [
+      { id: "formula-model", enabled: true, formulaOcr: "formula-chat" },
+    ]);
     assert.deepEqual(chatModels(custom), []);
     assert.equal(
       (await listConfiguredProviders()).find((item) => item.id === custom.id)?.purpose,

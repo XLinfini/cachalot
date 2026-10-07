@@ -1,5 +1,6 @@
 /** Composition root. This is the only core module that imports built-in packages. */
 import i18n from "i18next";
+import { listEnabledModels, resolveEnabledModel, onDidChangeModels } from "../model-catalog";
 import { services } from "../services";
 import { platform } from "../../infrastructure/platform";
 import { reconstructFormulas } from "../ocr";
@@ -79,12 +80,19 @@ export const extensionHost = new ExtensionHost(
       reconstructFormulas: (formulas, options) =>
         reconstructFormulas({
           formulas,
-          fallback: { provider: options.fallback, supportsImages: options.supportsImages },
+          fallback: { provider: options.fallback!, supportsImages: !!options.supportsImages },
+          model: options.model,
           signal: options.signal,
         }),
     },
     formulas: services.formulas,
-    lm: { supportsImages: services.providers.supportsImages, complete: platform.complete },
+    lm: {
+      getModels: listEnabledModels,
+      resolveModel: resolveEnabledModel,
+      onDidChangeModels,
+      supportsImages: services.providers.supportsImages,
+      complete: platform.complete,
+    },
     revealPage: (documentId, page) => reveals.fire({ documentId, page }),
     showError: (error) => errors.fire(error),
   },

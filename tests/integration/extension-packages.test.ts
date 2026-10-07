@@ -114,7 +114,13 @@ const memoryPorts = (): HostPorts => {
     },
     ocr: { reconstructFormulas: async () => ({ assets: [], issues: [] }) },
     formulas: { exportPdf: async () => new Uint8Array() },
-    lm: { supportsImages: async () => false, complete: async () => {} },
+    lm: {
+      getModels: async () => [],
+      resolveModel: unavailable,
+      onDidChangeModels: () => ({ dispose() {} }),
+      supportsImages: async () => false,
+      complete: async () => {},
+    },
     revealPage() {},
     showError() {},
   };

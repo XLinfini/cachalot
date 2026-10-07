@@ -1,5 +1,5 @@
 import type { FormulaOcrProtocol, ModelSelection, Provider } from "../../domain/records";
-import { addedModels } from "../../domain/provider-models";
+import { addedModels, enabledModels } from "../../domain/provider-models";
 import { message } from "../../domain/messages";
 import { platform } from "../../infrastructure/platform";
 import { listConfiguredProviders, supportsImages } from "../model-catalog";
@@ -49,10 +49,8 @@ export async function saveOcrSelection(value: OcrSelection): Promise<void> {
 export async function selectedOcrModel(
   selection: ModelSelection,
 ): Promise<{ provider: Provider; protocol: FormulaOcrProtocol }> {
-  const provider = (await listConfiguredProviders()).find(
-    (p) => p.id === selection.providerId && p.enabled,
-  );
-  const model = provider && addedModels(provider).find((m) => m.id === selection.modelId);
+  const provider = (await listConfiguredProviders()).find((p) => p.id === selection.providerId);
+  const model = provider && enabledModels(provider).find((m) => m.id === selection.modelId);
   if (!provider || !model?.formulaOcr) throw new Error(message("configureOcr"));
   const adapter = ocrAdapters.require(model.formulaOcr);
   if (adapter.requiresVision && !(await supportsImages(provider, model.id)))

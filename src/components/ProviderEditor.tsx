@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, CircleHelp, Database, Layers3, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, CircleHelp, Layers3, Plus, Search, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
 import type { FormulaOcrProtocol, ModelInfo, Provider, ProviderInput } from "../domain/records";
-import { addedModels, chatModels, ocrModels } from "../domain/provider-models";
+import { addedModels } from "../domain/provider-models";
 import { apiEndpoint } from "../domain/api-endpoint";
 import { message } from "../domain/messages";
 import { visionKey } from "../application/model-catalog";
@@ -16,7 +16,7 @@ interface Props {
   providers: Provider[];
   activeProviderId: string | null;
   onProvidersChange: (providers: Provider[]) => void;
-  onActiveProviderChange: (id: string | null) => void;
+  headerSlot?: ReactNode;
   onError: (message: string) => void;
   embedded?: boolean;
 }
@@ -28,7 +28,7 @@ export default function ProviderEditor({
   providers,
   activeProviderId,
   onProvidersChange,
-  onActiveProviderChange,
+  headerSlot,
   onError,
   embedded = false,
 }: Props) {
@@ -40,7 +40,7 @@ export default function ProviderEditor({
   const visibleProviders = providers.filter((provider) =>
     purpose === "llm"
       ? provider.purpose !== "ocr"
-      : provider.purpose === "ocr" || ocrModels(provider).length > 0,
+      : provider.purpose === "ocr" || addedModels(provider).some((model) => !!model.formulaOcr),
   );
   const Element = embedded ? "section" : "main";
   const [modelsError, setModelsError] = useState("");
@@ -53,8 +53,8 @@ export default function ProviderEditor({
   const [modelQuery, setModelQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [vision, setVision] = useState(false);
-  const [visionModel, setVisionModel] = useState("");
+  const [manualModelId, setManualModelId] = useState("");
+  const [imageOverrides, setImageOverrides] = useState<Record<string, boolean>>({});
   const draftModels = draft ? addedModels(draft) : [];
   const shownModels =
     purpose === "ocr"
@@ -110,24 +110,9 @@ export default function ProviderEditor({
   }, [providers, selectedId, purpose]);
 
   useEffect(() => {
-    if (!draft) return;
-    let cancelled = false;
-    setVision(false);
-    setVisionModel("");
-    const provider = providers.find((item) => item.id === draft.id) || { ...draft, hasKey: false };
-    void services.providers
-      .supportsImages(provider, draft.modelId)
-      .then((value) => {
-        if (!cancelled) {
-          setVision(value);
-          setVisionModel(visionKey(draft.id, draft.modelId));
-        }
-      })
-      .catch((cause) => onError(String(cause)));
-    return () => {
-      cancelled = true;
-    };
-  }, [draft?.id, draft?.modelId]);
+    setManualModelId("");
+    setImageOverrides({});
+  }, [draft?.id]);
 
   const createProvider = () => {
     const id = crypto.randomUUID();
@@ -160,11 +145,6 @@ export default function ProviderEditor({
       ...(protocol ? { formulaOcr: protocol as FormulaOcrProtocol } : {}),
     };
     setDraft({ ...draft, addedModels: [...draftModels.filter((m) => m.id !== model.id), model] });
-    if (
-      model.id === draft.modelId &&
-      adapters.find((adapter) => adapter.id === protocol)?.requiresVision
-    )
-      setVision(true);
   };
   const profileOptions = (current?: string) => (
     <>
@@ -179,6 +159,45 @@ export default function ProviderEditor({
       )}
     </>
   );
+
+  const changeModelEnabled = async (model: ModelInfo, enabled: boolean) => {
+    if (!draft) return;
+    const providerId = draft.id;
+    const saved = providers.find((provider) => provider.id === providerId);
+    if (!saved || !addedModels(saved).some((item) => item.id === model.id)) {
+      setDraft({
+        ...draft,
+        addedModels: draftModels.map((item) =>
+          item.id === model.id ? { ...item, enabled } : item,
+        ),
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await services.providers.setModelEnabled(providerId, model.id, enabled);
+      onProvidersChange(
+        providers.map((provider) => (provider.id === providerId ? updated : provider)),
+      );
+      setDraft((current) =>
+        current?.id === providerId
+          ? {
+              ...current,
+              enabled: true,
+              addedModels: addedModels(current).map((item) =>
+                item.id === model.id
+                  ? { ...item, enabled }
+                  : { ...item, enabled: item.enabled ?? current.enabled },
+              ),
+            }
+          : current,
+      );
+    } catch (cause) {
+      onError(String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggleAddedModel = (model: ModelInfo) => {
     setDraft((current) => {
@@ -207,11 +226,11 @@ export default function ProviderEditor({
     setBusy(true);
     try {
       const saved = await services.providers.save({ ...draft, purpose: draft.purpose || purpose });
-      if (visionModel === visionKey(saved.id, saved.modelId))
-        await services.settings.set(visionModel, String(vision));
+      for (const model of addedModels(saved)) {
+        const key = visionKey(saved.id, model.id);
+        if (key in imageOverrides) await services.settings.set(key, String(imageOverrides[key]));
+      }
       onProvidersChange([saved, ...providers.filter((item) => item.id !== saved.id)]);
-      if (purpose === "llm" && !activeProviderId && chatModels(saved).length)
-        onActiveProviderChange(saved.id);
       setDraft({ ...saved, apiKey: "" });
       setNotice(message("providerSaved"));
       return saved;
@@ -263,7 +282,6 @@ export default function ProviderEditor({
     try {
       await services.providers.remove(draft.id);
       onProvidersChange(providers.filter((item) => item.id !== draft.id));
-      if (activeProviderId === draft.id) onActiveProviderChange(null);
       setSelectedId(null);
       setDraft(null);
     } catch (cause) {
@@ -287,6 +305,7 @@ export default function ProviderEditor({
         <p className="mb-[33px] text-[12px] text-[#8b9caf]">
           {t(purpose === "ocr" ? "ocr.providersDescription" : "settings.providersDescription")}
         </p>
+        {headerSlot}
         <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-4 max-compact:grid-cols-1">
           <section
             className={cx(
@@ -379,18 +398,6 @@ export default function ProviderEditor({
                         : t("settings.compatibleApi")}
                     </p>
                   </div>
-                  <label className="relative inline-flex cursor-pointer">
-                    <input
-                      className="peer sr-only"
-                      aria-label={t("settings.enableProvider")}
-                      type="checkbox"
-                      checked={draft.enabled}
-                      onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-                    />
-                    <span className="relative block h-5 w-[35px] rounded-[14px] bg-[#c8d4e1] peer-checked:bg-[#3679d2] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus peer-checked:[&>span]:translate-x-[15px]">
-                      <span className="absolute top-[3px] left-[3px] size-[14px] rounded-full bg-white transition-transform duration-150" />
-                    </span>
-                  </label>
                 </div>
                 <div className="px-[23px] py-[22px]">
                   <h3 className="mb-[5px] text-[12px]">{t("settings.connection")}</h3>
@@ -456,7 +463,7 @@ export default function ProviderEditor({
                     onChange={(apiKey) => setDraft({ ...draft, apiKey })}
                     onError={onError}
                   />
-                  <div className="grid grid-cols-2 gap-3">
+                  {purpose === "ocr" && (
                     <label className={ui.fieldLabel}>
                       {t("settings.modelId")}
                       <input
@@ -466,21 +473,7 @@ export default function ProviderEditor({
                         placeholder={t("settings.modelPlaceholder")}
                       />
                     </label>
-                    {purpose === "llm" && (
-                      <label className="my-[21px] flex items-center gap-2 text-[10px] font-semibold text-[#607590]">
-                        <input
-                          className="accent-brand"
-                          type="checkbox"
-                          checked={!!draftAdapter?.requiresVision || (!draftProtocol && vision)}
-                          disabled={
-                            !!draftProtocol || visionModel !== visionKey(draft.id, draft.modelId)
-                          }
-                          onChange={(event) => setVision(event.target.checked)}
-                        />
-                        {t("settings.vision")}
-                      </label>
-                    )}
-                  </div>
+                  )}
                   {purpose === "ocr" && (
                     <>
                       <label className={ui.fieldLabel} htmlFor="default-ocr-profile">
@@ -527,11 +520,8 @@ export default function ProviderEditor({
                 <div className="flex items-center justify-between border-t border-[#e8edf4] px-[23px] py-[18px] [&_h3]:mb-[5px] [&_h3]:text-[12px] [&_p]:m-0 [&_p]:text-[10px] [&_p]:text-[#9caabb]">
                   <div>
                     <h3>{t("settings.addedModels")}</h3>
-                    <p>
-                      {t("settings.currentModel", {
-                        model: draft.modelId || t("settings.noModel"),
-                      })}
-                    </p>
+                    <p>{t("settings.selectedModels", { count: shownModels.length })}</p>
+                    <p className="mt-1!">{t("settings.modelEnabledHint")}</p>
                   </div>
                   <button
                     ref={modelTriggerRef}
@@ -551,7 +541,20 @@ export default function ProviderEditor({
                       data-model-id={model.id}
                       className="flex items-center gap-2 rounded-[7px] border border-[#e7eef7] bg-[#f7fafd] p-[10px] text-[11px] text-[#7890aa]"
                     >
-                      <Database size={17} className="flex-none" />
+                      <label className="relative inline-flex flex-none cursor-pointer">
+                        <input
+                          className="peer sr-only"
+                          aria-label={t("settings.modelEnabled", { model: model.id })}
+                          type="checkbox"
+                          role="switch"
+                          checked={model.enabled ?? draft.enabled}
+                          disabled={busy}
+                          onChange={(event) => void changeModelEnabled(model, event.target.checked)}
+                        />
+                        <span className="relative block h-5 w-[35px] rounded-[14px] bg-[#c8d4e1] peer-checked:bg-[#3679d2] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus peer-disabled:opacity-50 peer-checked:[&>span]:translate-x-[15px]">
+                          <span className="absolute top-[3px] left-[3px] size-[14px] rounded-full bg-white transition-transform duration-150" />
+                        </span>
+                      </label>
                       <span className="min-w-0 flex-1 break-all">{model.id}</span>
                       {purpose === "ocr" && (
                         <select
@@ -564,18 +567,27 @@ export default function ProviderEditor({
                           {profileOptions(model.formulaOcr)}
                         </select>
                       )}
-                      {draft.modelId === model.id ? (
-                        <span className="flex-none rounded-[4px] bg-[#e5f0ff] px-[5px] py-[3px] text-[10px] text-[#3d7ac8]">
-                          {t("settings.default")}
-                        </span>
+                      {purpose === "llm" ? (
+                        <ModelImageCapability
+                          provider={{ ...draft, hasKey: false }}
+                          model={model}
+                          value={imageOverrides[visionKey(draft.id, model.id)]}
+                          onChange={(value) =>
+                            setImageOverrides((current) => ({
+                              ...current,
+                              [visionKey(draft.id, model.id)]: value,
+                            }))
+                          }
+                          onError={onError}
+                        />
                       ) : (
                         <button
                           type="button"
                           className="flex-none border-0 bg-transparent text-[10px] text-[#3477c8]"
-                          aria-label={t("settings.useModel", { model: model.id })}
+                          aria-label={t("ocr.editModel", { model: model.id })}
                           onClick={() => setDraft({ ...draft, modelId: model.id })}
                         >
-                          {t("settings.makeDefault")}
+                          {t("common.edit")}
                         </button>
                       )}
                       <button
@@ -593,16 +605,34 @@ export default function ProviderEditor({
                       {t(purpose === "ocr" ? "ocr.manualModel" : "settings.manualModel")}
                     </p>
                   )}
-                  {purpose === "llm" &&
-                    activeProviderId !== draft.id &&
-                    chatModels(draft).length > 0 && (
+                  {purpose === "llm" && (
+                    <div className="flex items-end gap-2 pt-2">
+                      <label className={cx(ui.fieldLabel, "min-w-0 flex-1")}>
+                        {t("settings.modelId")}
+                        <input
+                          className={cx(ui.fieldInput, "mb-0 block")}
+                          value={manualModelId}
+                          onChange={(event) => setManualModelId(event.target.value)}
+                          placeholder={t("settings.modelPlaceholder")}
+                        />
+                      </label>
                       <button
-                        className="border-0 bg-transparent text-[10px] text-[#3477c8]"
-                        onClick={() => onActiveProviderChange(draft.id)}
+                        type="button"
+                        className={ui.secondaryButton}
+                        disabled={
+                          !manualModelId.trim() ||
+                          draftModels.some((model) => model.id === manualModelId.trim())
+                        }
+                        onClick={() => {
+                          toggleAddedModel({ id: manualModelId.trim() });
+                          setManualModelId("");
+                        }}
                       >
-                        {t("settings.makeDefault")}
+                        <Plus size={16} />
+                        {t("settings.addModel")}
                       </button>
-                    )}
+                    </div>
+                  )}
                 </div>
                 {notice && (
                   <p
@@ -740,5 +770,54 @@ export default function ProviderEditor({
         </dialog>
       )}
     </>
+  );
+}
+
+/** Capability edits belong to individual models and are saved with the provider draft. */
+function ModelImageCapability({
+  provider,
+  model,
+  value,
+  onChange,
+  onError,
+}: {
+  provider: Provider;
+  model: ModelInfo;
+  value: boolean | undefined;
+  onChange: (value: boolean) => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [stored, setStored] = useState<boolean>();
+  const required =
+    !!model.formulaOcr &&
+    !!services.ocr.adapters().find((adapter) => adapter.id === model.formulaOcr)?.requiresVision;
+  useEffect(() => {
+    let cancelled = false;
+    setStored(undefined);
+    void services.providers
+      .supportsImages(provider, model.id)
+      .then((capability) => {
+        if (!cancelled) setStored(capability);
+      })
+      .catch((cause) => {
+        if (!cancelled) onError(String(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.id, model.id, model.formulaOcr]);
+  return (
+    <label className="flex flex-none items-center gap-1.5 text-[10px] text-[#607590]">
+      <input
+        type="checkbox"
+        className="accent-brand"
+        aria-label={t("settings.modelVision", { model: model.id })}
+        checked={required || (value ?? stored ?? false)}
+        disabled={required || !!model.formulaOcr || stored === undefined}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {t("settings.vision")}
+    </label>
   );
 }

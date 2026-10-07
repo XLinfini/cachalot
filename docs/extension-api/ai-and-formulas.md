@@ -4,7 +4,7 @@
 
 ## 使用宿主模型
 
-声明 `lm` 后可读取当前模型、监听模型变化、查询图片能力和发送流式请求。Provider 只含元数据和 hasKey 状态，不包含真实密钥。请求通过宿主平台注入已保存凭据，插件不调用任意 fetch 或 Tauri 命令。
+声明 `lm` 后可查询所有提供商的已启用模型、监听目录和当前模型变化、查询图片能力和发送流式请求。默认值未设置时仍可以显式调用已启用模型。Provider 只含元数据和 hasKey 状态，不包含真实密钥。请求通过宿主平台注入已保存凭据，插件不调用任意 fetch 或 Tauri 命令。
 
 ```ts
 import type { ExtensionContext } from "cachalot";
@@ -38,6 +38,37 @@ onDelta 接收新增片段，`complete` 完成后返回 void；需要完整字�
 
 CompletionInput 的 messages 用宽泛类型表达服务协议；插件仍应构造正确的角色/正文与需要的图像字段。先查 `supportsImages(model)`，不要凭 modelId 猜测。即使 UI 选择模型改变，已经构造的 input 仍描述其指定的模型。
 
+## 实时模型目录（API 0.1.2）
+
+`await context.lm.getModels()` 每次向宿主读取最新目录，不获取远端 `/models`。返回的 `AvailableModel` 包含 `providerId`、`providerName`、`modelId`、`kind`（chat/ocr）、`supportsImages` 和可选 `formulaOcr`；不含密钥和未启用条目。列表跨所有提供商，不受默认模型或当前模型限制。同名模型必须按提供商 ID 与模型 ID 的组合识别。
+
+**插件必须在打开模型选择界面或开始新操作时重新查询目录，不得在 activate 时读取一次并长期缓存，不得把完整目录存入 globalState。** 可以保存用户选择的 `{providerId, modelId}`；每次使用前重新查验。`onDidChangeModels` 是变化通知，不携带列表；收到通知时重新调用 getModels 更新正在显示的选择界面。操作中的临时列表只是当时的快照。
+
+```ts
+const models = (await context.lm.getModels()).filter((model) => model.kind === "chat");
+const picked = await context.window.showQuickPick(
+  models.map((model) => ({
+    id: JSON.stringify({ providerId: model.providerId, modelId: model.modelId }),
+    label: `${model.providerName}/${model.modelId}`,
+  })),
+  { title: "Choose a model" },
+);
+if (picked) {
+  const { providerId, modelId } = JSON.parse(picked.id);
+  await context.lm.complete(
+    { providerId, modelId, messages: [{ role: "user", content: text }] },
+    onDelta,
+    signal,
+  );
+}
+```
+
+上例代码放在用户操作的函数内部；text、onDelta、signal 由该次操作提供。需要刷新自己的视图时，登记 `context.lm.onDidChangeModels(() => { void refreshModels(); })`，并在视图释放时 dispose，refreshModels 内重新查询宿主。内置选区翻译使用宿主当前模型订阅，并在每次翻译/重试时重新读取 activeModel，不维护自己的模型目录。
+
+宿主在每次 LLM、图像能力查询和 OCR 调用时校验实际保存的模型状态。伪造 enabled 字段、猜测模型 ID 或传入已失效快照都不能调用未启用模型；禁用或删除后，正在运行的对应插件请求也会取消，迟到结果不会继续交给插件。模型重新启用后无需重启插件，下一次查询即可找到它。
+
+chat 模型通过 complete 调用；专用 OCR 按其协议通过 reconstructFormulas 调用，不能当作普通 Chat 接口。新代码始终传 providerId 和 modelId；兼容旧调用省略 modelId 时，仅允许使用该提供商的当前模型，禁止回落到存储行的旧默认 ID。
+
 ## 取消与错误处理
 
 将视图相关请求绑定 `view.signal`，手势/悬停任务绑定其 signal，其他任务使用自建控制器并结合 `context.signal`。宿主会组合插件作用域，不把插件请求变成本体聊天请求。
@@ -48,7 +79,7 @@ CompletionInput 的 messages 用宽泛类型表达服务协议；插件仍应构
 
 ## 公式复建
 
-声明 `ocr` 后，`reconstructFormulas` 接收明确的 FormulaFragment 数组和回退配置。独立 OCR 由本体“公式 OCR”设置控制；fallback 用于没有独立选择时的模型回退，不意味着插件可静默改变用户的 OCR 设置。用户选择不进行远端识别时不会发送公式识别请求；独立配置失效时报告问题，不自动换回退模型。
+声明 `ocr` 后，`reconstructFormulas` 接收明确的 FormulaFragment 数组和回退配置。默认遵循本体“公式 OCR”设置；也可以在明确的用户操作中传入 `model: {providerId, modelId}` 调用另一已启用 OCR 模型，此次选择不修改本体设置。fallback 用于没有独立选择时的模型回退，不意味着插件可静默改变用户的 OCR 设置。未传 model 时，用户选择不进行远端识别就不会发送公式识别请求；独立配置失效时报告问题，不自动换回退模型。
 
 ```ts
 import type { ExtensionContext, FormulaFragment } from "cachalot";
@@ -72,6 +103,8 @@ export async function prepareFormulas(
   return result;
 }
 ```
+
+如使用已查询到的专用 OCR 模型，可调用 `context.ocr.reconstructFormulas(formulas, { model: {providerId, modelId}, signal })`，不要求设置聊天默认模型。独立 OCR 和每次 OCR 批次也受启用校验及禁用取消保护。
 
 上例同时需要 `ocr` 和 `lm`；取得公式页面投影通常还需 `documents.read`。结果是 `{assets, issues}`，每个 asset 包含带候选的 formula、原图 data URL、像素宽高和相对 PDF 点的 scale。
 

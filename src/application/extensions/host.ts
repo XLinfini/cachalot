@@ -1,4 +1,7 @@
 import type {
+  AvailableModel,
+  ModelSelection,
+  Provider,
   Capability,
   ContextValue,
   ConfigurationChangeEvent,
@@ -22,6 +25,8 @@ import type {
   ViewProvider,
   WebviewViewProvider,
 } from "../../sdk";
+import { enabledModels } from "../../domain/provider-models";
+import { message } from "../../domain/messages";
 import { Emitter, cancellable, cancelled, disposable } from "./events";
 import { matchesContext, normalizeKeybinding, parseContext } from "../../domain/context-keys";
 import { decodeConfiguration, validateConfiguration } from "../../domain/extension-configuration";
@@ -62,7 +67,11 @@ export interface HostPorts {
   >;
   ocr: ExtensionContext["ocr"];
   formulas: ExtensionContext["formulas"];
-  lm: Pick<ExtensionContext["lm"], "supportsImages" | "complete">;
+  lm: Pick<ExtensionContext["lm"], "supportsImages" | "complete"> & {
+    getModels(): Promise<AvailableModel[]>;
+    resolveModel(selection: ModelSelection, kind?: "chat" | "ocr"): Promise<Provider>;
+    onDidChangeModels: import("../../sdk").Event<ModelSelection[]>;
+  };
   revealPage(documentId: string, page: number): void;
   showError(message: string): void;
 }
@@ -149,6 +158,8 @@ export class ExtensionHost {
   >();
   private activeDocuments = new Emitter<string | null>();
   private models = new Emitter<ProviderValue>();
+  private catalogueChanged = new Emitter<void>();
+  private catalogueSubscription: Disposable;
   private readerStates = new Emitter<ReaderViewState | null>();
   private configurationChanges = new Emitter<{ owner: string; event: ConfigurationChangeEvent }>();
   readonly onDidChangeConfiguration = this.configurationChanges.event;
@@ -179,6 +190,19 @@ export class ExtensionHost {
     installations: ExtensionInstallation[],
     private ports: HostPorts,
   ) {
+    this.catalogueSubscription = ports.lm.onDidChangeModels((enabled) => {
+      const model = this._model;
+      if (model) {
+        const allowed = (modelId: string) =>
+          enabled.some((item) => item.providerId === model.id && item.modelId === modelId);
+        this.setModel(
+          allowed(model.modelId)
+            ? { ...model, addedModels: enabledModels(model).filter((item) => allowed(item.id)) }
+            : null,
+        );
+      }
+      this.catalogueChanged.fire();
+    });
     for (const installation of installations) this.registerInstallation(installation);
     this.emit();
   }
@@ -719,6 +743,7 @@ export class ExtensionHost {
     runtime.status = runtime.enabled ? "inactive" : "disabled";
   }
   async dispose() {
+    this.catalogueSubscription.dispose();
     this.stopped = true;
     for (const runtime of this.runtimes.values()) await this.stopRuntime(runtime);
     this.emit();
@@ -1197,34 +1222,98 @@ export class ExtensionHost {
       },
       ocr: {
         reconstructFormulas: (formulas, options) =>
-          call("ocr", options.signal, (signal) =>
-            host.ports.ocr.reconstructFormulas(formulas, { ...options, signal }),
-          ),
+          call("ocr", options.signal, (signal) => {
+            const fallback = options.fallback || host._model;
+            const selection =
+              options.model || (fallback && { providerId: fallback.id, modelId: fallback.modelId });
+            if (!selection) throw new Error(message("modelNotEnabled"));
+            return host.withEnabledModel(
+              selection,
+              signal,
+              async (provider, combined) =>
+                host.ports.ocr.reconstructFormulas(formulas, {
+                  ...options,
+                  model: options.model
+                    ? { providerId: provider.id, modelId: provider.modelId }
+                    : undefined,
+                  fallback: provider,
+                  supportsImages: await host.ports.lm.supportsImages(provider),
+                  signal: combined,
+                }),
+              options.model ? "ocr" : undefined,
+            );
+          }),
       },
       formulas: {
         exportPdf: (formula) =>
           call("documents.read", undefined, () => host.ports.formulas.exportPdf(formula)),
       },
       lm: {
+        getModels: () =>
+          call("lm", undefined, async () => structuredClone(await host.ports.lm.getModels())),
+        onDidChangeModels: event(host.catalogueChanged, "lm"),
         get activeModel() {
           active("lm");
           return host._model;
         },
         onDidChangeActiveModel: event(host.models, "lm"),
-        supportsImages: (model) => call("lm", undefined, () => host.ports.lm.supportsImages(model)),
-        complete: (input, onDelta, signal) =>
-          call("lm", signal, (combined) =>
-            host.ports.lm.complete(
-              input,
-              (delta) => {
-                if (!combined.aborted) onDelta(delta);
-              },
-              combined,
+        supportsImages: (model) =>
+          call("lm", undefined, async () =>
+            host.ports.lm.supportsImages(
+              await host.ports.lm.resolveModel({ providerId: model.id, modelId: model.modelId }),
             ),
           ),
+        complete: (input, onDelta, signal) =>
+          call("lm", signal, (combined) => {
+            // Legacy calls may omit the ID only for the current provider. Never use its database default.
+            const modelId =
+              input.modelId ??
+              (host._model?.id === input.providerId ? host._model.modelId : undefined);
+            if (!modelId) throw new Error(message("modelNotEnabled"));
+            return host.withEnabledModel(
+              { providerId: input.providerId, modelId },
+              combined,
+              (provider, guarded) =>
+                host.ports.lm.complete(
+                  { ...input, providerId: provider.id, modelId: provider.modelId },
+                  (delta) => {
+                    if (!guarded.aborted) onDelta(delta);
+                  },
+                  guarded,
+                ),
+              "chat",
+            );
+          }),
       },
     };
   }
+  private async withEnabledModel<T>(
+    selection: ModelSelection,
+    signal: AbortSignal,
+    run: (provider: Provider, signal: AbortSignal) => Promise<T>,
+    kind?: "chat" | "ocr",
+  ): Promise<T> {
+    selection = { providerId: selection.providerId, modelId: selection.modelId };
+    const controller = new AbortController();
+    const subscription = this.ports.lm.onDidChangeModels((enabled) => {
+      if (
+        !enabled.some(
+          (model) =>
+            model.providerId === selection.providerId && model.modelId === selection.modelId,
+        )
+      )
+        controller.abort();
+    });
+    const combined = AbortSignal.any([signal, controller.signal]);
+    try {
+      const provider = await this.ports.lm.resolveModel(selection, kind);
+      combined.throwIfAborted();
+      return await cancellable(combined, () => run(provider, combined));
+    } finally {
+      subscription.dispose();
+    }
+  }
+
   async executeCommand(command: string, ...args: unknown[]) {
     await this.initialize();
     const declaration = [...this.runtimes.values()]
@@ -1288,8 +1377,14 @@ export class ExtensionHost {
   }
   setModel(model: ProviderValue) {
     if (JSON.stringify(model) === JSON.stringify(this._model)) return;
-    this._model = model;
-    this.models.fire(model);
+    this._model = model ? { ...model, addedModels: enabledModels(model) } : null;
+    if (this._model) {
+      this._model.addedModels = Object.freeze(
+        this._model.addedModels!.map((item) => Object.freeze({ ...item })),
+      ) as unknown as Provider["addedModels"];
+      Object.freeze(this._model);
+    }
+    this.models.fire(this._model);
     this.emit();
   }
   showView(id: string, data?: unknown) {

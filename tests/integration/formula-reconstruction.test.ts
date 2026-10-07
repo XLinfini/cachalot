@@ -131,6 +131,25 @@ test("invalid syntax, changed native characters and ambiguous IDs retain origina
   assert.deepEqual(h.saved, []);
 });
 
+test("an explicit plugin OCR model overrides application preferences without consulting or changing them", async () => {
+  const selected = { providerId: "plugin-ocr", modelId: "plugin-math" };
+  const chosen = { ...provider, id: selected.providerId, modelId: selected.modelId };
+  const h = harness({
+    getSelection: async () => {
+      assert.fail("An explicit model must not consult application OCR preferences");
+    },
+    resolveModel: async (selection) => {
+      assert.deepEqual(selection, selected);
+      return { provider: chosen, protocol: "fixture-ocr" };
+    },
+  });
+  const result = await h.reconstruct({ formulas: [evidenceFormula], fallback, model: selected });
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.assets[0].formula.latex, latex);
+  assert.deepEqual(h.requests[0][1], chosen);
+  assert.equal(h.saved[0].record.candidates["fixture-v1:plugin-ocr:plugin-math"], latex);
+});
+
 test("candidate reuse is scoped to the selected model and adapter version", async () => {
   let modelId = provider.modelId,
     cachePrefix = "fixture-v1";

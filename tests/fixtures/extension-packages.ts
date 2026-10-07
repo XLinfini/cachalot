@@ -69,7 +69,7 @@ export function consumerPackage() {
             if (message.kind === 'ping') webview.postMessage({text:new TextDecoder().decode(await ctx.resources.read('assets/note.txt')) + ' / ' + await api.describe()});
             if (message.kind === 'lm') {
               const model = ctx.lm.activeModel;
-              await ctx.lm.complete({providerId:model.id, messages:[{role:'user',content:'plugin request'}]}, delta => webview.postMessage({text:delta}), view.signal);
+              await ctx.lm.complete({providerId:model.id, modelId:model.modelId, messages:[{role:'user',content:'plugin request'}]}, delta => webview.postMessage({text:delta}), view.signal);
             }
           });
         }
@@ -213,6 +213,45 @@ export function workbenchPackage() {
         "  await render();",
         "}",
       ].join("\n"),
+    ),
+  };
+}
+
+/** A real Worker consumer reads on every action and refreshes on catalogue changes. */
+export function modelsPackage() {
+  const manifest: ExtensionManifest = {
+    ...extensionFixtureManifest,
+    name: "models",
+    displayName: "Live models fixture",
+    engines: { cachalot: "^0.1.2" },
+    capabilities: ["lm"],
+    contributes: {
+      views: [{ id: "fixture.models.web", title: "Live models", location: "sidebar.right" }],
+    },
+  };
+  return {
+    manifest,
+    buffer: extensionArchive(
+      manifest,
+      `
+    export function activate(ctx) {
+      ctx.window.registerWebviewViewProvider('fixture.models.web', { resolveWebviewView(webview, view) {
+        webview.html = '<p id="models">Loading</p><p id="result">Ready</p><button id="refresh">Refresh models</button><button id="call">Use B</button><script>document.getElementById("refresh").onclick=()=>parent.postMessage({kind:"refresh"},"*");document.getElementById("call").onclick=()=>parent.postMessage({kind:"call"},"*");addEventListener("message",e=>document.getElementById(e.data.kind).textContent=e.data.text);</script>';
+        const refresh = async () => { const models = await ctx.lm.getModels(); webview.postMessage({kind:'models',text:models.map(m=>m.providerId+'/'+m.modelId).sort().join(',') || 'Empty'}); };
+        const events = ctx.lm.onDidChangeModels(refresh);
+        const messages = webview.onDidReceiveMessage(async message => {
+          if(message.kind==='refresh') await refresh();
+          if(message.kind==='call') {
+            try { await ctx.lm.complete({providerId:'b',modelId:'shared',messages:[{role:'user',content:'live models test'}]}, delta=>webview.postMessage({kind:'result',text:delta}),view.signal); }
+            catch { webview.postMessage({kind:'result',text:'Blocked'}); }
+          }
+        });
+        void refresh();
+        return {dispose(){events.dispose();messages.dispose();}};
+      }});
+      ctx.window.showView('fixture.models.web');
+    }
+  `,
     ),
   };
 }

@@ -10,6 +10,9 @@ import {
   saveConfiguredProvider,
   listModels,
   supportsImages,
+  setModelEnabled,
+  removeConfiguredProvider,
+  onDidChangeModels,
 } from "./model-catalog";
 import { documentPreview, removePreview } from "../infrastructure/pdf/document-preview";
 import { formulaRepository } from "../infrastructure/formula-repository";
@@ -64,12 +67,13 @@ export const services = {
   providers: {
     list: listConfiguredProviders,
     save: saveConfiguredProvider,
-    remove: platform.deleteProvider,
+    remove: removeConfiguredProvider,
+    setModelEnabled,
+    onDidChangeModels,
     listModels,
     supportsImages,
     keyPreview: platform.providerKeyPreview,
     revealKey: platform.revealProviderKey,
-    // Preserve the adapter receiver; testProvider delegates to this.listModels.
     test: (id: string) => platform.testProvider(id),
   },
   conversations: {

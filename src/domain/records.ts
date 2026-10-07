@@ -21,6 +21,8 @@ export interface Provider {
   id: string;
   name: string;
   baseUrl: string;
+  /** Legacy stored model/OCR editor target; chat defaults use the global defaultModel setting.
+   * Resolved request providers carry the currently selected model here. */
   modelId: string;
   enabled: boolean;
   hasKey: boolean;
@@ -35,6 +37,8 @@ export interface ProviderInput extends Omit<Provider, "hasKey"> {
 export interface ModelInfo {
   id: string;
   ownedBy?: string;
+  /** Missing values inherit the legacy provider switch until migrated. */
+  enabled?: boolean;
   /** Transport/task adapter, independent of the provider's credentials.
    * Dedicated OCR models are excluded from chat and translation choices. */
   formulaOcr?: FormulaOcrProtocol;
@@ -43,6 +47,13 @@ export type FormulaOcrProtocol = string;
 export interface ModelSelection {
   providerId: string;
   modelId: string;
+}
+/** Public metadata for enabled models; credentials and disabled entries are omitted. */
+export interface AvailableModel extends ModelSelection {
+  providerName: string;
+  kind: "chat" | "ocr";
+  supportsImages: boolean;
+  formulaOcr?: FormulaOcrProtocol;
 }
 export interface ChatThread {
   id: string;

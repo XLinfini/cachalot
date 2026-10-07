@@ -1,52 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { services } from "../application/services";
 import type { ModelSelection, Provider } from "../domain/records";
-import { chatModels, hasChatModel } from "../domain/provider-models";
+import {
+  isChatSelection,
+  parseModelSelection,
+  resolveDefaultModel,
+} from "../domain/provider-models";
 
-/** One model choice shared by settings, core chat and the extension host.
- * Only configured chat models are selectable; image capability belongs to the model. */
+/** A global default and an optional current choice shared by chat and extensions.
+ * Both reference configured chat models by provider/model pair. */
 export function useChatModel(onError: (error: string) => void) {
   const [providers, setProviders] = useState<Provider[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
+  const [defaultModel, setDefaultModel] = useState<ModelSelection | null>(null);
   const [activeModel, setActiveModel] = useState<ModelSelection | null>(null);
+  const [ready, setReady] = useState(false);
   const [vision, setVision] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
       services.providers.list(),
+      services.settings.get("defaultModel"),
       services.settings.get("activeProviderId"),
       services.settings.get("activeModel"),
     ])
-      .then(([modelProviders, providerId, model]) => {
+      .then(([modelProviders, storedDefault, legacyProviderId, storedActive]) => {
         if (cancelled) return;
-        let restored: ModelSelection | null = null;
-        try {
-          const value = JSON.parse(model || "null");
-          if (
-            typeof value?.providerId === "string" &&
-            typeof value?.modelId === "string" &&
-            modelProviders.some(
-              (provider) =>
-                provider.enabled &&
-                provider.id === value.providerId &&
-                hasChatModel(provider, value.modelId),
-            )
-          )
-            restored = value;
-        } catch {
-          /* Invalid UI selection never changes credentials. */
-        }
-        setActiveModel(restored);
-        setProviders(modelProviders);
-        setActiveProviderId(
-          restored?.providerId ||
-            (modelProviders.some((p) => p.id === providerId && p.enabled && chatModels(p).length)
-              ? providerId
-              : null) ||
-            modelProviders.find((item) => item.enabled && chatModels(item).length)?.id ||
-            null,
+        const restoredDefault = resolveDefaultModel(
+          modelProviders,
+          parseModelSelection(storedDefault),
+          storedDefault === null ? legacyProviderId : undefined,
         );
+        const restoredActive = parseModelSelection(storedActive);
+        setProviders(modelProviders);
+        setDefaultModel(restoredDefault);
+        setActiveModel(isChatSelection(modelProviders, restoredActive) ? restoredActive : null);
+        setReady(true);
+        // Migrate once, without promoting catalogues or stale current choices to configured models.
+        if (storedDefault !== JSON.stringify(restoredDefault))
+          void services.settings
+            .set("defaultModel", JSON.stringify(restoredDefault))
+            .catch((cause) => onError(String(cause)));
+        if (storedActive && !isChatSelection(modelProviders, restoredActive))
+          void services.settings.set("activeModel", "").catch((cause) => onError(String(cause)));
       })
       .catch((cause) => {
         if (!cancelled) onError(String(cause));
@@ -56,21 +52,31 @@ export function useChatModel(onError: (error: string) => void) {
     };
   }, [onError]);
 
+  const resolvedDefault = useMemo(
+    () => resolveDefaultModel(providers, defaultModel),
+    [providers, defaultModel],
+  );
   const activeProvider = useMemo(() => {
-    const configured = providers.find(
-      (provider) => provider.id === activeProviderId && provider.enabled,
-    );
-    if (!configured || !chatModels(configured).length) return null;
-    return {
-      ...configured,
-      modelId:
-        activeModel?.providerId === configured.id && hasChatModel(configured, activeModel.modelId)
-          ? activeModel.modelId
-          : hasChatModel(configured, configured.modelId)
-            ? configured.modelId
-            : chatModels(configured)[0].id,
-    };
-  }, [providers, activeProviderId, activeModel]);
+    const choice = isChatSelection(providers, activeModel) ? activeModel : resolvedDefault;
+    if (!choice) return null;
+    const provider = providers.find((item) => item.id === choice.providerId)!;
+    return { ...provider, modelId: choice.modelId };
+  }, [providers, activeModel, resolvedDefault]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (JSON.stringify(defaultModel) !== JSON.stringify(resolvedDefault)) {
+      setDefaultModel(resolvedDefault);
+      void services.settings
+        .set("defaultModel", JSON.stringify(resolvedDefault))
+        .catch((cause) => onError(String(cause)));
+    }
+    if (activeModel && !isChatSelection(providers, activeModel)) {
+      // Historical messages retain their images; new requests fall back to the global default.
+      setActiveModel(null);
+      void services.settings.set("activeModel", "").catch((cause) => onError(String(cause)));
+    }
+  }, [ready, providers, activeModel, defaultModel, resolvedDefault, onError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,49 +95,31 @@ export function useChatModel(onError: (error: string) => void) {
     };
   }, [activeProvider, onError]);
 
-  useEffect(() => {
-    if (
-      !activeModel ||
-      providers.some(
-        (provider) =>
-          provider.enabled &&
-          provider.id === activeModel.providerId &&
-          hasChatModel(provider, activeModel.modelId),
-      )
-    )
-      return;
-    // Removing a configured model invalidates the choice; historical messages keep their images.
-    setActiveModel(null);
-    void services.settings.set("activeModel", "").catch((cause) => onError(String(cause)));
-  }, [providers, activeModel, onError]);
-
-  const setProvider = (id: string | null) => {
-    setActiveProviderId(id);
-    setActiveModel(null);
-    void services.settings.set("activeModel", "").catch((cause) => onError(String(cause)));
-    void services.settings
-      .set("activeProviderId", id || "")
-      .catch((cause) => onError(String(cause)));
-  };
   const chooseModel = (providerId: string, modelId: string) => {
-    if (!providers.some((p) => p.id === providerId && p.enabled && hasChatModel(p, modelId)))
-      return;
     const selected = { providerId, modelId };
-    setActiveProviderId(providerId);
+    if (!isChatSelection(providers, selected)) return;
     setActiveModel(selected);
     void services.settings
       .set("activeModel", JSON.stringify(selected))
-      .then(() => services.settings.set("activeProviderId", providerId))
       .catch((cause) => onError(String(cause)));
+  };
+
+  const chooseDefaultModel = async (selected: ModelSelection | null) => {
+    if (selected && !isChatSelection(providers, selected)) return;
+    await services.settings.set("defaultModel", JSON.stringify(selected));
+    await services.settings.set("activeModel", "");
+    setDefaultModel(selected);
+    setActiveModel(null);
   };
 
   return {
     providers,
     setProviders,
-    activeProviderId,
+    activeProviderId: activeProvider?.id || null,
     activeProvider,
+    defaultModel: resolvedDefault,
+    chooseDefaultModel,
     vision,
-    setProvider,
     chooseModel,
   };
 }

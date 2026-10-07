@@ -16,7 +16,13 @@ export type {
   SemanticPageView,
   SemanticNode,
 } from "../domain/document-semantics";
-export type { Provider, CompletionInput, DocumentRecord } from "../domain/records";
+export type {
+  Provider,
+  CompletionInput,
+  DocumentRecord,
+  ModelSelection,
+  AvailableModel,
+} from "../domain/records";
 export type { ReaderSelection, ReaderGesture } from "../domain/reader";
 export { selectionPreview } from "../domain/reader";
 export { area, characterText, containsCenter, intersection, union } from "../domain/geometry";
@@ -31,7 +37,7 @@ import type {
   PageFacts,
 } from "../domain/analysis";
 import type { DocumentSemantics, SemanticPageView } from "../domain/document-semantics";
-import type { CompletionInput, Provider } from "../domain/records";
+import type { AvailableModel, ModelSelection, CompletionInput, Provider } from "../domain/records";
 import type { ReaderGesture, ReaderSelection } from "../domain/reader";
 
 export interface Disposable {
@@ -290,11 +296,19 @@ export interface ExtensionContext {
   ocr: {
     reconstructFormulas(
       formulas: FormulaFragment[],
-      options: { fallback: Provider; supportsImages: boolean; signal?: AbortSignal },
+      options: {
+        fallback?: Provider;
+        supportsImages?: boolean;
+        model?: ModelSelection;
+        signal?: AbortSignal;
+      },
     ): Promise<{ assets: FormulaAsset[]; issues: FormulaPreparationIssue[] }>;
   };
   formulas: { exportPdf(formula: FormulaFragment): Promise<Uint8Array> };
   lm: {
+    /** Read the host catalogue when starting an operation or opening a picker; never cache it at activation. */
+    getModels(): Promise<AvailableModel[]>;
+    onDidChangeModels: Event<void>;
     readonly activeModel: Provider | null;
     onDidChangeActiveModel: Event<Provider | null>;
     supportsImages(model: Provider): Promise<boolean>;

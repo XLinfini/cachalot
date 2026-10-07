@@ -39,6 +39,8 @@ export default function TranslationPopup({ selection, context, signal, onClose }
   const pending = useRef<AbortController | null>(null);
 
   const translate = async () => {
+    // Read the host at each invocation; enabled models and current choices can change while the view is open.
+    const provider = context.lm.activeModel;
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;

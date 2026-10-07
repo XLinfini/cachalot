@@ -12,13 +12,11 @@ export default function OcrSettings({
   providers,
   activeProviderId,
   onProvidersChange,
-  onActiveProviderChange,
   onError,
 }: {
   providers: Provider[];
   activeProviderId: string | null;
   onProvidersChange: (providers: Provider[]) => void;
-  onActiveProviderChange: (id: string | null) => void;
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
@@ -126,7 +124,6 @@ export default function OcrSettings({
         providers={providers}
         activeProviderId={activeProviderId}
         onProvidersChange={onProvidersChange}
-        onActiveProviderChange={onActiveProviderChange}
         onError={onError}
       />
     </main>

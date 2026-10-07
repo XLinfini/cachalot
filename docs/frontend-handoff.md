@@ -43,7 +43,7 @@
 | 单页显示与交互      | [PdfPageView](../src/components/pdf/PdfPageView.tsx)、[page-layout](../src/components/pdf/page-layout.ts)                                                                    | canvas/文字层、可见区域渲染、几何、手势、覆盖框与异步代次         |
 | 分析与 React 的桥接 | [useDocumentAnalysis](../src/hooks/useDocumentAnalysis.ts)                                                                                                                   | 创建/释放会话、绑定插件文档读取、发布语义与恢复缓存               |
 | 本体问答与输入      | [ChatPanel](../src/components/ChatPanel.tsx)、[ChatComposer](../src/components/ChatComposer.tsx)、[ModelPicker](../src/components/ModelPicker.tsx)                           | 会话、流式内容、附件适配器、图像能力与草稿                        |
-| 设置外壳            | [SettingsDialog](../src/components/SettingsDialog.tsx)、[ProviderSettings](../src/components/ProviderSettings.tsx)                                                                                                                   | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
+| 设置外壳            | [SettingsDialog](../src/components/SettingsDialog.tsx)、[ProviderSettings](../src/components/ProviderSettings.tsx)                                                           | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
 | 服务商与密钥        | [ProviderEditor](../src/components/ProviderEditor.tsx)、[ApiKeyField](../src/components/ApiKeyField.tsx)                                                                     | 未保存草稿、临时模型目录、接口地址与真实密钥读取                  |
 | OCR 与缓存          | [OcrSettings](../src/components/OcrSettings.tsx)、[CacheSettings](../src/components/CacheSettings.tsx)                                                                       | 独立选择、连接检查、六类缓存、确认与统计错误                      |
 | 通用插件工作台      | [ExtensionWorkbench](../src/components/extensions/ExtensionWorkbench.tsx)、[ExtensionSettings](../src/components/extensions/ExtensionSettings.tsx)                           | 外部订阅、动态登记、树/Webview、视图实例、安装与依赖预览          |
@@ -72,7 +72,7 @@ flowchart TD
 | -------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------- |
 | 活动论文、页码、导航与面板开关               | App                                      | 文献 ID 是阅读工作区身份；设置打开时保留工作区                                |
 | 文献列表、分类、筛选、排序与导入状态         | useLibrary + 应用设置服务                | 页面展示状态与已保存偏好分开；读写通过 services                               |
-| 服务商、当前模型与图像能力                   | useChatModel + 应用设置服务              | 只选已添加聊天模型；能力按当前模型读取                                        |
+| 服务商、全局默认/当前模型与图像能力          | useChatModel + 应用设置服务              | 默认值和当前选择均以提供商/模型对保存；只选已添加聊天模型，能力按当前模型读取 |
 | 模型/活动文档同步与选区/错误订阅             | useWorkspaceExtensions                   | 保持宿主订阅，卸载时释放；不负责插件业务                                      |
 | PDF.js 文档、bytes、缩放、导航目标与工具模式 | PdfReader                                | 同一论文阅读期间复用；设置和插件安装不重建                                    |
 | 事实/语义快照、分析进度与 session            | useDocumentAnalysis + 应用会话           | 按 documentId/bytes 建立，页面和 revision 更新不重新创建模型/Worker           |
@@ -83,6 +83,8 @@ flowchart TD
 | 视图位置、关闭状态和尺寸                     | 插件宿主与工作台设置                     | 不用一套只认识翻译插件的本地状态覆盖宿主目录                                  |
 
 App 负责组合页面和导航，LibraryPage/AppSidebar/ReaderWorkspace 负责对应布局；useLibrary/useChatModel 保留状态在应用外壳的整个生命周期中，切换页面不重新加载它们。模型/文献状态通过 useWorkspaceExtensions 同步到宿主。
+
+模型服务标题与服务商卡片之间由 ProviderEditor 的 headerSlot 挂载 DefaultModelSetting；默认值及已保存模型的逐模型滑块自动保存，服务商表单与逐模型图像能力仍通过“保存”提交。默认值禁用/删除后清空，不自动更换。提供商头部没有开关。当前模型菜单不修改全局默认值；改变默认值会立即清除当前覆盖选择。不要重新将 Provider.modelId 用作聊天默认值。
 
 设置使用 SettingsDialog 的亮色原生 dialog 浮窗，工作区保持可见和挂载，并设 inert 与 aria-hidden。替换实现时继续屏蔽底下交互及键盘焦点；不要把 workspace 从条件渲染树中删除。路由/布局重构可改变实现方式，但应保持 PDF 节点、分析会话和等待中的本体聊天。
 

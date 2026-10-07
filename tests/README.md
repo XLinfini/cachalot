@@ -63,3 +63,7 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 桌面网络取消的路由测试维护在既有 `native-ocr.test.ts`，浏览器 OCR/LLM 的 fetch 信号传递在 `ocr.test.ts` 验证。Rust `ai_requests::tests` 验证取消早于请求执行及中断 pending future，OCR 流程测试验证取消不产生后续批次或缓存写入。插件浏览器回归还覆盖延迟激活不覆盖用户主动选择的文字模式；未保存的设置草稿跨栏目/语言切换由既有布局回归验证。SDK 类型和插件自身业务 DTO 都参加 `test:types`。
 
 插件依赖顺序、共享提供者、API 暴露、缺失/停用/循环/失败、级联停用/卸载与局部重启仍在 `integration/extensions.test.ts`。包压缩边界、CRC、路径、SemVer 和持久批量事务在 `integration/extension-packages.test.ts`。`fixtures/extension-packages.ts` 生成真实独立 IIFE 包，不替换生产消息桥。`e2e/extension-installation.spec.ts` 验证本地多包补依赖、升级及重载、树/Webview/流式模型/包资源、多个事件监听器的独立触发与释放、持久恢复、隔离与卡死 Worker 终止，并在两个语言中保持正在等待的本体聊天和 PDF 节点。读写仅使用隔离浏览器/IndexedDB，不读取用户已安装插件或真实凭据。
+
+全局默认模型及已添加目录继续在 `integration/provider-models.test.ts` 验证：提供商/模型对身份、旧配置迁移、不可用模型过滤，以及旧图像能力不会转移给另一模型。`e2e/models-added.spec.ts` 的自备数据用例验证中英文全局下拉、同名模型实际请求路由、当前选择独立持久化、逐模型能力/手动添加草稿、逐模型滑块立即保存、删除/禁用默认值保持未设置；原真实论文工作流仍用 `@paper` 单独运行。
+
+模型授权边界继续在 `integration/extensions.test.ts` 验证实时目录、同名身份、未知/禁用模型拒绝、快照不可修改宿主、撤销运行请求及迟到结果；`integration/provider-models.test.ts` 验证旧提供商开关迁移与逐模型事件。`e2e/extension-installation.spec.ts` 安装真实 API 0.1.2 Worker，验证未设置默认值仍可调用其他已启用模型、启用新模型自动刷新以及猜测禁用 ID 不发出请求；只使用隔离提供商与 SSE 夹具。
