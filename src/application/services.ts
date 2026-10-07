@@ -2,7 +2,7 @@ import { platform } from "../infrastructure/platform";
 import type { FormulaFragment } from "../domain/analysis";
 import { analysisRepository } from "../infrastructure/analysis/repository";
 import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
-import { DocumentAnalysisSession } from "./document-analysis";
+import { DocumentAnalysisSession, openDocumentHandle } from "./document-analysis";
 import { askPaper } from "./paper-assistant";
 import { importPaper } from "./import-paper";
 import {
@@ -86,6 +86,15 @@ export const services = {
     removeMessage: platform.deleteMessage,
   },
   analysis: {
+    openDocument: (id: string, signal?: AbortSignal) =>
+      openDocumentHandle(
+        id,
+        {
+          list: platform.listDocuments,
+          loadPdf: platform.loadPdf,
+        },
+        signal,
+      ),
     createSession: (...args: ConstructorParameters<typeof DocumentAnalysisSession>) =>
       new DocumentAnalysisSession(...args),
   },

@@ -74,6 +74,16 @@
 
 PdfReader 将当前页、缩放、滚动与视口尺寸发布为 ReaderViewState。宿主通过 documents.read 控制公开读取与事件；滚动不触发整份工作台快照重建，页码变化则刷新上下文。WorkbenchServices 全局挂载命令面板、快捷键和公共交互；社区消息桥转发同一组接口。外部 bookmarks 示例用于验证公共 SDK，不使用内置 React 特权。
 
+### 插件 PDF 任务与独立阅读区域
+
+API 0.1.3 的 `documents.openDocument` 通过 `document-analysis/access.ts` 持有独立分析会话和来源字节，不借用阅读器的 session；后台任务在关闭标签后仍有效。来源身份与只读事实不改写，分阶段持久缓存继续复用。analyze 明确 facts/layout 完成边界，取消释放自己的分析资源；插件停止自动关闭句柄，不影响本体分析。
+
+`infrastructure/pdf/operations.ts` 排队启动独立 PDFium Worker，提供 inspect、原生区域裁切和 compose；取消终止计算 Worker。compose 支持复制原页清理完整顶层文字对象后加译文层，也支持空白页组合外部排版与原生资源，输出独立 PDF。来源引用校验 hash、事实版本及完整对象覆盖，部分/嵌套对象拒绝。裁切保留原生资源和可见边界，不等同删除裁框外内容；复杂行内公式可由插件按基线作为排版资产插回，无需 OCR。
+
+`infrastructure/extensions/artifacts.ts` 在独立 IndexedDB 中按插件 ID 隔离二进制产物，元数据与字节原子替换；它是用户数据，停用、重启、卸载与清缓存保留。documents.write 控制产物及写 PDF 能力，不开放宿主路径。下载由运行适配器发起。
+
+`ReaderWorkspace` 保持原文 PdfReader 实例，按宿主比较注册项添加 `ArtifactPdfReader`。右侧只使用 PDF.js 和 passive 的单页渲染/文字层，不创建文档分析会话、不继承原文语义、不接入选区翻译；文件可完全无关。活动文献仍为左侧原文。多个区域发布带 viewId、anchor、cause 的状态，显式一对多区域映射驱动滚动联动，没有映射默认不联动；程序导航回声不再次传播。插件停止撤销比较但保留文件。公共契约见[PDF 任务与并列阅读](extension-api/pdf-artifacts-and-comparison.md)。
+
 ## 文献分类
 
 `services.categories.list/create/remove` 管理自建分类，`services.library.move(id, categoryId)` 修改归属，`null` 表示未分类。`DocumentRecord.categoryId` 是可选的兼容字段；旧文献自动归入未分类。每篇论文只归属一个普通分类，“我的收藏”按既有 `starred` 标记汇集论文，收藏和移动互不影响。“全部文献”不按分类或收藏过滤。
@@ -186,7 +196,7 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 统计的是已保存内容的 UTF-8 字节数，不包含主键、SQLite 页、索引、IndexedDB 结构化存储等额外开销；图像按实际保存的 Base64 字符串计数，而不是解码后的图片大小。旧混合缓存中的重复字符数据仍计入各自记录；新格式的观测与语义通过来源引用复用原生数据。清除释放逻辑内容，数据库可复用空闲空间，不承诺数据库文件立即缩小。所有旧解析/模型版本也在统计和清除范围内。
 
-原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好和密钥属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
+原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好、密钥和插件产物属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
 
 `cache-writes.ts` 按类别串行提交写入与清除。分析、预览和 OCR 在工作开始时捕获清除代次；清除先使旧代次失效，等待已开始的写事务，然后删除记录。旧后台任务稍后完成不会重新写回已清除类别，新工作仍可生成缓存。此协调作用于当前应用实例；另一个独立浏览器标签页使用论文时可能正常重建共享站点缓存。
 

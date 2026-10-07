@@ -79,6 +79,8 @@ chat 模型通过 complete 调用；专用 OCR 按其协议通过 reconstructFor
 
 ## 公式复建
 
+若输出是 PDF，可以直接迁移原生公式，无需 OCR 成 LaTeX：用 pdf.exportRegion 裁取来源资源，目标排版为行内公式预留尺寸和基线槽位，最后用 pdf.compose 插入。网页 KaTeX 复建与这一流程分别选择，详细边界见[复杂行内公式迁移](pdf-artifacts-and-comparison.md#复杂行内公式无需-ocr-的迁移)。
+
 声明 `ocr` 后，`reconstructFormulas` 接收明确的 FormulaFragment 数组和回退配置。默认遵循本体“公式 OCR”设置；也可以在明确的用户操作中传入 `model: {providerId, modelId}` 调用另一已启用 OCR 模型，此次选择不修改本体设置。fallback 用于没有独立选择时的模型回退，不意味着插件可静默改变用户的 OCR 设置。未传 model 时，用户选择不进行远端识别就不会发送公式识别请求；独立配置失效时报告问题，不自动换回退模型。
 
 ```ts

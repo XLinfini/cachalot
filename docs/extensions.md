@@ -4,20 +4,21 @@
 
 Cachalot 的插件围绕学术 PDF 阅读器扩展。文献库、PDF 显示、页面事实、版面观测、文档语义、来源资源、OCR、模型配置和本体问答由宿主提供；选区翻译是第一个内置插件。
 
-当前插件 API 为 0.1.2，公开入口是 [src/sdk/index.ts](../src/sdk/index.ts)。社区代码只使用公开 SDK、自己的包与打包依赖，不导入应用服务、平台适配器或其他插件源码。
+当前插件 API 为 0.1.3，公开入口是 [src/sdk/index.ts](../src/sdk/index.ts)。社区代码只使用公开 SDK、自己的包与打包依赖，不导入应用服务、平台适配器或其他插件源码。
 
 ## 你可以实现什么
 
-| 任务                                       | 建议入口                                                |
-| ------------------------------------------ | ------------------------------------------------------- |
-| 阅读背景、覆盖框、悬停摘要、自定义选区工具 | [文档与阅读交互](extension-api/documents-and-reader.md) |
-| 书签、大纲或分组列表                       | [树视图与命令](extension-api/views.md)                  |
-| 侧栏、底部面板、设置或结果窗口             | [工作台与 Webview](extension-api/views.md)              |
-| 利用论文事实和上下文调用 LLM               | [模型与公式](extension-api/ai-and-formulas.md)          |
-| 依赖其他插件公开的服务                     | [生命周期与依赖](extension-api/lifecycle.md)            |
-| 命令、快捷键与条件入口                     | [命令与上下文](extension-api/commands-and-context.md)   |
-| 类型配置、选择输入和进度                   | [配置与公共交互](extension-api/configuration-and-ui.md) |
-| 制作可本地安装的包                         | [打包、测试与分发](extension-api/packaging.md)          |
+| 任务                                       | 建议入口                                                        |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| 阅读背景、覆盖框、悬停摘要、自定义选区工具 | [文档与阅读交互](extension-api/documents-and-reader.md)         |
+| 书签、大纲或分组列表                       | [树视图与命令](extension-api/views.md)                          |
+| 侧栏、底部面板、设置或结果窗口             | [工作台与 Webview](extension-api/views.md)                      |
+| 利用论文事实和上下文调用 LLM               | [模型与公式](extension-api/ai-and-formulas.md)                  |
+| 全文 PDF 任务、生成产物及并列阅读          | [PDF 任务与产物](extension-api/pdf-artifacts-and-comparison.md) |
+| 依赖其他插件公开的服务                     | [生命周期与依赖](extension-api/lifecycle.md)                    |
+| 命令、快捷键与条件入口                     | [命令与上下文](extension-api/commands-and-context.md)           |
+| 类型配置、选择输入和进度                   | [配置与公共交互](extension-api/configuration-and-ui.md)         |
+| 制作可本地安装的包                         | [打包、测试与分发](extension-api/packaging.md)                  |
 
 这些是 SDK 能力示例，不意味着对应插件都已预装。当前还没有任意文件系统、Node、任意网络请求、后台服务进程、运行时 OCR 厂商注册、市场发布或签名接口。
 
@@ -50,6 +51,8 @@ SDK 尚未发布 npm 包；`extension:create` 脚手架生成独立项目并附�
 ## API 兼容范围
 
 本批公共命令、配置、交互和阅读状态接口从 API 0.1.1 起可用；使用它们的插件声明 `engines.cachalot: ^0.1.1`。现有 `^0.1.0` 插件继续可安装，无 type 的旧配置保持字符串语义。宿主版本匹配在安装前校验；不要给使用新接口的插件声明更低的最小版本。API 0.1.2 增加实时已启用模型目录、变化事件和显式 OCR 选择；使用新接口需声明 `^0.1.2`。旧插件调用未添加或未启用模型会被拒绝，不能依靠旧默认字段绕过开关。插件必须每次打开模型选择器或开始操作时查询宿主，不缓存启动时的目录。当前没有完整 VS Code API 兼容承诺。
+
+API 0.1.3 增加独立文档句柄、全文分析快照、documents.write、二进制产物、原生 PDF 合成和通用并列阅读；使用它们声明 `^0.1.3`。右侧产物不分析、不继承原文语义，未提供对应关系时默认不联动。全文翻译、字体和文字排版由插件提供，当前尚未预装全文翻译插件。
 
 ## 运行与信任边界
 

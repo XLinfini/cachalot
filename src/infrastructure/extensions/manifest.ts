@@ -2,7 +2,7 @@ import { satisfies, valid, validRange } from "semver";
 import type { ExtensionManifest, ConfigurationDeclaration } from "../../sdk";
 import { parseContext, normalizeKeybinding } from "../../domain/context-keys";
 import { validateConfiguration } from "../../domain/extension-configuration";
-export const HOST_API_VERSION = "0.1.2";
+export const HOST_API_VERSION = "0.1.3";
 export const extensionId = (manifest: ExtensionManifest) =>
   `${manifest.publisher}.${manifest.name}`;
 export const ID_PATTERN = /^[a-z0-9-]+\.[a-z0-9-]+$/;
@@ -77,9 +77,14 @@ export function validateManifest(value: unknown): ExtensionManifest {
     new Set(capabilities).size !== capabilities.length ||
     capabilities.some(
       (item) =>
-        !["documents.read", "reader.interact", "reader.decorate", "ocr", "lm"].includes(
-          String(item),
-        ),
+        ![
+          "documents.read",
+          "documents.write",
+          "reader.interact",
+          "reader.decorate",
+          "ocr",
+          "lm",
+        ].includes(String(item)),
     )
   )
     fail("capabilities");

@@ -216,6 +216,70 @@ export function workbenchPackage() {
     ),
   };
 }
+/** Runs through the installed sandbox bridge, not bundled/private host imports. */
+export function pdfWorkbenchPackage() {
+  const manifest: ExtensionManifest = {
+    ...extensionFixtureManifest,
+    name: "pdf-workbench",
+    displayName: "PDF workbench fixture",
+    engines: { cachalot: "^0.1.3" },
+    capabilities: ["documents.read", "documents.write", "reader.interact"],
+    contributes: {
+      commands: [
+        {
+          command: "fixture.pdf-workbench.build",
+          title: "Build PDF comparison",
+          enablement: "reader.documentOpen",
+        },
+        { command: "fixture.pdf-workbench.read", title: "Read retained PDF" },
+        { command: "fixture.pdf-workbench.export", title: "Export generated PDF" },
+      ],
+      menus: [
+        {
+          location: "reader.toolbar",
+          command: "fixture.pdf-workbench.build",
+          when: "reader.documentOpen",
+        },
+      ],
+    },
+  };
+  return {
+    manifest,
+    buffer: extensionArchive(
+      manifest,
+      `
+    export function activate(ctx) {
+      let source, comparison;
+      const status = ctx.window.createStatusBarItem('fixture.pdf-workbench.status'); status.text='PDF fixture ready'; status.show();
+      ctx.commands.registerCommand('fixture.pdf-workbench.build', async () => {
+        await comparison?.close(); await source?.close();
+        source = await ctx.documents.openDocument(ctx.reader.activeDocumentId);
+        let progress = 0;
+        const snapshot = await source.analyze({level:'facts',onProgress:()=>progress++});
+        const bytes = await source.readPdf();
+        const region = await ctx.pdf.exportRegion(bytes,1,[0,0,0.8,0.5]);
+        if(region.contentIsolation !== 'visual-crop') throw new Error('Unexpected crop contract');
+        const generated = await ctx.pdf.compose({sources:[bytes],pages:snapshot.facts.map((facts,index)=>index===0
+          ? {source:{source:0,page:1}}
+          : {width:facts.width,height:facts.height,overlays:[{source:0,page:facts.page}]})});
+        await ctx.artifacts.write({id:'derived',name:'derived.pdf',mediaType:'application/pdf',sourceDocumentId:source.document.id,bytes:generated});
+        const persisted = await ctx.artifacts.read('derived');
+        const pages = await ctx.pdf.inspect(persisted);
+        comparison = await ctx.reader.openPdfComparison({id:'fixture.pdf-workbench.compare',documentId:source.document.id,
+          artifactId:'derived',title:'Generated PDF fixture',alignment:pages.map(p=>({id:'page'+p.page,original:{page:p.page,box:[0,0,1,1]},derived:[{page:p.page,box:[0,0,1,1]}]}))});
+        status.text='PDF ready / '+pages.length+' / '+progress;
+      });
+      ctx.commands.registerCommand('fixture.pdf-workbench.read',async()=>{
+        const bytes=await source.readPdf(); const pages=await ctx.pdf.inspect(bytes);
+        ctx.window.showInformationMessage('Retained PDF / '+pages.length);
+      });
+      ctx.commands.registerCommand('fixture.pdf-workbench.export',async()=>ctx.artifacts.export('derived'));
+      return { async artifacts(){return await ctx.artifacts.list();} };
+    }
+  `,
+    ),
+  };
+}
 
 /** A real Worker consumer reads on every action and refreshes on catalogue changes. */
 export function modelsPackage() {

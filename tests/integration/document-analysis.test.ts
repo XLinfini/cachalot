@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import "fake-indexeddb/auto";
 import { DocumentAnalysisSession } from "../../src/application/document-analysis/session";
+import { openDocumentHandle } from "../../src/application/document-analysis";
 import type { AnalysisSnapshot } from "../../src/domain/document-semantics";
 import type { AnalysisEngine } from "../../src/infrastructure/analysis/protocol";
 import type { DocumentRecord } from "../../src/domain/records";
@@ -74,6 +75,78 @@ function deferred() {
 }
 beforeEach(async () => {
   for (const kind of CACHE_KINDS) await cacheRepository.clear(kind);
+});
+test("job document handles provide complete detached snapshots and remain independent of reader disposal", async () => {
+  const calls: string[] = [];
+  const bytes = new Uint8Array([1, 2, 3]);
+  const handle = await openDocumentHandle(document.id, {
+    list: async () => [document],
+    loadPdf: async () => bytes,
+    createSession: (record, input) =>
+      new DocumentAnalysisSession(
+        record,
+        input,
+        () => undefined,
+        () => undefined,
+        () => engine(calls),
+      ),
+  });
+  assert.equal((await handle.getDocumentSemantics()).coverage.complete, false);
+  const read = await handle.readPdf();
+  read[0] = 99;
+  assert.deepEqual(await handle.readPdf(), bytes);
+  const phases: string[] = [];
+  const snapshot = await handle.analyze({
+    onProgress: (item) => {
+      phases.push(`${item.phase}:${item.completed}`);
+    },
+  });
+  assert.equal(snapshot.semantics.coverage.complete, true);
+  assert.equal(snapshot.facts.length, 2);
+  assert.deepEqual(phases, ["facts:1", "facts:2", "layout:1", "layout:2"]);
+  snapshot.semantics.nodes.length = 0;
+  assert.ok((await handle.getDocumentSemantics()).nodes.length > 0);
+  await handle.close();
+  await handle.close();
+  assert.equal(calls.filter((call) => call === "dispose").length, 1, "closing is idempotent");
+  await assert.rejects(handle.getPageFacts(1), { name: "AbortError" });
+  await assert.rejects(
+    openDocumentHandle("missing", { list: async () => [], loadPdf: async () => bytes }),
+    /not found/,
+  );
+});
+test("cancelled full analysis closes its lease and resumes completed source stages in another handle", async () => {
+  const calls: string[] = [],
+    controller = new AbortController();
+  const ports = {
+    list: async () => [document],
+    loadPdf: async () => new Uint8Array(),
+    createSession: (record: DocumentRecord, input: Uint8Array) =>
+      new DocumentAnalysisSession(
+        record,
+        input,
+        () => undefined,
+        () => undefined,
+        () => engine(calls),
+      ),
+  };
+  const handle = await openDocumentHandle(document.id, ports);
+  await assert.rejects(
+    handle.analyze({
+      signal: controller.signal,
+      onProgress: (item) => {
+        if (item.phase === "facts" && item.completed === 1) controller.abort();
+      },
+    }),
+    { name: "AbortError" },
+  );
+  assert.ok(calls.includes("dispose"));
+  await assert.rejects(handle.readPdf(), { name: "AbortError" });
+  calls.length = 0;
+  const resumed = await openDocumentHandle(document.id, ports);
+  assert.equal((await resumed.analyze()).semantics.coverage.complete, true);
+  assert.ok(!calls.includes("extract:1"));
+  await resumed.close();
 });
 
 test("facts extraction is independent; cached partial snapshots restore without loading the worker", async () => {

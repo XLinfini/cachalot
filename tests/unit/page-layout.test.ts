@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mapComparisonAnchor, validateAlignment } from "../../src/domain/pdf-comparison";
+import type { PdfAlignment } from "../../src/domain/document-workbench";
 import {
   captureScrollAnchor,
   pageAtOffset,
@@ -23,6 +25,31 @@ test("mixed page sizes retain their geometry and continuous positions", () => {
   assert.equal(pageAtOffset(pages, pages[1].top)?.number, 2);
   assert.equal(pageAtOffset(pages, 100_000)?.number, 3);
   assert.equal(pageAtOffset([], 0), undefined);
+});
+test("comparison mapping follows one paragraph across continuation pages in both directions", () => {
+  const links: PdfAlignment[] = [
+    {
+      id: "paragraph",
+      original: { page: 2, box: [0.1, 0.2, 0.9, 0.8] },
+      derived: [
+        { page: 2, box: [0.1, 0.5, 0.9, 0.8] },
+        { page: 3, box: [0.1, 0.1, 0.9, 0.4] },
+      ],
+    },
+  ];
+  validateAlignment(links, 2, 3);
+  const forward = mapComparisonAnchor(links, "original", { page: 2, fraction: 0.65 });
+  assert.equal(forward.page, 3);
+  assert.ok(Math.abs(forward.fraction - 0.25) < 1e-9);
+  const reverse = mapComparisonAnchor(links, "derived", forward);
+  assert.equal(reverse.page, 2);
+  assert.ok(Math.abs(reverse.fraction - 0.65) < 1e-9);
+  assert.deepEqual(mapComparisonAnchor(links, "original", { page: 1, fraction: 0.2 }), {
+    page: 1,
+    fraction: 0.2,
+  });
+  assert.throws(() => validateAlignment(links, 2, 2), /alignment region/);
+  assert.throws(() => validateAlignment([...links, ...links], 2, 3), /alignment ID/);
 });
 test("zoom retains the reading anchor on a landscape page", () => {
   const pages = pagePositions(sizes, 1),

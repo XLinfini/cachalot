@@ -11,9 +11,146 @@ import {
   eventPackage,
   workbenchPackage,
   modelsPackage,
+  pdfWorkbenchPackage,
 } from "../fixtures/extension-packages";
 import { cacheFixture, cacheFixturePdf } from "../fixtures/cache";
 import { en, zh } from "../fixtures/locales";
+
+for (const language of ["zh", "en"] as const) {
+  test(`installed plugin composes PDFs and opens a passive comparison without replacing the source (${language})`, async () => {
+    test.setTimeout(100000);
+    const labels = language === "en" ? en : zh;
+    const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+    const context = await browser.newContext({ viewport: { width: 1680, height: 900 } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.addInitScript((language) => {
+        if (window.top === window) localStorage.setItem("cachalot:setting:uiLanguage", language);
+      }, language);
+      await page.goto("/");
+      await page.locator('input[type="file"][accept="application/pdf,.pdf"]').setInputFiles({
+        name: "source.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from(cacheFixturePdf(2)),
+      });
+      const original = page.locator('[data-ui="original-pdf-pane"]');
+      await expect(original.locator('[data-ui="pdf-page"][data-page="1"]')).toHaveAttribute(
+        "data-rendered",
+        "true",
+      );
+      await page.evaluate(() => {
+        (window as any).originalNode = document.querySelector(
+          '[data-ui="original-pdf-pane"] [data-ui="pdf-page"]',
+        );
+      });
+      await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+      await page.locator('[data-ui="extension-package-input"]').setInputFiles({
+        name: "pdf-workbench.cachx",
+        mimeType: "application/zip",
+        buffer: pdfWorkbenchPackage().buffer,
+      });
+      await page.locator('[data-ui="extension-confirm-install"]').click();
+      const card = page.locator('[data-extension-id="fixture.pdf-workbench"]');
+      await expect(card).toContainText(labels.extensions.status.active, { timeout: 25000 });
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
+      await page.getByRole("button", { name: "Build PDF comparison", exact: true }).click();
+      await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText(
+        "PDF ready / 2 / 2",
+        { timeout: 25000 },
+      );
+      const derived = page.locator('[data-ui="artifact-pdf-reader"]');
+      await expect(derived.locator('[data-ui="pdf-page"][data-page="1"]')).toHaveAttribute(
+        "data-rendered",
+        "true",
+      );
+      await expect(derived.locator('[data-ui="analysis-strip"]')).toHaveCount(0);
+      await expect(
+        derived.getByRole("button", { name: labels.reader.layout, exact: true }),
+      ).toHaveCount(0);
+      await expect(derived.locator('[data-page="1"] .textLayer')).toContainText(
+        "Cache fixture paper",
+      );
+      expect(
+        await page.evaluate(
+          () =>
+            (window as any).originalNode ===
+            document.querySelector('[data-ui="original-pdf-pane"] [data-ui="pdf-page"]'),
+        ),
+      ).toBe(true);
+      const separator = page.getByRole("separator", { name: labels.reader.resizeComparison });
+      await separator.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(separator).toHaveAttribute("aria-valuenow", "52");
+      await page.getByRole("button", { name: labels.reader.synchronize, exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: labels.reader.synchronize, exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      const before = await page
+        .locator('[data-ui="artifact-pdf-scroll"]')
+        .evaluate((node) => node.scrollTop);
+      await original.locator('[data-ui="pdf-scroll"]').evaluate((node) => {
+        node.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+        node.scrollTop += 120;
+      });
+      expect(
+        await page.locator('[data-ui="artifact-pdf-scroll"]').evaluate((node) => node.scrollTop),
+      ).toBe(before);
+      await page.getByRole("button", { name: labels.reader.synchronize, exact: true }).click();
+      await original.locator('[data-ui="pdf-scroll"]').evaluate((node) => {
+        node.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+        node.scrollTop += 120;
+      });
+      await expect
+        .poll(() =>
+          page.locator('[data-ui="artifact-pdf-scroll"]').evaluate((node) => node.scrollTop),
+        )
+        .toBeGreaterThan(before);
+      await page.keyboard.press("Control+Shift+P");
+      const palette = page.getByRole("dialog", { name: labels.workbench.commands, exact: true });
+      await palette
+        .getByRole("textbox", { name: labels.workbench.search })
+        .fill("Export generated PDF");
+      const downloadReady = page.waitForEvent("download");
+      await palette.getByRole("option", { name: /Export generated PDF/ }).click();
+      const download = await downloadReady;
+      expect(download.suggestedFilename()).toBe("derived.pdf");
+      await page.screenshot({ path: `test-results/extensions/pdf-comparison-${language}.png` });
+      await page.getByRole("button", { name: labels.library.closeTab, exact: true }).click();
+      await page.keyboard.press("Control+Shift+P");
+      await palette
+        .getByRole("textbox", { name: labels.workbench.search })
+        .fill("Read retained PDF");
+      await palette.getByRole("option", { name: /Read retained PDF/ }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Retained PDF / 2" })).toBeVisible();
+      await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+      await card.getByRole("button", { name: labels.extensions.disable, exact: true }).click();
+      await expect(card).toContainText(labels.extensions.status.disabled);
+      expect(
+        await page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((resolve) => {
+            const req = indexedDB.open("cachalot-extension-artifacts", 1);
+            req.onsuccess = () => resolve(req.result);
+          });
+          const value = await new Promise<number>((resolve) => {
+            const tx = db.transaction("metadata");
+            const req = tx.objectStore("metadata").count(["fixture.pdf-workbench", "derived"]);
+            req.onsuccess = () => resolve(req.result);
+          });
+          db.close();
+          return value;
+        }),
+      ).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
+}
 
 for (const language of ["zh", "en"] as const) {
   test(`local installation, dependency updates and extension restart preserve core work (${language})`, async () => {

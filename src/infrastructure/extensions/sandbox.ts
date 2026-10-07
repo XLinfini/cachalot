@@ -123,6 +123,17 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["documents.getLayoutObservations", context.documents.getLayoutObservations],
         ["documents.getSemanticPage", context.documents.getSemanticPage],
         ["documents.getDocumentSemantics", context.documents.getDocumentSemantics],
+        ["documents.openDocument", context.documents.openDocument],
+        ["artifacts.write", context.artifacts.write],
+        ["artifacts.read", context.artifacts.read],
+        ["artifacts.list", context.artifacts.list],
+        ["artifacts.delete", context.artifacts.delete],
+        ["artifacts.export", context.artifacts.export],
+        ["pdf.inspect", context.pdf.inspect],
+        ["pdf.exportRegion", context.pdf.exportRegion],
+        ["pdf.compose", context.pdf.compose],
+        ["reader.openPdfComparison", context.reader.openPdfComparison],
+        ["reader.getViewStates", context.reader.getViewStates],
         ["reader.revealPage", context.reader.revealPage],
         ["ocr.reconstructFormulas", context.ocr.reconstructFormulas],
         ["formulas.exportPdf", context.formulas.exportPdf],
@@ -139,6 +150,7 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["model", context.lm.onDidChangeActiveModel],
         ["models", context.lm.onDidChangeModels],
         ["readerState", context.reader.onDidChangeViewState],
+        ["paneState", context.reader.onDidChangePaneState],
         ["configuration", context.workspace.onDidChangeConfiguration],
       ]);
       const fail = (error: Error) => {
@@ -432,7 +444,13 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         });
       // Keep read-only snapshot properties current even without a plugin event listener.
       for (const [name, source] of eventSources) {
-        if (name === "document" || name === "configuration" || name === "models") continue;
+        if (
+          name === "document" ||
+          name === "configuration" ||
+          name === "models" ||
+          name === "paneState"
+        )
+          continue;
         if (
           (name === "activeDocument" || name === "readerState") &&
           !capabilities.includes("documents.read")

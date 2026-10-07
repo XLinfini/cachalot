@@ -26,6 +26,13 @@ import type {
   WebviewViewProvider,
 } from "../../sdk";
 import { enabledModels } from "../../domain/provider-models";
+import type {
+  Artifact,
+  DocumentHandle,
+  PdfComparisonOptions,
+  ReaderAnchor,
+} from "../../domain/document-workbench";
+import { validateAlignment } from "../../domain/pdf-comparison";
 import { message } from "../../domain/messages";
 import { Emitter, cancellable, cancelled, disposable } from "./events";
 import { matchesContext, normalizeKeybinding, parseContext } from "../../domain/context-keys";
@@ -64,7 +71,20 @@ export interface HostPorts {
   documents: Pick<
     ExtensionContext["documents"],
     "getPageFacts" | "getSemanticPage" | "getLayoutObservations" | "getDocumentSemantics"
-  >;
+  > &
+    Partial<Pick<ExtensionContext["documents"], "openDocument">>;
+  artifacts?: {
+    write(
+      owner: string,
+      input: import("../../sdk").ArtifactInput,
+      signal?: AbortSignal,
+    ): Promise<Artifact>;
+    read(owner: string, id: string, signal?: AbortSignal): Promise<Uint8Array>;
+    list(owner: string, documentId?: string): Promise<Artifact[]>;
+    delete(owner: string, id: string): Promise<void>;
+    export(owner: string, id: string, signal?: AbortSignal): Promise<void>;
+  };
+  pdf?: ExtensionContext["pdf"];
   ocr: ExtensionContext["ocr"];
   formulas: ExtensionContext["formulas"];
   lm: Pick<ExtensionContext["lm"], "supportsImages" | "complete"> & {
@@ -112,6 +132,14 @@ export interface HostedStatusItem {
   alignment: "left" | "right";
   priority: number;
 }
+export interface HostedPdfComparison {
+  owner: string;
+  options: PdfComparisonOptions;
+  artifact: Artifact;
+  bytes: Uint8Array;
+  originalPageCount: number;
+  derivedPageCount: number;
+}
 export interface HostSnapshot {
   revision: number;
   context: Readonly<Record<string, ContextValue>>;
@@ -129,6 +157,7 @@ export interface HostSnapshot {
   actions: { owner: string; action: SelectionAction }[];
   views: HostedView[];
   statusItems: HostedStatusItem[];
+  comparisons: HostedPdfComparison[];
   background?: string;
   decorations: {
     owner: string;
@@ -166,6 +195,12 @@ export class ExtensionHost {
   private contextValues = new Map<string, ContextValue>();
   private userKeybindings: KeybindingContribution[] = [];
   private _viewState: ReaderViewState | null = null;
+  private paneStates = new Map<string, ReaderViewState>();
+  private paneChanges = new Emitter<ReaderViewState | null>();
+  readonly onDidChangePaneState = this.paneChanges.event;
+  private paneReveals = new Emitter<{ viewId: string; anchor: ReaderAnchor }>();
+  readonly onRevealPane = this.paneReveals.event;
+  private comparisons = new Map<string, HostedPdfComparison>();
   private analysisDocument: string | null = null;
   readonly interactions = new ExtensionInteractions(() => this.emit());
   private _activeDocumentId: string | null = null;
@@ -181,6 +216,7 @@ export class ExtensionHost {
     actions: [],
     views: [],
     statusItems: [],
+    comparisons: [],
     decorations: [],
   };
   private started?: Promise<void>;
@@ -355,6 +391,10 @@ export class ExtensionHost {
       actions: [...this.actions.values()],
       views: [...this.views.values()].map((view) => ({ ...view })),
       statusItems: [...this.statuses.values()].map((item) => ({ ...item })),
+      comparisons: [...this.comparisons.values()].map((item) => ({
+        ...item,
+        options: structuredClone(item.options),
+      })),
       background: [...this.backgrounds.values()].at(-1),
       decorations: [...this.decorations.values()],
     };
@@ -498,9 +538,59 @@ export class ExtensionHost {
       throw new Error("Invalid reader state");
     if (JSON.stringify(state) === JSON.stringify(this._viewState)) return;
     const previousPage = this._viewState?.page;
-    this._viewState = state ? { ...state } : null;
-    this.readerStates.fire(this._viewState ? { ...this._viewState } : null);
+    if (!state && this._viewState)
+      this.clearPaneState(this._viewState.viewId ?? `reader:${this._viewState.documentId}`);
+    this._viewState = state ? structuredClone(state) : null;
+    if (state)
+      this.publishPaneState({ ...state, viewId: state.viewId ?? `reader:${state.documentId}` });
+    this.readerStates.fire(this._viewState ? structuredClone(this._viewState) : null);
     if (previousPage !== state?.page) this.emit();
+  }
+  publishPaneState(state: ReaderViewState & { viewId: string }) {
+    if (
+      !state.viewId ||
+      !Number.isInteger(state.page) ||
+      state.page < 1 ||
+      state.page > state.pageCount ||
+      !Number.isInteger(state.pageCount) ||
+      state.pageCount < 1 ||
+      !Number.isFinite(state.zoom) ||
+      state.zoom <= 0 ||
+      !Number.isFinite(state.scrollTop) ||
+      state.scrollTop < 0 ||
+      !Number.isFinite(state.viewportHeight) ||
+      state.viewportHeight < 0 ||
+      (state.anchor &&
+        (!Number.isFinite(state.anchor.fraction) ||
+          state.anchor.fraction < 0 ||
+          state.anchor.fraction > 1 ||
+          state.anchor.page !== state.page))
+    )
+      throw new Error("Invalid pane state");
+    this.paneStates.set(state.viewId, structuredClone(state));
+    this.paneChanges.fire(structuredClone(state));
+  }
+  clearPaneState(viewId: string) {
+    if (this.paneStates.delete(viewId)) this.paneChanges.fire(null);
+  }
+  closePdfComparison(id: string) {
+    const comparison = this.comparisons.get(id);
+    if (!comparison) return;
+    this.comparisons.delete(id);
+    // Returned RPC callbacks may outlive the closed handle. Drop large payloads.
+    comparison.bytes = new Uint8Array(0);
+    comparison.options.alignment = [];
+    this.clearPaneState(`${id}:derived`);
+    this.emit();
+  }
+  revealPane(viewId: string, anchor: ReaderAnchor) {
+    this.paneReveals.fire({ viewId, anchor: { ...anchor } });
+  }
+  setPdfComparisonSynchronized(id: string, synchronized: boolean) {
+    const comparison = this.comparisons.get(id);
+    if (!comparison) return;
+    comparison.options = { ...comparison.options, synchronized };
+    this.emit();
   }
   private initialize(): Promise<void> {
     return (this.initialized ||= (async () => {
@@ -800,6 +890,7 @@ export class ExtensionHost {
       });
     };
     const scopedKey = (kind: string, key: string) => `extensions:${id}:${kind}:${key}`;
+    let documentLeases = 0;
     const registerView = (
       viewId: string,
       part: Pick<HostedView, "provider" | "tree" | "webview">,
@@ -1106,6 +1197,65 @@ export class ExtensionHost {
         },
       },
       documents: {
+        openDocument: (documentId, signal) =>
+          call("documents.read", signal, async (combined) => {
+            if (!host.ports.documents.openDocument) throw new Error("Document leases unavailable");
+            if (typeof documentId !== "string" || !documentId || documentId.length > 256)
+              throw new Error("Invalid document ID");
+            if (documentLeases >= 8) throw new Error("Too many open document handles");
+            documentLeases++;
+            let lease: DocumentHandle;
+            try {
+              lease = await host.ports.documents.openDocument(documentId, combined);
+              if (combined.aborted) {
+                await lease.close();
+                combined.throwIfAborted();
+              }
+            } catch (error) {
+              documentLeases--;
+              throw error;
+            }
+            const release = track(
+              disposable(() => {
+                documentLeases--;
+                void lease.close();
+              }),
+            );
+            let closed = false;
+            const leaseCall = <T>(signal: AbortSignal | undefined, action: () => Promise<T>) => {
+              if (closed) return Promise.reject(new DOMException("Document closed", "AbortError"));
+              return call("documents.read", signal, async () => structuredClone(await action()));
+            };
+            const handle: DocumentHandle = {
+              document: structuredClone(lease.document),
+              readPdf: (signal) => leaseCall(signal, () => lease.readPdf(signal)),
+              getPageFacts: (page) => leaseCall(undefined, () => lease.getPageFacts(page)),
+              getLayoutObservations: (page) =>
+                leaseCall(undefined, () => lease.getLayoutObservations(page)),
+              getSemanticPage: (page) => leaseCall(undefined, () => lease.getSemanticPage(page)),
+              getDocumentSemantics: () => leaseCall(undefined, () => lease.getDocumentSemantics()),
+              analyze: (options = {}) =>
+                call("documents.read", options.signal, (signal) => {
+                  if (closed) throw new DOMException("Document closed", "AbortError");
+                  return lease.analyze({
+                    ...options,
+                    signal,
+                    onProgress: options.onProgress
+                      ? (progress) => {
+                          if (!signal.aborted)
+                            return options.onProgress!(structuredClone(progress));
+                        }
+                      : undefined,
+                  });
+                }),
+              async close() {
+                closed = true;
+                release.dispose();
+                await lease.close();
+              },
+            };
+            return handle;
+          }),
         getPageFacts: (documentId, page) =>
           call("documents.read", undefined, () =>
             host.ports.documents.getPageFacts(documentId, page),
@@ -1124,10 +1274,166 @@ export class ExtensionHost {
           ),
         onDidChangeDocument: event(host.documentsChanged, "documents.read"),
       },
+      artifacts: {
+        write: (input, signal) =>
+          call("documents.write", signal, (signal) => {
+            if (!host.ports.artifacts) throw new Error("Artifact storage unavailable");
+            return host.ports.artifacts.write(id, input, signal);
+          }),
+        read: (artifactId, signal) =>
+          call("documents.write", signal, (signal) => {
+            if (!host.ports.artifacts) throw new Error("Artifact storage unavailable");
+            return host.ports.artifacts.read(id, artifactId, signal);
+          }),
+        list: (documentId) =>
+          call("documents.write", undefined, async () => {
+            if (!host.ports.artifacts) throw new Error("Artifact storage unavailable");
+            return structuredClone(await host.ports.artifacts.list(id, documentId));
+          }),
+        delete: (artifactId) =>
+          call("documents.write", undefined, async () => {
+            if (!host.ports.artifacts) throw new Error("Artifact storage unavailable");
+            await host.ports.artifacts.delete(id, artifactId);
+            for (const [key, comparison] of host.comparisons)
+              if (comparison.owner === id && comparison.artifact.id === artifactId)
+                host.closePdfComparison(key);
+          }),
+        export: (artifactId) =>
+          call("documents.write", undefined, async (signal) => {
+            if (!host.ports.artifacts) throw new Error("Artifact storage unavailable");
+            await host.ports.artifacts.export(id, artifactId, signal);
+          }),
+      },
+      pdf: {
+        inspect: (bytes, signal) =>
+          call("documents.read", signal, (signal) => {
+            if (!host.ports.pdf) throw new Error("PDF operations unavailable");
+            return host.ports.pdf.inspect(bytes, signal);
+          }),
+        exportRegion: (bytes, page, box, signal) =>
+          call("documents.read", signal, (signal) => {
+            if (!host.ports.pdf) throw new Error("PDF operations unavailable");
+            return host.ports.pdf.exportRegion(bytes, page, box, signal);
+          }),
+        compose: (input, signal) =>
+          call("documents.write", signal, (signal) => {
+            active("documents.read");
+            if (!host.ports.pdf) throw new Error("PDF operations unavailable");
+            return host.ports.pdf.compose(input, signal);
+          }),
+      },
       reader: {
+        getViewStates: () =>
+          call("documents.read", undefined, async () =>
+            structuredClone([...host.paneStates.values()]),
+          ),
+        onDidChangePaneState: event(host.paneChanges, "documents.read"),
+        openPdfComparison: (input) =>
+          call("reader.interact", undefined, async (signal) => {
+            active("documents.read");
+            active("documents.write");
+            owned(input?.id);
+            if (!host.ports.artifacts || !host.ports.pdf || !host.ports.documents.openDocument)
+              throw new Error("PDF comparison unavailable");
+            if (
+              typeof input.title !== "string" ||
+              !input.title ||
+              input.title.length > 256 ||
+              (input.synchronized !== undefined && typeof input.synchronized !== "boolean")
+            )
+              throw new Error("Invalid comparison options");
+            const options = structuredClone(input);
+            options.synchronized ??= !!options.alignment?.length;
+            const artifact = (await host.ports.artifacts.list(id)).find(
+              (item) => item.id === options.artifactId,
+            );
+            if (!artifact || artifact.mediaType !== "application/pdf")
+              throw new Error("PDF artifact not found");
+            const source = await host.ports.documents.openDocument(options.documentId, signal);
+            let originalPageCount: number;
+            try {
+              originalPageCount = source.document.pageCount;
+            } finally {
+              await source.close();
+            }
+            const bytes = await host.ports.artifacts.read(id, artifact.id, signal);
+            const derivedPageCount = (await host.ports.pdf.inspect(bytes, signal)).length;
+            signal.throwIfAborted();
+            validateAlignment(options.alignment ?? [], originalPageCount, derivedPageCount);
+            if (host.comparisons.has(options.id)) throw new Error("Duplicate PDF comparison");
+            // One visible comparison per source document; other plugin state is untouched.
+            for (const comparison of host.comparisons.values())
+              if (comparison.options.documentId === options.documentId)
+                throw new Error("Document already has a PDF comparison");
+            const comparison: HostedPdfComparison = {
+              owner: id,
+              options,
+              artifact,
+              bytes,
+              originalPageCount,
+              derivedPageCount,
+            };
+            host.comparisons.set(options.id, comparison);
+            const release = track(
+              disposable(() => {
+                if (host.comparisons.get(options.id) === comparison)
+                  host.closePdfComparison(options.id);
+              }),
+            );
+            host.emit();
+            const check = () => {
+              active("reader.interact");
+              if (host.comparisons.get(options.id) !== comparison)
+                throw new Error("PDF comparison closed");
+            };
+            return {
+              id: options.id,
+              async update(value) {
+                check();
+                if (!value || typeof value !== "object")
+                  throw new Error("Invalid comparison update");
+                if (value.synchronized !== undefined && typeof value.synchronized !== "boolean")
+                  throw new Error("Invalid synchronization option");
+                if (value.alignment !== undefined)
+                  validateAlignment(value.alignment, originalPageCount, derivedPageCount);
+                // An installed caller can send extra fields despite SDK types.
+                // Ownership, source and artifact identity are fixed at creation.
+                comparison.options = {
+                  ...comparison.options,
+                  ...(value.alignment !== undefined
+                    ? { alignment: structuredClone(value.alignment) }
+                    : {}),
+                  ...(value.synchronized !== undefined ? { synchronized: value.synchronized } : {}),
+                };
+                host.emit();
+              },
+              async reveal(side, anchor) {
+                check();
+                if (side !== "original" && side !== "derived")
+                  throw new Error("Invalid comparison side");
+                if (
+                  !Number.isInteger(anchor?.page) ||
+                  anchor.page < 1 ||
+                  anchor.page > (side === "original" ? originalPageCount : derivedPageCount) ||
+                  !Number.isFinite(anchor.fraction) ||
+                  anchor.fraction < 0 ||
+                  anchor.fraction > 1
+                )
+                  throw new Error("Invalid reader anchor");
+                host.paneReveals.fire({
+                  viewId:
+                    side === "original" ? `reader:${options.documentId}` : `${options.id}:derived`,
+                  anchor: { ...anchor },
+                });
+              },
+              async close() {
+                release.dispose();
+              },
+            };
+          }),
         get viewState() {
           active("documents.read");
-          return host._viewState ? { ...host._viewState } : null;
+          return host._viewState ? structuredClone(host._viewState) : null;
         },
         onDidChangeViewState: event(host.readerStates, "documents.read"),
         get activeDocumentId() {

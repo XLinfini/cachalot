@@ -274,6 +274,7 @@ export function sandboxWorker(module: ExtensionModule) {
         },
       },
       documents: {
+        openDocument: (...args: Any[]) => invoke("documents.openDocument", ...args),
         getPageFacts: (...args: Any[]) => invoke("documents.getPageFacts", ...args),
         getLayoutObservations: (...args: Any[]) =>
           invoke("documents.getLayoutObservations", ...args),
@@ -281,7 +282,22 @@ export function sandboxWorker(module: ExtensionModule) {
         getDocumentSemantics: (...args: Any[]) => invoke("documents.getDocumentSemantics", ...args),
         onDidChangeDocument: event("document"),
       },
+      artifacts: Object.fromEntries(
+        ["write", "read", "list", "delete", "export"].map((name) => [
+          name,
+          (...args: Any[]) => invoke(`artifacts.${name}`, ...args),
+        ]),
+      ),
+      pdf: Object.fromEntries(
+        ["inspect", "exportRegion", "compose"].map((name) => [
+          name,
+          (...args: Any[]) => invoke(`pdf.${name}`, ...args),
+        ]),
+      ),
       reader: {
+        openPdfComparison: (...args: Any[]) => invoke("reader.openPdfComparison", ...args),
+        getViewStates: () => invoke("reader.getViewStates"),
+        onDidChangePaneState: event("paneState"),
         get viewState() {
           if (!state.extension.manifest.capabilities.includes("documents.read"))
             throw new Error("Capability not declared: documents.read");

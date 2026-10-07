@@ -3,8 +3,12 @@ import type { ContentBlock, NativePage } from "../../src/domain/analysis";
 import type { FormulaRecord } from "../../src/infrastructure/formula-repository";
 
 // A small synthetic PDF supports storage and reader navigation without a real paper.
-export function cacheFixturePdf(pageCount = 1): Uint8Array {
-  const content = "BT /F1 14 Tf 30 350 Td (Cache fixture paper) Tj ET\n";
+export function cacheFixturePdf(
+  pageCount = 1,
+  options: { content?: string; cropBox?: string; rotation?: number } = {},
+): Uint8Array {
+  const content = options.content ?? "BT /F1 14 Tf 30 350 Td (Cache fixture paper) Tj ET\n";
+  const pageExtras = `${options.cropBox ? `/CropBox [${options.cropBox}]` : ""} ${options.rotation ? `/Rotate ${options.rotation}` : ""}`;
   const kids = Array.from(
     { length: pageCount },
     (_, index) => (index === 0 ? 3 : 4 + index * 2) + " 0 R",
@@ -12,7 +16,9 @@ export function cacheFixturePdf(pageCount = 1): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + pageCount + " >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] " +
+      pageExtras +
+      " /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
     "<< /Length " + content.length + " >>\nstream\n" + content + "endstream",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];

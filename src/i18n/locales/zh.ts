@@ -55,6 +55,7 @@ export const zh = {
     capabilities: {
       documents: {
         read: "读取文档事实与语义",
+        write: "生成 PDF 并管理插件产物",
       },
       reader: {
         interact: "阅读器交互",
@@ -180,6 +181,10 @@ export const zh = {
     next: "下一页",
     zoomOut: "缩小",
     zoomIn: "放大",
+    comparison: "PDF 对照阅读",
+    synchronize: "联动滚动",
+    closeComparison: "关闭对照",
+    resizeComparison: "调整对照阅读宽度",
     page: "第 {{page}} 页",
     position: "第 {{page}} / {{total}} 页",
     completed: "{{completed}} / {{total}} 页",

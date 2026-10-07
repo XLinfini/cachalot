@@ -11,7 +11,7 @@
 | `DocumentSemantics`  | 段落、章节、公式归属、关系和全文阅读顺序   |
 | `SemanticPageView`   | 当前文档语义在单页上的临时投影；交互最常用 |
 
-通过 `context.documents` 取得这些数据，`documents.read` 控制主动读取。服务绑定当前打开文档，不是可以扫描整个文献库的文件 API。返回复制的数据，不写回权威语义；DocumentSemantics 可能只覆盖部分页。
+通过 `context.documents` 取得这些数据，`documents.read` 控制主动读取。原有 get* 便捷调用绑定当前阅读器会话；API 0.1.3 的 openDocument(id) 可按已知文献库 ID 创建独立句柄，关闭或切换标签后仍能处理全文，不提供文献库扫描或任意文件 API。返回复制的数据，不写回权威语义；普通 DocumentSemantics 快照可能只覆盖部分页。长任务与全文完成判定见[PDF 任务指南](pdf-artifacts-and-comparison.md#独立于阅读器的文档句柄)。
 
 ```ts
 import type { ExtensionContext } from "cachalot";
@@ -33,7 +33,7 @@ export async function activate(context: ExtensionContext) {
 
 ## 当前阅读位置
 
-context.reader.viewState 返回当前文档的阅读状态副本；documents.read 控制读取及 onDidChangeViewState 订阅。字段为 documentId、page、pageCount、zoom、scrollTop、viewportHeight。页码从 1 开始，zoom 为缩放倍数，滚动和视口高度是阅读容器 CSS 像素。
+context.reader.viewState 返回当前原文的阅读状态副本；documents.read 控制读取及 onDidChangeViewState 订阅。字段为 documentId、page、pageCount、zoom、scrollTop、viewportHeight，以及可选 viewId、anchor `{page, fraction}`、cause（user/navigation）。页码从 1 开始，zoom 为缩放倍数，滚动和视口高度是阅读容器 CSS 像素；anchor 为阅读线在显示页上的归一化位置。
 
 状态在 PDF 容器挂载后发布，未就绪及关闭/切换文档时可为 null；不能假定 activeDocument 事件同步包含位置。滚动、缩放、尺寸变化都会触发状态事件，插件按自己的需要去重或节流，避免每个滚动事件调用 LLM。
 
@@ -45,7 +45,13 @@ context.reader.onDidChangeViewState((next) => {
 });
 ```
 
-当前书签可保存 documentId 与 page，再通过 revealPage 导航。scrollTop 是当前布局下的值，不能直接作为跨设备稳定锚点；当前 API 不提供按任意滚动偏移恢复位置。公开示例见[bookmarks](../../examples/bookmarks/README.md)。
+当前书签可保存 documentId 与 page，再通过 revealPage 导航。scrollTop 是当前布局下的值，不能直接作为跨设备稳定锚点；比较句柄的 reveal 使用页码和归一化 fraction，不接收任意滚动像素。公开示例见[bookmarks](../../examples/bookmarks/README.md)。
+
+## PDF 产物与并列视图
+
+API 0.1.3 提供原生区域裁切、PDF 合成、独立产物保存及 openPdfComparison。左侧继续是活动文献，右侧是本插件自己的任意 PDF：只显示、选择文字和复制，不分析、不继承左侧语义、不接入框选翻译。需要分析时用户把产物重新导入文献库。
+
+对应关系由插件显式提供，可有一个原段落对应多个目标页区域；没有关系时默认不联动。getViewStates/onDidChangePaneState 提供多个阅读区域，旧 viewState 仍只表示原文。详细生成路线、复杂行内公式复用与生命周期见[PDF 产物与并列阅读](pdf-artifacts-and-comparison.md)。
 
 ## 坐标与身份
 

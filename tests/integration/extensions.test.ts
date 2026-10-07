@@ -12,6 +12,9 @@ import { Emitter } from "../../src/application/extensions/events";
 import { ExtensionHost, type HostPorts } from "../../src/application/extensions/host";
 import { extensionFixtureManifest, fixtureExtension } from "../fixtures/extensions";
 import { manifest as translatorManifest } from "../../src/extensions/selection-translation/manifest";
+import "fake-indexeddb/auto";
+import { ArtifactRepository } from "../../src/infrastructure/extensions/artifacts";
+import type { DocumentHandle } from "../../src/sdk";
 
 function harness(
   module: ExtensionModule,
@@ -147,6 +150,164 @@ const preview: ReaderSelection = {
   text: "Fixture",
   imageDataUrl: "data:image/png;base64,AAAA",
 };
+test("document leases, artifacts, PDF operations and comparisons share public ownership and cancellation boundaries", async () => {
+  const manifest = structuredClone(extensionFixtureManifest);
+  manifest.capabilities.push("documents.write");
+  const fixture = harness({ activate() {} }, manifest);
+  const repo = new ArtifactRepository();
+  let closed = 0;
+  fixture.ports.documents.openDocument = async () => ({
+    document: { id: "fixture", pageCount: 2 } as DocumentHandle["document"],
+    readPdf: async () => new Uint8Array([1]),
+    getPageFacts: async () => {
+      throw new Error("unused");
+    },
+    getLayoutObservations: async () => null,
+    getSemanticPage: async () => {
+      throw new Error("unused");
+    },
+    getDocumentSemantics: async () => {
+      throw new Error("unused");
+    },
+    analyze: async () => {
+      throw new Error("unused");
+    },
+    close: async () => {
+      closed++;
+    },
+  });
+  fixture.ports.artifacts = {
+    write: (owner, input, signal) => repo.write(owner, input, signal),
+    read: (owner, id, signal) => repo.read(owner, id, signal),
+    list: (owner, id) => repo.list(owner, id),
+    delete: (owner, id) => repo.delete(owner, id),
+    export: async () => undefined,
+  };
+  fixture.ports.pdf = {
+    inspect: async () => [{ page: 1, width: 300, height: 400 }],
+    exportRegion: async () => {
+      throw new Error("unused");
+    },
+    compose: async () => new Uint8Array([2]),
+  };
+  await fixture.host.start();
+  fixture.host.setActiveDocument("fixture");
+  const ctx = fixture.context(),
+    lease = await ctx.documents.openDocument("fixture");
+  fixture.host.setActiveDocument(null);
+  assert.deepEqual(
+    await lease.readPdf(),
+    new Uint8Array([1]),
+    "closing reader keeps job handle available",
+  );
+  await ctx.artifacts.write({
+    id: "translated",
+    name: "translated.pdf",
+    mediaType: "application/pdf",
+    bytes: new Uint8Array([2]),
+  });
+  await assert.rejects(repo.read("another.plugin", "translated"), /not found/);
+  const comparison = await ctx.reader.openPdfComparison({
+    id: "fixture.reader-tools.compare",
+    documentId: "fixture",
+    artifactId: "translated",
+    title: "Translated",
+  });
+  assert.equal(fixture.host.getSnapshot().comparisons.length, 1);
+  assert.equal(
+    fixture.host.getSnapshot().comparisons[0].options.synchronized,
+    false,
+    "unrelated PDFs are not implicitly linked",
+  );
+  await assert.rejects(
+    comparison.update({
+      alignment: [
+        {
+          id: "bad",
+          original: { page: 2, box: [0, 0, 1, 1] },
+          derived: [{ page: 2, box: [0, 0, 1, 1] }],
+        },
+      ],
+    }),
+    /region/,
+  );
+  await assert.rejects(comparison.update({ alignment: false } as any), /alignment/);
+  await comparison.update({
+    synchronized: true,
+    documentId: "another",
+    artifactId: "foreign",
+    id: "another.plugin.view",
+  } as any);
+  assert.equal(fixture.host.getSnapshot().comparisons[0].options.documentId, "fixture");
+  assert.equal(fixture.host.getSnapshot().comparisons[0].options.artifactId, "translated");
+  assert.equal(fixture.host.getSnapshot().comparisons[0].options.id, comparison.id);
+  let reveals = 0;
+  fixture.host.onRevealPane(() => reveals++);
+  await comparison.reveal("derived", { page: 1, fraction: 0.4 });
+  assert.equal(reveals, 1);
+  await assert.rejects(comparison.reveal("derived", { page: 2, fraction: 0 }), /anchor/);
+  fixture.host.publishPaneState({
+    documentId: "artifact:translated",
+    viewId: "fixture.reader-tools.compare:derived",
+    page: 1,
+    pageCount: 1,
+    zoom: 1,
+    scrollTop: 0,
+    viewportHeight: 500,
+    anchor: { page: 1, fraction: 0.4 },
+  });
+  const states = await ctx.reader.getViewStates();
+  states[0].anchor!.fraction = 0.9;
+  assert.equal((await ctx.reader.getViewStates())[0].anchor!.fraction, 0.4);
+  assert.equal(
+    ctx.reader.activeDocumentId,
+    null,
+    "derived pane cannot change source document context",
+  );
+  let exportSignal: AbortSignal | undefined;
+  fixture.ports.artifacts.export = async (_, __, signal) => {
+    exportSignal = signal;
+    await new Promise<void>((resolve) =>
+      signal!.addEventListener("abort", () => resolve(), { once: true }),
+    );
+  };
+  const stoppedExport = assert.rejects(ctx.artifacts.export("translated"), { name: "AbortError" });
+  await fixture.host.setEnabled("fixture.reader-tools", false);
+  await stoppedExport;
+  assert.equal(exportSignal?.aborted, true, "stopping cancels a pending export before download");
+  assert.equal(fixture.host.getSnapshot().comparisons.length, 0);
+  assert.ok(closed >= 2, "comparison source and job lease are closed");
+  await assert.rejects(lease.readPdf(), { name: "AbortError" });
+  assert.deepEqual(await repo.read("fixture.reader-tools", "translated"), new Uint8Array([2]));
+  await fixture.host.dispose();
+});
+test("new write APIs cannot bypass manifest capabilities and cancelled late leases are released", async () => {
+  const fixture = harness({ activate() {} });
+  await fixture.host.start();
+  await assert.rejects(fixture.context().artifacts.list(), /documents.write/);
+  await assert.rejects(
+    fixture.context().pdf.compose({ sources: [], pages: [] }),
+    /documents.write/,
+  );
+  let resolve!: (handle: DocumentHandle) => void,
+    closed = 0;
+  fixture.ports.documents.openDocument = () =>
+    new Promise((done) => {
+      resolve = done;
+    });
+  const pending = fixture.context().documents.openDocument("fixture");
+  const rejection = assert.rejects(pending, { name: "AbortError" });
+  await fixture.host.setEnabled("fixture.reader-tools", false);
+  await rejection;
+  resolve({
+    close: async () => {
+      closed++;
+    },
+  } as DocumentHandle);
+  await new Promise((done) => setTimeout(done, 0));
+  assert.equal(closed, 1);
+  await fixture.host.dispose();
+});
 
 test("owner lifecycle removes views, commands, tools, decorations and events; settings survive reactivation", async () => {
   let events = 0;

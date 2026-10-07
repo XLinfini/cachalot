@@ -20,31 +20,39 @@ const BLOCK_COLORS = {
   formula: "border-formula bg-formula/4 [&>span]:bg-formula",
 };
 type Rect = { x: number; y: number; width: number; height: number };
-interface Props {
+interface PageProps {
   pdf: pdfjs.PDFDocumentProxy;
   documentId: string;
   position: PagePosition;
   zoom: number;
   mode: "region" | "text";
   showLayout: boolean;
-  semanticPage?: SemanticPageView;
   scrollRoot: HTMLDivElement | null;
   selection: ReaderSelection | null;
   selectionGeneration: RefObject<number>;
-  getSemanticPage: (page: number) => Promise<SemanticPageView>;
   onSelection: (selection: ReaderSelection | null) => void;
-  tool?: InteractionTool;
   pluginDecorations: ReaderDecoration[];
   onPageFocus: (page: number) => void;
   onBusy: (busy: boolean) => void;
   onError: (error: string) => void;
 }
+type Props = PageProps &
+  (
+    | { passive: true; semanticPage?: never; getSemanticPage?: never; tool?: never }
+    | {
+        passive?: false;
+        semanticPage?: SemanticPageView;
+        getSemanticPage: (page: number) => Promise<SemanticPageView>;
+        tool?: InteractionTool;
+      }
+  );
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /** Each page owns its canvas, text layer and selection coordinates. Only nearby
  * canvases are retained; fixed placeholders keep the document's scroll geometry.
  * Parsing and caching remain in the shared document analysis session. */
 export function PdfPageView({
+  passive = false,
   pdf,
   documentId,
   position,
@@ -244,7 +252,7 @@ export function PdfPageView({
     }, 450);
   };
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    if (!dragStart.current || !canvasRef.current) return;
+    if (passive || !getSemanticPage || !dragStart.current || !canvasRef.current) return;
     const rect = dragRect(event);
     dragStart.current = null;
     if (rect.width < 3 || rect.height < 3) {
@@ -288,6 +296,8 @@ export function PdfPageView({
   };
   const handleTextSelection = () => {
     if (
+      passive ||
+      !getSemanticPage ||
       mode !== "text" ||
       !rendered ||
       !canvasRef.current ||
@@ -467,13 +477,14 @@ export function PdfPageView({
       style={{ width, height }}
       onPointerLeave={stopHover}
       onPointerDown={(event) => {
+        if (passive) return;
         stopHover();
         handlePointerDown(event);
       }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onMouseUp={handleTextSelection}
+      onPointerMove={passive ? undefined : handlePointerMove}
+      onPointerUp={passive ? undefined : handlePointerUp}
+      onPointerCancel={passive ? undefined : handlePointerCancel}
+      onMouseUp={passive ? undefined : handleTextSelection}
     >
       {nearby && (
         <>

@@ -54,6 +54,10 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 
 文档结构用例集中在 `unit/document-semantics.test.ts`（两层边界、全文标题证据、缺页、跨页来源投影、摘要及精确选区上下文）和 `integration/document-analysis.test.ts`（分阶段缓存、部分覆盖恢复、清除代次、关闭与重试、旧缓存迁移）。小型来源与检测输入共用 `fixtures/document-semantics.ts`；`support/analysis.ts` 通过生产构建器生成测试投影。真实论文缓存保存 `{ facts, observations, semantics }`，页面视图在读取时投影，不再保存混合页面分析。
 
+独立文档句柄继续在 `integration/document-analysis.test.ts` 验证全文 facts/layout 完成边界、快照副本、取消释放及重新打开复用缓存。PDF 写操作使用 `integration/pdf-operations.test.ts` 的真实 PDFium，验证输出副本清理文字、保留公式/路径、拒绝不完整及过期来源、原生裁切移动后的可见边界、CropBox 与旋转，以及含上标的二维分式在迁移后保持字形、分数线和渲染几何；小型输入复用 `fixtures/cache.ts`。二进制用户产物是独立存储边界，在 `integration/extension-artifacts.test.ts` 验证按插件隔离、事务替换、元数据列表、持久恢复与取消。
+
+比较视图的能力、归属、句柄和停止清理放在现有 `integration/extensions.test.ts`，阅读线一对多映射规则放 `unit/page-layout.test.ts`。`e2e/extension-installation.spec.ts` 实际安装 API 0.1.3 IIFE 插件，经生产消息桥读来源、分析事实、按两条路线合成、保存、显示和下载；验证中英文、原文 DOM 保持、右侧被动渲染、键盘分隔条、独立/联动滚动、关闭原文后句柄有效及停用保留产物。合成 PDF 不依赖真实论文或收费 OCR/模型。
+
 应用层目录边界由 `unit/application-boundaries.test.ts` 检查，包括静态导入、目录公开入口和动态导入的间接依赖；文档分析不能依赖 OCR/插件，OCR 不能依赖插件，domain/infrastructure 不能反向依赖 application。插件只能依赖自己的包和公开 SDK；只有宿主组合入口能导入内置插件。纯选区、标题、位置标记仍在既有单元模块维护。`unit/analysis.test.ts` 区分完整段落/行间公式框选与文字模式精确选择；`e2e/reader-navigation.spec.ts` 独立验证实时蓝紫覆盖框、未命中时无翻译入口、反向拖动、缩放及中英文行为。OCR 流程编排由 `integration/formula-reconstruction.test.ts` 通过生产服务的副作用端口验证精确区域、独立模型、字符校验、模型/版本缓存隔离、失败停止与原图回退；共享 Unicode/公式夹具在 `fixtures/formulas.ts`。厂商协议继续在既有 OCR 适配器测试维护，不为目录迁移新建按任务命名的脚本。
 
 上下文解析、组合键与配置 schema 的纯规则在 `unit/context-keys.test.ts`；命令 enablement、命名空间、配置提交事件、阅读状态副本与交互取消在既有 `integration/extensions.test.ts`。清单条件、SDK 导出与脚手架不覆盖已有目录在 `integration/extension-packages.test.ts`。真实安装 Worker 的配置编辑、命令面板、快捷键、QuickPick/InputBox/Progress 调用链及停用清理在 `e2e/extension-installation.spec.ts`，同时验证中英文和本体阅读保持。该模块还实际打包 examples/bookmarks，验证右键/视图标题菜单、双页跳转和重载后保存状态；双页 PDF 复用 fixtures/cache.ts 的生成器。

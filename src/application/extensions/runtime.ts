@@ -11,8 +11,11 @@ import { manifest } from "../../extensions/selection-translation/manifest";
 import { message } from "../../domain/messages";
 import { Emitter, disposable } from "./events";
 import { ExtensionRepository } from "../../infrastructure/extensions/repository";
+import { ArtifactRepository } from "../../infrastructure/extensions/artifacts";
+import { pdfOperations } from "../../infrastructure/pdf/operations";
 import { ExtensionInstaller, packageInstallation } from "./installer";
 const extensionRepository = new ExtensionRepository();
+const artifactRepository = new ArtifactRepository();
 
 let documentSession: { documentId: string; session: DocumentAnalysisSession } | undefined;
 const errors = new Emitter<string>();
@@ -70,12 +73,37 @@ export const extensionHost = new ExtensionHost(
     getSetting: services.settings.get,
     setSetting: services.settings.set,
     documents: {
+      openDocument: services.analysis.openDocument,
       getPageFacts: async (id, page) => structuredClone(await session(id).getPageFacts(page)),
       getLayoutObservations: async (id, page) =>
         structuredClone(await session(id).getLayoutObservations(page)),
       getSemanticPage: async (id, page) => structuredClone(await session(id).getSemanticPage(page)),
       getDocumentSemantics: async (id) => structuredClone(await session(id).getDocumentSemantics()),
     },
+    artifacts: {
+      write: (owner, input, signal) => artifactRepository.write(owner, input, signal),
+      read: (owner, id, signal) => artifactRepository.read(owner, id, signal),
+      list: (owner, id) => artifactRepository.list(owner, id),
+      delete: (owner, id) => artifactRepository.delete(owner, id),
+      async export(owner, id, signal) {
+        signal?.throwIfAborted();
+        const artifact = (await artifactRepository.list(owner)).find((item) => item.id === id);
+        if (!artifact) throw new Error("Artifact not found");
+        const bytes = await artifactRepository.read(owner, id, signal);
+        signal?.throwIfAborted();
+        const url = URL.createObjectURL(
+          new Blob([bytes.slice().buffer], { type: artifact.mediaType }),
+        );
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = artifact.name;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+    },
+    pdf: pdfOperations,
     ocr: {
       reconstructFormulas: (formulas, options) =>
         reconstructFormulas({

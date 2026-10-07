@@ -58,6 +58,7 @@ export const en = {
     capabilities: {
       documents: {
         read: "Read document facts and semantics",
+        write: "Generate PDFs and manage extension artifacts",
       },
       reader: {
         interact: "Reader interactions",
@@ -184,6 +185,10 @@ export const en = {
     next: "Next page",
     zoomOut: "Zoom out",
     zoomIn: "Zoom in",
+    comparison: "PDF comparison",
+    synchronize: "Synchronized scrolling",
+    closeComparison: "Close comparison",
+    resizeComparison: "Resize comparison panes",
     page: "Page {{page}}",
     position: "{{page}} / {{total}}",
     completed: "{{completed}} / {{total}} pages",
