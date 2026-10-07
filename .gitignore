@@ -7,6 +7,9 @@ test-results/
 .test-cache/
 src-tauri/gen/schemas/
 
+# Local task worktrees.
+.worktrees/
+
 # Machine-local credentials and runtime data.
 .env
 .env.*
