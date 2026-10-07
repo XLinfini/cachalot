@@ -95,7 +95,7 @@ test("Added models and composer @paper", async () => {
         };
         const save = page.getByRole("button", { name: labels.common.save, exact: true });
         const back = () =>
-          page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+          page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         await page.locator('[data-ui="document-card"]').first().click();
         await expect(picker).toContainText("default-model");
         await openMenu();

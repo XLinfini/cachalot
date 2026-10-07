@@ -73,10 +73,7 @@ export default function CacheSettings() {
     return `${new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 }).format(bytes / 1024 ** index)} ${units[index]}`;
   };
   return (
-    <main
-      data-ui="cache-settings"
-      className="min-w-0 flex-1 overflow-y-auto px-[max(30px,calc((100vw_-_1160px)/2))] pt-[52px] pb-[50px] max-desktop:px-[28px]"
-    >
+    <main data-ui="cache-settings" className={ui.settingsPage}>
       <div className={ui.eyebrowBlue}>{t("cache.eyebrow")}</div>
       <div className="mt-3 mb-2 flex max-w-[840px] items-center justify-between gap-5">
         <h1 className="text-[27px]">{t("cache.title")}</h1>

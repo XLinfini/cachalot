@@ -94,7 +94,7 @@ test("Provider errors @paper", async () => {
         await expect(notice).toContainText("end of diagnostic");
         assert.ok(!(await notice.innerText()).includes(fakeKey));
 
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         await page.locator('[data-ui="document-card"]').first().click();
         await page.locator('[data-ui="analysis-strip"][data-phase="ready"]').waitFor();
         const leaf = page.locator('[data-ui="pdf-page"][data-page="1"]');

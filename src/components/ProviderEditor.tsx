@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, CircleHelp, Database, Layers3, Plus, Search, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
@@ -47,6 +47,9 @@ export default function ProviderEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProviderInput | null>(null);
   const [models, setModels] = useState<ModelInfo[] | null>(null);
+  const modelDrawerRef = useRef<HTMLDialogElement>(null);
+  const modelTriggerRef = useRef<HTMLButtonElement>(null);
+  const [providerQuery, setProviderQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -57,6 +60,20 @@ export default function ProviderEditor({
     purpose === "ocr"
       ? draftModels.filter((model) => draft?.purpose === "ocr" || !!model.formulaOcr)
       : draftModels.filter((model) => !model.formulaOcr || model.formulaOcr === "vision-llm");
+  const matchingProviders = visibleProviders.filter((provider) =>
+    `${provider.name} ${provider.baseUrl}`
+      .toLocaleLowerCase()
+      .includes(providerQuery.trim().toLocaleLowerCase()),
+  );
+  useEffect(() => {
+    if (!models) return;
+    const dialog = modelDrawerRef.current!;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      modelTriggerRef.current?.focus();
+    };
+  }, [models !== null]);
   const draftProtocol = draftModels.find((m) => m.id === draft?.modelId)?.formulaOcr;
   const draftAdapter = adapters.find((adapter) => adapter.id === draftProtocol);
   const requestUrls = (() => {
@@ -259,11 +276,7 @@ export default function ProviderEditor({
       <Element
         data-ui={purpose === "ocr" ? "ocr-provider-editor" : "settings-main"}
         id={purpose === "ocr" ? "ocr-provider-editor" : undefined}
-        className={
-          embedded
-            ? "mt-10"
-            : "min-w-0 flex-1 overflow-y-auto px-[max(30px,calc((100vw_-_1160px)/2))] pt-[52px] pb-[50px] max-desktop:px-[28px] max-desktop:py-[44px]"
-        }
+        className={embedded ? "mt-10" : ui.settingsPage}
       >
         <div className={ui.eyebrowBlue}>
           {t(purpose === "ocr" ? "ocr.providersEyebrow" : "settings.providersEyebrow")}
@@ -274,18 +287,29 @@ export default function ProviderEditor({
         <p className="mb-[33px] text-[12px] text-[#8b9caf]">
           {t(purpose === "ocr" ? "ocr.providersDescription" : "settings.providersDescription")}
         </p>
-        <div className="grid grid-cols-[270px_minmax(440px,1fr)] gap-5 max-desktop:grid-cols-[220px_minmax(360px,1fr)] max-compact:grid-cols-1">
-          <section className={cx(ui.surface, "min-h-[380px] self-start px-[13px] py-[18px]")}>
+        <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-4 max-compact:grid-cols-1">
+          <section
+            className={cx(
+              ui.surface,
+              "min-h-[300px] self-start px-[13px] py-[18px] max-compact:min-h-0",
+            )}
+          >
             <div className="flex items-center justify-between px-[5px] pb-4 [&>span]:text-[10px] [&>span]:text-[#9cabbc] [&>strong]:text-[12px]">
               <strong>{t("settings.provider")}</strong>
               <span>{t("common.items", { count: visibleProviders.length })}</span>
             </div>
             <label className={cx(ui.searchBox, "h-[34px]")}>
               <Search size={16} />
-              <input className={ui.searchInput} placeholder={t("settings.searchProviders")} />
+              <input
+                className={ui.searchInput}
+                placeholder={t("settings.searchProviders")}
+                aria-label={t("settings.searchProviders")}
+                value={providerQuery}
+                onChange={(event) => setProviderQuery(event.target.value)}
+              />
             </label>
             <div className={cx(ui.eyebrow, "px-[7px] pt-5 pb-[10px]")}>{t("settings.custom")}</div>
-            {visibleProviders.map((item) => (
+            {matchingProviders.map((item) => (
               <button
                 key={item.id}
                 aria-pressed={item.id === selectedId}
@@ -315,6 +339,9 @@ export default function ProviderEditor({
                 )}
               </button>
             ))}
+            {providerQuery && !matchingProviders.length && (
+              <p className="px-2 py-3 text-[11px] text-muted">{t("settings.noProviders")}</p>
+            )}
             <button
               className="mt-[11px] flex w-full items-center gap-[7px] rounded-lg border border-dashed border-[#c9d9ec] bg-[#f9fbfe] p-[9px] text-[11px] text-[#3b78c4]"
               onClick={createProvider}
@@ -507,6 +534,7 @@ export default function ProviderEditor({
                     </p>
                   </div>
                   <button
+                    ref={modelTriggerRef}
                     className={ui.primaryButton}
                     disabled={busy}
                     onClick={() => void fetchModels()}
@@ -600,13 +628,22 @@ export default function ProviderEditor({
         </div>
       </Element>
       {models && (
-        <div
-          className="fixed inset-0 z-20 flex items-center justify-end bg-[#1c2b42]/45"
-          onMouseDown={() => setModels(null)}
+        <dialog
+          ref={modelDrawerRef}
+          aria-label={t("settings.chooseModel")}
+          aria-modal="true"
+          className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-[420px] max-w-[calc(100vw-32px)] overflow-hidden border-0 bg-white p-0 text-ink shadow-[-15px_0_45px_#10254433] backdrop:bg-[#1c2b42]/35"
+          onCancel={(event) => {
+            event.preventDefault();
+            setModels(null);
+          }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setModels(null);
+          }}
         >
           <aside
             data-ui="model-drawer"
-            className="flex h-full w-[420px] flex-col bg-white px-[22px] py-[26px] shadow-[-15px_0_45px_#10254433]"
+            className="flex h-full w-full flex-col bg-white px-[22px] py-[26px]"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="mb-[27px] flex items-center gap-[10px] [&_h2]:mt-1 [&_h2]:mb-0 [&_h2]:text-[17px] [&_small]:text-[9px] [&_small]:tracking-[.12em] [&_small]:text-[#89a0b8] [&>div]:flex-1">
@@ -700,7 +737,7 @@ export default function ProviderEditor({
               </button>
             </div>
           </aside>
-        </div>
+        </dialog>
       )}
     </>
   );

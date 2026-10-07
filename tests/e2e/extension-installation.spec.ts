@@ -123,7 +123,7 @@ for (const language of ["zh", "en"] as const) {
       await expect(consumerCard).toContainText(labels.extensions.status.active, { timeout: 25000 });
       expect(deactivations.length).toBeGreaterThan(0);
       release();
-      await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
       await expect(page.getByText("Core stream survived", { exact: true })).toBeVisible();
       await expect(page.getByRole("treeitem")).toContainText("Provider 0.1.0");
       await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText(
@@ -156,7 +156,7 @@ for (const language of ["zh", "en"] as const) {
         .getByRole("button", { name: labels.extensions.restart, exact: true })
         .click();
       await expect(consumerCard).toContainText(labels.extensions.status.active, { timeout: 25000 });
-      await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
       await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText(
         "Installed 4 / Provider 0.2.0",
       );

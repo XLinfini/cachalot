@@ -500,7 +500,7 @@ for (const language of ["zh", "en"] as const) {
         const selectedOcr = await page.evaluate(() =>
           JSON.parse(localStorage.getItem("cachalot:setting:formulaOcrModel")!),
         );
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         await choose("fixture-text");
         await page.getByRole("button", { name: labels.chat.chooseModel, exact: true }).click();
         await expect(

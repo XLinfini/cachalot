@@ -75,4 +75,4 @@ Tailwind 参考：[Vite 接入](https://tailwindcss.com/docs/installation/using-
 
 `npm run test:e2e -- tests/e2e/extensions.spec.ts` 用小型合成 PDF 验证两种语言下的停用/启用、问答保留、树视图、位置移动、Webview 消息和状态栏；不需要真实论文或服务商。完整翻译与横屏布局继续使用既有论文回归。
 
-插件安装与依赖影响预览在 `components/extensions/ExtensionSettings.tsx`，保持中英文权限、缺包/循环提示、批量安装和级联操作确认。`extension-package-input`、`extension-install-review`、`extension-confirm-install`、`extension-impact-review` 是稳定测试定位。打开设置使用覆盖层，底下工作区保留挂载并设为 invisible/inert，不把安装操作变成阅读器或本体聊天重载。
+插件安装与依赖影响预览在 `components/extensions/ExtensionSettings.tsx`，保持中英文权限、缺包/循环提示、批量安装和级联操作确认。`extension-package-input`、`extension-install-review`、`extension-confirm-install`、`extension-impact-review` 是稳定测试定位。设置使用亮色原生 dialog 浮窗，底下工作区保持可见、保留挂载，并设为 inert/aria-hidden。SettingsDialog 管理关闭、放大及焦点恢复；ProviderSettings 管理分类搜索和导航，ui.settingsPage 统一本体与内置插件的内容间距。模型目录和缓存确认使用嵌套原生 dialog，Escape 先关闭最上层窗口。不把安装操作变成阅读器或本体聊天重载。

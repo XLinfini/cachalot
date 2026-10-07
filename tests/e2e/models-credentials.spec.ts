@@ -126,7 +126,7 @@ test("Provider credentials", async () => {
         );
         await toggle.click();
         await expect(input).toHaveValue(replacement);
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         await openSettings();
         await expect(input).toHaveValue("sk-...wxyz");
         await expect(toggle).toHaveAttribute("aria-pressed", "false");

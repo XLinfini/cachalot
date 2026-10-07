@@ -67,10 +67,7 @@ export default function OcrSettings({
   const openProviders = () =>
     document.getElementById("ocr-provider-editor")?.scrollIntoView({ behavior: "smooth" });
   return (
-    <main
-      data-ui="ocr-settings"
-      className="min-w-0 flex-1 overflow-y-auto px-[max(30px,calc((100vw_-_1160px)/2))] pt-[52px] pb-[50px] max-desktop:px-[28px]"
-    >
+    <main data-ui="ocr-settings" className={ui.settingsPage}>
       <div className={ui.eyebrowBlue}>{t("ocr.eyebrow")}</div>
       <h1 className="mt-3 mb-2 text-[27px]">{t("ocr.title")}</h1>
       <p className="mb-8 text-[12px] leading-6 text-muted">{t("ocr.description")}</p>

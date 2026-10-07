@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DocumentRecord } from "./domain/records";
 import type { ReaderSelection } from "./domain/reader";
 import type { LibraryFilter } from "./domain/categories";
@@ -12,17 +12,16 @@ import { ReaderWorkspace } from "./components/workspace/ReaderWorkspace";
 import { AppNotice } from "./components/workspace/AppNotice";
 import { CreateCategoryDialog, MoveCategoryDialog } from "./components/CategoryDialogs";
 import ProviderSettings from "./components/ProviderSettings";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { ExtensionModals } from "./components/extensions/ExtensionWorkbench";
-import { cx } from "./sdk/ui/styles";
 
 type WorkspaceView = "library" | "reader";
-type View = WorkspaceView | "settings";
 
 /** Composition root owns navigation and reader identity. Page layout, library
  * operations, model choice and extension subscriptions have separate owners. */
 export default function App() {
-  const [view, setView] = useState<View>("library");
-  const [lastView, setLastView] = useState<WorkspaceView>("library");
+  const [view, setView] = useState<WorkspaceView>("library");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
@@ -32,12 +31,12 @@ export default function App() {
   const [movingDocument, setMovingDocument] = useState<DocumentRecord | null>(null);
   const [notice, setNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const settingsOpener = useRef<HTMLElement | null>(null);
   const library = useLibrary(setNotice);
   const model = useChatModel(setNotice);
-  const workspaceView = view === "settings" ? lastView : view;
   const activeDocument = library.documents.find((document) => document.id === activeId) || null;
   useWorkspaceExtensions(
-    workspaceView === "reader" ? activeId : null,
+    view === "reader" ? activeId : null,
     model.activeProvider,
     setSelection,
     setNotice,
@@ -64,10 +63,25 @@ export default function App() {
     setPage(valid);
     library.updateProgress(activeDocument.id, valid);
   };
-  const openSettings = () => {
-    setLastView(view === "reader" ? "reader" : "library");
-    setView("settings");
-  };
+  const openSettings = useCallback(() => {
+    if (settingsOpen) return;
+    settingsOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSettingsOpen(true);
+  }, [settingsOpen]);
+  useEffect(() => {
+    if (!settingsOpen) settingsOpener.current?.focus();
+  }, [settingsOpen]);
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key === ",") {
+        event.preventDefault();
+        openSettings();
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, [openSettings]);
   const importFiles = async (files: FileList | File[]) => {
     const first = await library.importDocuments(files);
     if (first) openDocument(first);
@@ -83,6 +97,7 @@ export default function App() {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
+        if (settingsOpen) return;
         const files = Array.from(event.dataTransfer.files).filter((file) =>
           file.name.toLowerCase().endsWith(".pdf"),
         );
@@ -99,29 +114,16 @@ export default function App() {
           if (event.target.files) void importFiles(event.target.files);
         }}
       />
-      {view === "settings" && (
-        <div className="absolute inset-0 z-20">
-          <ProviderSettings
-            providers={model.providers}
-            activeProviderId={model.activeProviderId}
-            onProvidersChange={model.setProviders}
-            onActiveProviderChange={model.setProvider}
-            onBack={() => setView(lastView)}
-            onError={setNotice}
-          />
-        </div>
-      )}
-      {/* Keep the workspace mounted beneath settings so PDF scroll, chat drafts
-          and pending core requests survive settings/extension changes. */}
+      {/* Keep reading, scroll position and pending chat requests alive beneath settings. */}
       <div
         data-ui="workspace"
-        aria-hidden={view === "settings"}
-        inert={view === "settings"}
-        className={cx("flex h-full w-full", view === "settings" && "pointer-events-none invisible")}
+        aria-hidden={settingsOpen}
+        inert={settingsOpen}
+        className="flex h-full w-full"
       >
         <AppSidebar
           categories={library.categories}
-          selected={workspaceView === "library" ? library.filter : null}
+          selected={view === "library" ? library.filter : null}
           onLibrary={() => setView("library")}
           onSelect={selectLibrary}
           onCreateCategory={() => setCreatingCategory(true)}
@@ -129,7 +131,7 @@ export default function App() {
           onOpenSettings={openSettings}
         />
         <main className="flex min-w-0 flex-1 bg-white">
-          {workspaceView === "library" || !activeDocument ? (
+          {view === "library" || !activeDocument ? (
             <LibraryPage
               filterLabel={library.filterLabel}
               hasDocuments={library.documents.length > 0}
@@ -172,7 +174,20 @@ export default function App() {
           )}
         </main>
       </div>
-      <AppNotice message={notice} onDismiss={() => setNotice("")} />
+      {settingsOpen ? (
+        <SettingsDialog onClose={() => setSettingsOpen(false)}>
+          <ProviderSettings
+            providers={model.providers}
+            activeProviderId={model.activeProviderId}
+            onProvidersChange={model.setProviders}
+            onActiveProviderChange={model.setProvider}
+            onError={setNotice}
+          />
+          <AppNotice message={notice} onDismiss={() => setNotice("")} contained />
+        </SettingsDialog>
+      ) : (
+        <AppNotice message={notice} onDismiss={() => setNotice("")} />
+      )}
       <ExtensionModals />
       {creatingCategory && (
         <CreateCategoryDialog

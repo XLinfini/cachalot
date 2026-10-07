@@ -48,7 +48,7 @@ export function ExtensionSettings() {
     setImpact({ id, kind, affected });
   };
   return (
-    <main data-ui="settings-main" className="min-w-0 flex-1 overflow-auto p-10">
+    <main data-ui="settings-main" className={ui.settingsPage}>
       <h1 className="mb-3 text-2xl">{t("extensions.title")}</h1>
       <p className="mb-4 text-xs text-muted">{t("extensions.description")}</p>
       <div className="mb-6 flex flex-wrap gap-3">

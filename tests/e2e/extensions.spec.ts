@@ -105,7 +105,7 @@ for (const language of ["zh", "en"] as const) {
       ).toHaveCount(0);
       await page.getByRole("button", { name: labels.ocr.title, exact: true }).click();
       await expect(page.locator('[data-ui="ocr-settings"]')).toBeVisible();
-      await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
       await page.locator('input[type="file"][accept="application/pdf,.pdf"]').setInputFiles({
         name: "extension-fixture.pdf",
         mimeType: "application/pdf",
@@ -211,7 +211,7 @@ for (const language of ["zh", "en"] as const) {
       await expect(page.locator("#translation-prompt")).toHaveValue(
         "Preserved translation prompt fixture",
       );
-      await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
       await page.locator('[data-ui="document-card"]').click();
       await expect(
         page.getByRole("button", { name: labels.reader.region, exact: true }),
