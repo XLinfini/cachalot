@@ -28,13 +28,7 @@ export default function TranslationSettings({ context }: { context: ExtensionCon
     };
   }, [context]);
   return (
-    <main
-      data-ui="settings-main"
-      className={cx(
-        "min-w-0 flex-1 overflow-y-auto px-[max(30px,calc((100vw_-_1160px)/2))] pt-[52px] pb-[50px] max-desktop:px-[28px] max-desktop:py-[44px]",
-        "max-w-[920px]",
-      )}
-    >
+    <main data-ui="settings-main" className={cx(ui.settingsPage, "max-w-[920px]")}>
       <div className={ui.eyebrowBlue}>{t("settings.translationEyebrow")}</div>
       <h1 className="mt-3 mb-2 text-[27px]">{t("settings.translationTitle")}</h1>
       <p className="mb-[33px] text-[12px] text-[#8b9caf]">{t("settings.translationDescription")}</p>

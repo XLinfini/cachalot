@@ -1,7 +1,7 @@
 /** Visual migration checks. Fixtures live only in an isolated browser profile. */
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { chromium, test } from "@playwright/test";
+import { chromium, expect, test } from "@playwright/test";
 import { en } from "../fixtures/locales";
 import { zh } from "../fixtures/locales";
 import { verifyContinuousReader } from "./scenarios/continuous-reader";
@@ -327,3 +327,212 @@ test("Layout and visual behavior @paper", async () => {
     await browser.close();
   }
 });
+
+for (const language of ["zh", "en"] as const) {
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 1194, height: 834 },
+  ]) {
+    test(`Settings floating window: layout, search, drafts and keyboard (${language}, ${viewport.width})`, async () => {
+      test.setTimeout(60_000);
+      const labels = language === "en" ? en : zh;
+      const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+      const context = await browser.newContext({ viewport });
+      try {
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        await page.addInitScript((language) => {
+          localStorage.setItem("cachalot:setting:uiLanguage", language);
+          localStorage.setItem(
+            "cachalot:providers",
+            JSON.stringify([
+              {
+                id: "floating-fixture",
+                name: "Fixture provider",
+                baseUrl: location.origin + "/v1",
+                modelId: "fixture-model",
+                enabled: true,
+                hasKey: false,
+              },
+              {
+                id: "second-fixture",
+                name: "Second provider",
+                baseUrl: location.origin + "/second/v1",
+                modelId: "second-model",
+                enabled: true,
+                hasKey: false,
+              },
+            ]),
+          );
+        }, language);
+        await page.route("**/v1/models", (route) =>
+          route.fulfill({ json: { data: [{ id: "fixture-model" }] } }),
+        );
+        await page.goto("/");
+        const opener = page.getByRole("button", { name: labels.common.settings, exact: true });
+        await opener.click();
+        const dialog = page.locator('[data-ui="settings-dialog"]');
+        const search = dialog.getByRole("searchbox", { name: labels.settings.search });
+        await expect(dialog).toBeVisible();
+        await expect(search).toBeFocused();
+        const workspace = page.locator('[data-ui="workspace"]');
+        await expect(workspace).toHaveAttribute("inert", "");
+        await expect(workspace).toHaveAttribute("aria-hidden", "true");
+        expect(await workspace.evaluate((element) => getComputedStyle(element).visibility)).toBe(
+          "visible",
+        );
+        expect(await dialog.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+          "rgb(255, 255, 255)",
+        );
+        const bounds = await dialog.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThan(20);
+        expect(bounds!.y).toBeGreaterThan(20);
+        expect(Math.abs(bounds!.x * 2 + bounds!.width - viewport.width)).toBeLessThan(2);
+        expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true,
+        );
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        // Native modal focus cannot move to a background control.
+        const backgroundButton = workspace.locator("button").first();
+        await backgroundButton.focus();
+        await expect(backgroundButton).not.toBeFocused();
+        for (let i = 0; i < 24; i++) {
+          await page.keyboard.press("Tab");
+          expect(
+            await dialog.evaluate(
+              (element) => !document.hasFocus() || element.contains(document.activeElement),
+            ),
+          ).toBe(true);
+        }
+        const name = dialog.getByRole("textbox", {
+          name: labels.settings.providerName,
+          exact: true,
+        });
+        await name.fill("Unsaved floating-window draft");
+        const providerSearch = dialog.getByRole("textbox", {
+          name: labels.settings.searchProviders,
+        });
+        await providerSearch.fill("second");
+        await expect(dialog.getByRole("button", { name: /Second provider/ })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: /Fixture provider/ })).toHaveCount(0);
+        await providerSearch.fill("");
+        await dialog.locator('[data-ui="settings-main"]:visible').evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        await mkdir("test-results/settings-window", { recursive: true });
+        await page.screenshot({
+          path: `test-results/settings-window/${language}-${viewport.width}-providers.png`,
+        });
+
+        // Searching categories never discards a hidden model or plugin draft.
+        await search.fill("English");
+        await expect(
+          dialog.getByRole("heading", { name: labels.settings.generalTitle }),
+        ).toBeVisible();
+        await search.press("Escape");
+        await expect(search).toHaveValue("");
+        await expect(dialog).toBeVisible();
+        await page.screenshot({
+          path: `test-results/settings-window/${language}-${viewport.width}-general.png`,
+        });
+        await dialog.getByRole("button", { name: labels.settings.providers, exact: true }).click();
+        await expect(name).toHaveValue("Unsaved floating-window draft");
+        await search.fill("no-such-setting-fixture");
+        await expect(
+          dialog.getByRole("heading", { name: labels.settings.noResults }),
+        ).toBeVisible();
+        await search.press("Escape");
+        await expect(name).toHaveValue("Unsaved floating-window draft");
+        await dialog
+          .getByRole("button", { name: labels.settings.translation, exact: true })
+          .click();
+        const prompt = dialog.locator("#translation-prompt");
+        await expect(prompt).toBeEnabled();
+        await prompt.fill("Preserved unsaved plugin draft");
+        await dialog.getByRole("button", { name: labels.settings.general, exact: true }).click();
+        const otherLanguage = language === "en" ? "zh" : "en";
+        const other = otherLanguage === "en" ? en : zh;
+        await dialog.getByRole("combobox").selectOption(otherLanguage);
+        await expect(dialog).toHaveAccessibleName(other.common.settings);
+        await dialog.getByRole("button", { name: other.settings.providers, exact: true }).click();
+        await expect(
+          dialog.getByRole("textbox", { name: other.settings.providerName, exact: true }),
+        ).toHaveValue("Unsaved floating-window draft");
+        await dialog.getByRole("button", { name: other.settings.translation, exact: true }).click();
+        await expect(prompt).toHaveValue("Preserved unsaved plugin draft");
+        await dialog.getByRole("button", { name: other.settings.general, exact: true }).click();
+        await dialog.getByRole("combobox").selectOption(language);
+        await expect(dialog).toHaveAccessibleName(labels.common.settings);
+        for (const [title, marker, suffix] of [
+          [labels.ocr.title, "ocr-settings", "ocr"],
+          [labels.cache.title, "cache-settings", "cache"],
+          [labels.extensions.title, "settings-main", "extensions"],
+          [labels.settings.translation, "settings-main", "translation"],
+        ]) {
+          await dialog.getByRole("button", { name: title, exact: true }).click();
+          const main = dialog.locator(`[data-ui="${marker}"]:visible`);
+          await expect(main).toBeVisible();
+          expect(await main.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+            true,
+          );
+          await page.screenshot({
+            path: `test-results/settings-window/${language}-${viewport.width}-${suffix}.png`,
+          });
+        }
+        await dialog.getByRole("button", { name: labels.settings.expandWindow }).click();
+        expect((await dialog.boundingBox())!.width).toBeGreaterThan(bounds!.width);
+        await dialog.getByRole("button", { name: labels.settings.restoreWindow }).click();
+        expect((await dialog.boundingBox())!.width).toEqual(bounds!.width);
+        await dialog.getByRole("button", { name: labels.settings.providers, exact: true }).click();
+        // Errors remain visible and dismissible inside the native modal's top layer.
+        const apiUrl = dialog.getByRole("textbox", { name: labels.settings.apiUrl, exact: true });
+        const previousUrl = await apiUrl.inputValue();
+        await apiUrl.fill("not-a-url");
+        await dialog.getByRole("button", { name: labels.common.save, exact: true }).click();
+        const alert = dialog.getByRole("alert");
+        await expect(alert).toContainText(labels.messages.invalidApiUrl);
+        const alertBounds = await alert.boundingBox();
+        const dialogBounds = await dialog.boundingBox();
+        expect(alertBounds!.x).toBeGreaterThanOrEqual(dialogBounds!.x);
+        expect(alertBounds!.y + alertBounds!.height).toBeLessThan(
+          dialogBounds!.y + dialogBounds!.height,
+        );
+        await alert.getByRole("button", { name: labels.common.dismiss }).click();
+        await expect(alert).toHaveCount(0);
+        await apiUrl.fill(previousUrl);
+        const fetchModels = dialog.getByRole("button", { name: labels.settings.fetchModels });
+        await fetchModels.click();
+        const catalog = page.getByRole("dialog", {
+          name: labels.settings.chooseModel,
+          exact: true,
+        });
+        await expect(catalog).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(catalog).toHaveCount(0);
+        await expect(dialog).toBeVisible();
+        await expect(fetchModels).toBeFocused();
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(opener).toBeFocused();
+        await expect(workspace).not.toHaveAttribute("inert");
+        await page.keyboard.press("Control+,");
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole("button", { name: labels.settings.close, exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+        await expect(opener).toBeFocused();
+        await page.keyboard.press("Meta+,");
+        await expect(dialog).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+        await browser.close();
+      }
+    });
+  }
+}

@@ -65,10 +65,20 @@ for (const language of ["zh", "en"] as const) {
           .locator(`[data-cache-kind]:not([data-cache-kind="${kind}"]) [data-ui="cache-size"]`)
           .allTextContents();
         await row.getByRole("button").click();
-        const dialog = page.getByRole("dialog");
+        const dialog = page.getByRole("dialog", {
+          name: labels.cache.clearKind.replace("{{name}}", labels.cache.kinds[kind].name),
+          exact: true,
+        });
         await expect(dialog).toContainText(labels.cache.kinds[kind].effect);
         if (kind === "formulas") await expect(dialog).toContainText(labels.cache.scope);
-        // Closing/canceling a confirmation never deletes data.
+        // Escape closes only the nested confirmation, leaving settings and data intact.
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(
+          page.getByRole("dialog", { name: labels.common.settings, exact: true }),
+        ).toBeVisible();
+        await expect(row.locator('[data-ui="cache-size"]')).not.toHaveText("0 B");
+        await row.getByRole("button").click();
         await dialog.getByRole("button", { name: labels.common.cancel, exact: true }).click();
         await expect(row.locator('[data-ui="cache-size"]')).not.toHaveText("0 B");
         await row.getByRole("button").click();

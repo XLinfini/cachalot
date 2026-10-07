@@ -43,7 +43,7 @@
 | 单页显示与交互      | [PdfPageView](../src/components/pdf/PdfPageView.tsx)、[page-layout](../src/components/pdf/page-layout.ts)                                                                    | canvas/文字层、可见区域渲染、几何、手势、覆盖框与异步代次         |
 | 分析与 React 的桥接 | [useDocumentAnalysis](../src/hooks/useDocumentAnalysis.ts)                                                                                                                   | 创建/释放会话、绑定插件文档读取、发布语义与恢复缓存               |
 | 本体问答与输入      | [ChatPanel](../src/components/ChatPanel.tsx)、[ChatComposer](../src/components/ChatComposer.tsx)、[ModelPicker](../src/components/ModelPicker.tsx)                           | 会话、流式内容、附件适配器、图像能力与草稿                        |
-| 设置外壳            | [ProviderSettings](../src/components/ProviderSettings.tsx)                                                                                                                   | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
+| 设置外壳            | [SettingsDialog](../src/components/SettingsDialog.tsx)、[ProviderSettings](../src/components/ProviderSettings.tsx)                                                                                                                   | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
 | 服务商与密钥        | [ProviderEditor](../src/components/ProviderEditor.tsx)、[ApiKeyField](../src/components/ApiKeyField.tsx)                                                                     | 未保存草稿、临时模型目录、接口地址与真实密钥读取                  |
 | OCR 与缓存          | [OcrSettings](../src/components/OcrSettings.tsx)、[CacheSettings](../src/components/CacheSettings.tsx)                                                                       | 独立选择、连接检查、六类缓存、确认与统计错误                      |
 | 通用插件工作台      | [ExtensionWorkbench](../src/components/extensions/ExtensionWorkbench.tsx)、[ExtensionSettings](../src/components/extensions/ExtensionSettings.tsx)                           | 外部订阅、动态登记、树/Webview、视图实例、安装与依赖预览          |
@@ -84,7 +84,7 @@ flowchart TD
 
 App 负责组合页面和导航，LibraryPage/AppSidebar/ReaderWorkspace 负责对应布局；useLibrary/useChatModel 保留状态在应用外壳的整个生命周期中，切换页面不重新加载它们。模型/文献状态通过 useWorkspaceExtensions 同步到宿主。
 
-设置覆盖层目前使用保留挂载的工作区，并设 invisible、inert 与 aria-hidden。替换实现时继续屏蔽底下交互及键盘焦点；不要把 workspace 从条件渲染树中删除。路由/布局重构可改变实现方式，但应保持 PDF 节点、分析会话和等待中的本体聊天。
+设置使用 SettingsDialog 的亮色原生 dialog 浮窗，工作区保持可见和挂载，并设 inert 与 aria-hidden。替换实现时继续屏蔽底下交互及键盘焦点；不要把 workspace 从条件渲染树中删除。路由/布局重构可改变实现方式，但应保持 PDF 节点、分析会话和等待中的本体聊天。
 
 阅读器与聊天当前按文献 ID 区分实例；不要用 page、语言、所选模型或 semantics.revision 作为整棵工作区的 key。翻译插件结果会在模型变化时取消旧请求并按新模型重新发起，这是插件自己的行为，不能由本体工作区 key 来实现。
 

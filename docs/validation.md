@@ -30,6 +30,14 @@
 
 类型、单元/集成、11 项 Rust 测试、生产构建和格式检查通过。插件浏览器用例覆盖多包补依赖、公开 API、升级与级联生命周期、持久恢复、独立事件订阅、隔离和无响应 Worker 恢复；生产构建的中英文安装用例保持原 PDF 节点及等待中的本体聊天请求。既有阅读、公式、缓存、模型与文献库回归通过；真实论文布局检查包含两种语言、两种横屏宽度和 56 张截图，没有水平溢出。Chromium 结果不代替桌面 WebKit 实际打包验证。
 
+### 2026-10-07：亮色设置浮窗
+
+在 `ui` 分支的新工作树中将设置覆盖页改为亮色原生 dialog 浮窗；窗口关闭、放大和焦点由 SettingsDialog 管理，分类搜索和动态导航保留在 ProviderSettings。统一本体与内置插件的内容间距，模型目录使用嵌套 dialog，错误提示在浮窗内可见和可关闭。后台工作区保持可见、挂载和 inert，模型及插件设置草稿在栏目/语言切换时保留。
+
+`test:types`、`format:check`、i18n/application-boundaries 单元模块、生产构建及 `git diff --check` 通过。隔离 Chromium 的 14 个浏览器用例通过，运行模块为 visual-layout、settings-cache、models-credentials、extensions 与 extension-installation。覆盖中英文 1440×1000、1194×834 横屏，分类与服务商搜索、错误、焦点恢复、Ctrl/Cmd+,、Esc、嵌套确认、草稿和密钥行为，以及插件安装/重启期间同一个 PDF 节点与等待中的本体请求。只使用合成 PDF、测试配置与本地模拟模型响应。
+
+24 张设置截图保存在 `test-results/settings-window/`，缓存与插件截图留在既有输出目录；输出、依赖、权重与构建产物不提交。需要真实论文的布局用例自动跳过；未验证 iPad 真机、桌面 WebKit 或 Tauri 实际打包。
+
 ## 结果的边界
 
 | 已有验证                          | 仍需单独验证                                   |

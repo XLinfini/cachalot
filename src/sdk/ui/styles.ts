@@ -33,8 +33,9 @@ export const ui = {
     "flex h-[38px] w-full items-center gap-3 rounded-lg border-0 bg-transparent px-[13px] text-left text-[12px] text-[#687d98] hover:bg-[#e4edfa] hover:font-bold hover:text-[#2062bd] aria-pressed:bg-[#e4edfa] aria-pressed:font-bold aria-pressed:text-[#2062bd]",
   toolbarButton:
     "flex items-center gap-[5px] rounded-[6px] border-0 bg-transparent p-[7px] text-[10px] text-[#71849c] hover:bg-brand-soft hover:text-[#2868be] aria-pressed:bg-brand-soft aria-pressed:text-[#2868be] max-compact:gap-0 max-compact:text-[0px] max-compact:[&>svg]:w-4",
+  settingsPage: "min-w-0 flex-1 overflow-y-auto overscroll-contain px-7 pt-7 pb-8 max-compact:px-5",
   settingsNavButton:
-    "flex h-[41px] w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[12px] text-[#6f8199] hover:bg-[#e8f1fd] hover:font-bold hover:text-[#2466bf] aria-pressed:bg-[#e8f1fd] aria-pressed:font-bold aria-pressed:text-[#2466bf]",
+    "flex min-h-[39px] w-full items-center gap-2.5 rounded-r-md border-0 border-l-2 border-transparent bg-transparent px-3 text-left text-[12px] text-[#607590] hover:bg-[#edf2f9] hover:text-ink aria-pressed:border-brand aria-pressed:bg-brand-soft aria-pressed:font-semibold aria-pressed:text-brand",
   surface: "rounded-xl border border-border bg-white shadow-surface",
   fieldLabel: "mb-4 block text-[10px] font-semibold text-[#607590]",
   fieldInput:
