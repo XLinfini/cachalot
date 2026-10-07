@@ -191,3 +191,78 @@ test("a failed host installation restores the previous persistent package withou
   await repository.change([], [first.id]);
   await host.dispose();
 });
+
+test("new contribution declarations validate conditions, keybindings and typed defaults before installation", () => {
+  const typed = {
+    ...base,
+    contributes: {
+      commands: [
+        { command: "fixture.reader-tools.go", title: "Go", enablement: "reader.documentOpen" },
+      ],
+      menus: [
+        {
+          location: "reader.context",
+          command: "fixture.reader-tools.go",
+          when: "reader.hasSelection",
+        },
+      ],
+      keybindings: [{ command: "fixture.reader-tools.go", key: "ctrl+alt+b" }],
+      configuration: [{ key: "count", title: "Count", type: "integer", default: 3, minimum: 1 }],
+    },
+  };
+  assert.equal(validateManifest(typed).contributes!.configuration![0].default, 3);
+  assert.throws(
+    () =>
+      validateManifest({
+        ...typed,
+        contributes: {
+          ...typed.contributes,
+          commands: [{ ...typed.contributes.commands[0], enablement: "alert(1)" }],
+        },
+      }),
+    /enablement/,
+  );
+  assert.throws(
+    () =>
+      validateManifest({
+        ...typed,
+        contributes: {
+          ...typed.contributes,
+          keybindings: [{ command: "fixture.reader-tools.go", key: "ctrl+k ctrl+s" }],
+        },
+      }),
+    /keybindings/,
+  );
+  assert.throws(
+    () =>
+      validateManifest({
+        ...typed,
+        contributes: {
+          ...typed.contributes,
+          configuration: [{ key: "count", title: "Count", type: "integer", default: "3" }],
+        },
+      }),
+    /configuration/,
+  );
+});
+
+test("developer scaffold exports self-contained SDK types and preserves existing projects", async () => {
+  const { mkdtemp, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createExtension } = await import("../../scripts/create-extension");
+  const directory = await mkdtemp(join(tmpdir(), "cachalot-scaffold-"));
+  try {
+    const root = await createExtension(join(directory, "starter"), "example.starter");
+    const raw = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    assert.equal(raw.devDependencies.cachalot, "file:./sdk");
+    validateManifest({ ...raw, main: "extension.js" });
+    const types = await readFile(join(root, "sdk/types/sdk/index.d.ts"), "utf8");
+    assert.match(types, /setContext/);
+    assert.match(types, /showQuickPick/);
+    assert.doesNotMatch(types, /\/opt\/proj|\.codex\/worktrees/);
+    await assert.rejects(createExtension(root, "example.starter"), /EEXIST/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

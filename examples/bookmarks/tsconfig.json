@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "cachalot": ["../../src/sdk/index.ts"]
+    }
+  },
+  "include": ["extension.ts"]
+}

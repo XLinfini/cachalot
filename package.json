@@ -43,7 +43,9 @@
     "format:check": "prettier --check src/App.tsx src/components src/hooks src/styles src/i18n src/main.tsx src/sdk src/extensions src/application/extensions src/infrastructure/extensions vite.config.ts",
     "preview": "vite preview",
     "tauri": "tauri",
-    "extension:pack": "node --import tsx scripts/package-extension.ts"
+    "extension:pack": "node --import tsx scripts/package-extension.ts",
+    "extension:sdk": "node --import tsx scripts/extension-sdk.ts",
+    "extension:create": "node --import tsx scripts/create-extension.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.22",

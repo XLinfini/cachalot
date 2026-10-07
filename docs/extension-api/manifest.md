@@ -4,7 +4,7 @@
 
 插件包根目录必须有 `package.json`。源目录的 `main` 可以指向 TS/JS；安装包的 `main` 必须是可解码的 UTF-8 `.js` IIFE 入口，导出全局 `cachalotExtension`。完整示例见[教程](get-started.md)。
 
-类型定义在 [ExtensionManifest](../../src/sdk/index.ts)，运行校验在 [manifest.ts](../../src/infrastructure/extensions/manifest.ts)。以下规则对应当前 API 0.1.0。
+类型定义在 [ExtensionManifest](../../src/sdk/index.ts)，运行校验在 [manifest.ts](../../src/infrastructure/extensions/manifest.ts)。以下规则对应当前 API 0.1.1。
 
 ## 身份、版本与入口
 
@@ -40,13 +40,13 @@
 
 ## 能力声明
 
-| 能力              | 直接控制的调用                                      |
-| ----------------- | --------------------------------------------------- |
-| `documents.read`  | 文档读取与文档事件、当前文档 ID/事件、公式 PDF 裁剪 |
-| `reader.interact` | 选区及事件、工具、动作、悬停和页码导航              |
-| `reader.decorate` | 阅读背景和覆盖框                                    |
-| `ocr`             | 指定公式的复建服务                                  |
-| `lm`              | 当前模型及事件、图像能力查询、流式模型调用          |
+| 能力              | 直接控制的调用                                                |
+| ----------------- | ------------------------------------------------------------- |
+| `documents.read`  | 文档读取与文档事件、当前文档 ID/事件、阅读状态、公式 PDF 裁剪 |
+| `reader.interact` | 选区及事件、工具、动作、悬停和页码导航                        |
+| `reader.decorate` | 阅读背景和覆盖框                                              |
+| `ocr`             | 指定公式的复建服务                                            |
+| `lm`              | 当前模型及事件、图像能力查询、流式模型调用                    |
 
 工具/悬停的 `reader.interact` 回调会接收包含文字与语义的页面投影，它不是“只能看鼠标、不能看文档内容”的权限。选择最小能力，并在安装描述中说明内容使用目的。
 
@@ -54,13 +54,14 @@
 
 ## 贡献点
 
-| 字段              | 元素字段                                      | 规则                                            |
-| ----------------- | --------------------------------------------- | ----------------------------------------------- |
-| `commands`        | `command`, `title`                            | ID 使用本插件前缀，在 activate 中注册处理函数   |
-| `menus`           | `location`, `command`                         | 当前仅 `reader.toolbar`；命令须已声明           |
-| `viewsContainers` | `id`, `title`, `location`                     | location 为左右 sidebar 或 panel                |
-| `views`           | `id`, `title`, `location`, 可选 `container`   | 五种位置；容器须存在且位置一致                  |
-| `configuration`   | `key`, `title`, `default`, 可选 `description` | 当前 default/值为字符串；键在插件命名空间内保存 |
+| 字段              | 元素字段                                                                            | 规则                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `commands`        | `command`, `title`, 可选 `category`, `enablement`                                   | ID 使用本插件前缀，在 activate 中注册处理函数                            |
+| `menus`           | `location`, `command`, 可选 `when`, `group`                                         | reader.toolbar、reader.context、view.title、commandPalette；命令须已声明 |
+| `keybindings`     | `command`, `key`, 可选 `mac`, `when`, `allowInInput`                                | 单组合快捷键；命令须已声明                                               |
+| `viewsContainers` | `id`, `title`, `location`                                                           | location 为左右 sidebar 或 panel                                         |
+| `views`           | `id`, `title`, `location`, 可选 `container`, `when`                                 | 五种位置；容器须存在且位置一致                                           |
+| `configuration`   | `key`, `title`, `default`, 可选 `description`, `type`, `enum`, `minimum`, `maximum` | 类型与默认值校验；键在插件命名空间内保存                                 |
 
 命令、视图、容器 ID 必须以 `publisher.name.` 开头，且这些贡献之间不能重复。工具、选区动作、状态项也用该前缀，但通过 SDK 动态注册，没有独立的清单数组。配置 key 在本插件内唯一，无需再写插件前缀。
 
@@ -68,15 +69,17 @@
 
 双语标签的两个值都应是非空字符串；列表校验上限为 256 个元素。清单限制用于输入校验，不是鼓励插件占满工作台。
 
-## 配置不会自动生成完整 UI
+## 配置与条件表达式
 
-声明配置后，`workspace.getConfiguration().get(key)` 返回持久值或 default；`update` 保存本插件的字符串值。它不生成 VS Code 风格通用设置编辑器，也没有当前 API 的配置变化事件。需要编辑界面时注册自己的 `settings` 视图。
+声明配置后，宿主在插件设置卡片中自动生成字段。type 支持 string、number、integer、boolean、array、object；enum 和数值范围同时校验默认值与更新值。省略 type 的旧声明继续使用字符串。持久写入成功后触发本插件的配置变化事件，见[配置与公共交互](configuration-and-ui.md)。
+
+enablement、when 使用同一声明式上下文语法，支持逻辑、等值比较与括号；非法表达式在安装前拒绝。菜单条件、视图条件和命令启用状态的区别见[命令与上下文](commands-and-context.md)。
 
 ## 常见清单错误
 
 | 错误                                  | 修正                                      |
 | ------------------------------------- | ----------------------------------------- |
-| API 范围为 `*` 或排除 0.1.0           | 声明实际兼容范围，如 `^0.1.0`             |
+| API 范围为 `*` 或排除 0.1.1           | 声明实际兼容范围，如 `^0.1.1`             |
 | 注册未声明的命令/视图                 | 同步清单和注册，确认 ID 完全一致          |
 | 容器不存在或位置不同                  | 在同一清单声明容器，保持 location 一致    |
 | 用 npm 包名作为 extensionDependencies | 改成实际插件 ID；第三方库由构建器打入代码 |

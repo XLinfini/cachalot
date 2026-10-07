@@ -8,6 +8,14 @@
     "playwright.config.ts",
     "vite.config.ts",
     "scripts/package-extension.ts",
-    "examples/**/*.ts"
-  ]
+    "examples/**/*.ts",
+    "scripts/extension-sdk.ts",
+    "scripts/create-extension.ts"
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "cachalot": ["src/sdk/index.ts"]
+    }
+  }
 }

@@ -1,13 +1,14 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import { X, Search } from "lucide-react";
 import { extensionHost } from "../../application/extensions/runtime";
 import type { HostedView } from "../../application/extensions/host";
 import { Emitter } from "../../application/extensions/events";
 import type { Label, TreeDataProvider, TreeItem, ViewHandle, Webview } from "../../sdk";
 import { services } from "../../application/services";
 import { ui } from "../../sdk/ui/styles";
+import { WorkbenchServices, openCommandPalette } from "./WorkbenchServices";
 
 export const useExtensions = () =>
   useSyncExternalStore(extensionHost.subscribe, extensionHost.getSnapshot);
@@ -193,13 +194,16 @@ export function ExtensionView({ view }: { view: HostedView }) {
 export function ExtensionModals() {
   const snapshot = useExtensions();
   return createPortal(
-    snapshot.views
-      .filter((view) => view.visible && view.declaration.location === "modal")
-      .map((view) => (
-        <div key={`${view.declaration.id}:${view.instance}`} className="fixed inset-0 z-20">
-          <ExtensionView view={view} />
-        </div>
-      )),
+    <>
+      <WorkbenchServices />
+      {snapshot.views
+        .filter((view) => view.visible && view.declaration.location === "modal")
+        .map((view) => (
+          <div key={`${view.declaration.id}:${view.instance}`} className="fixed inset-0 z-20">
+            <ExtensionView view={view} />
+          </div>
+        ))}
+    </>,
     document.body,
   );
 }
@@ -210,7 +214,11 @@ export function ExtensionDock({
 }) {
   const snapshot = useExtensions();
   const { t, i18n } = useTranslation();
-  const views = snapshot.views.filter((view) => view.declaration.location === location);
+  const views = snapshot.views.filter(
+    (view) =>
+      view.declaration.location === location &&
+      extensionHost.matches(view.declaration.when, { "view.id": view.declaration.id }),
+  );
   const [chosen, setChosen] = useState<string | null>(null);
   const visible = views.filter((view) => view.visible);
   const current = visible.find((view) => view.declaration.id === chosen) || visible[0];
@@ -340,6 +348,24 @@ export function ExtensionDock({
         )}
       </div>
       {current && (
+        <div className="flex flex-none gap-1 px-2">
+          {extensionHost
+            .getMenu("view.title", { "view.id": current.declaration.id })
+            .map(({ command }) => (
+              <button
+                key={command.command}
+                className={ui.toolbarButton}
+                disabled={!command.enabled}
+                onClick={() =>
+                  void extensionHost.executeCommand(command.command).catch(() => undefined)
+                }
+              >
+                {label(command.title, i18n.resolvedLanguage)}
+              </button>
+            ))}
+        </div>
+      )}
+      {current && (
         <ExtensionView key={`${current.declaration.id}:${current.instance}`} view={current} />
       )}
     </aside>
@@ -379,29 +405,29 @@ export function ExtensionStatusBar() {
   );
 }
 export function ExtensionToolbar() {
-  const snapshot = useExtensions(),
-    { i18n } = useTranslation();
-  return snapshot.extensions
-    .filter((item) => item.enabled)
-    .flatMap((item) =>
-      (item.manifest.contributes?.menus || []).map((menu) => {
-        const command = item.manifest.contributes?.commands?.find(
-          (value) => value.command === menu.command,
-        );
-        return (
-          command && (
-            <button
-              key={command.command}
-              className={ui.toolbarButton}
-              onClick={() =>
-                void extensionHost.executeCommand(command.command).catch(() => undefined)
-              }
-            >
-              {label(command.title, i18n.resolvedLanguage)}
-            </button>
-          )
-        );
-      }),
-    );
+  useExtensions();
+  const { t, i18n } = useTranslation();
+  return (
+    <>
+      <button
+        className={ui.toolbarButton}
+        title="Ctrl+Shift+P / Cmd+Shift+P"
+        onClick={openCommandPalette}
+      >
+        <Search size={14} />
+        {t("workbench.commands")}
+      </button>
+      {extensionHost.getMenu("reader.toolbar").map(({ command }) => (
+        <button
+          key={command.command}
+          className={ui.toolbarButton}
+          disabled={!command.enabled}
+          onClick={() => void extensionHost.executeCommand(command.command).catch(() => undefined)}
+        >
+          {label(command.title, i18n.resolvedLanguage)}
+        </button>
+      ))}
+    </>
+  );
 }
 export { ExtensionSettings } from "./ExtensionSettings";

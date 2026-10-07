@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { packageExtension } from "../../scripts/package-extension";
 import { chromium, expect, test } from "@playwright/test";
 import {
   consumerPackage,
@@ -5,8 +9,9 @@ import {
   stuckPackage,
   extensionArchive,
   eventPackage,
+  workbenchPackage,
 } from "../fixtures/extension-packages";
-import { cacheFixture } from "../fixtures/cache";
+import { cacheFixture, cacheFixturePdf } from "../fixtures/cache";
 import { en, zh } from "../fixtures/locales";
 
 for (const language of ["zh", "en"] as const) {
@@ -421,3 +426,210 @@ test("installed worker isolation, persistent packages, circular dependency revie
     await browser.close();
   }
 });
+
+for (const language of ["zh", "en"] as const) {
+  test(
+    "installed Worker uses shared commands, typed settings and scoped interactions (" +
+      language +
+      ")",
+    async () => {
+      test.setTimeout(90000);
+      const labels = language === "en" ? en : zh;
+      const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const page = await context.newPage(),
+        errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      try {
+        await page.addInitScript((language) => {
+          if (window.top === window) localStorage.setItem("cachalot:setting:uiLanguage", language);
+        }, language);
+        await page.goto("/");
+        await page.locator('input[type="file"][accept="application/pdf,.pdf"]').setInputFiles({
+          name: "workbench.pdf",
+          mimeType: "application/pdf",
+          buffer: Buffer.from(cacheFixture.pdfBytes),
+        });
+        await expect(page.locator('[data-ui="pdf-page"]')).toHaveAttribute("data-rendered", "true");
+        await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+        await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+        await page.locator('[data-ui="extension-package-input"]').setInputFiles({
+          name: "workbench.cachx",
+          mimeType: "application/zip",
+          buffer: workbenchPackage().buffer,
+        });
+        await page.locator('[data-ui="extension-confirm-install"]').click();
+        const card = page.locator('[data-extension-id="fixture.workbench"]');
+        await expect(card).toContainText(labels.extensions.status.active, { timeout: 25000 });
+        const checkbox = card.getByRole("checkbox", {
+          name: language === "en" ? "Enable interaction" : "启用交互",
+        });
+        await checkbox.uncheck();
+        await card
+          .locator('[data-ui="extension-configuration"]')
+          .getByRole("button", { name: labels.workbench.save, exact: true })
+          .first()
+          .click();
+        await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText("Config=false");
+        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        const run = page.getByRole("button", {
+          name: language === "en" ? "Plugin interaction" : "插件交互",
+          exact: true,
+        });
+        await expect(run).toBeDisabled();
+        await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+        await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+        await checkbox.check();
+        await card
+          .locator('[data-ui="extension-configuration"]')
+          .getByRole("button", { name: labels.workbench.save, exact: true })
+          .first()
+          .click();
+        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await expect(run).toBeEnabled();
+        await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText(
+          "page=1;zoom=1",
+        );
+        await page.keyboard.press("Control+Shift+P");
+        const palette = page.getByRole("dialog", { name: labels.workbench.commands, exact: true });
+        await palette.getByRole("textbox", { name: labels.workbench.search }).fill("Context ping");
+        await palette.getByRole("option", { name: /Context ping/ }).click();
+        await expect(
+          page.getByRole("status").filter({ hasText: "Context command ran" }),
+        ).toBeVisible();
+        await page
+          .getByRole("status")
+          .filter({ hasText: "Context command ran" })
+          .getByRole("button")
+          .click();
+        await page.keyboard.press("Control+Alt+b");
+        await expect(
+          page.getByRole("status").filter({ hasText: "Context command ran" }),
+        ).toBeVisible();
+        await run.click();
+        await page
+          .getByRole("dialog", { name: "Pick fixture" })
+          .getByRole("option", { name: "Second item" })
+          .click();
+        const input = page.getByRole("dialog", { name: "Name fixture" });
+        await input.getByRole("textbox").fill("Worker round trip");
+        await input.getByRole("button", { name: labels.workbench.submit }).click();
+        await expect(
+          page.getByRole("status").filter({ hasText: "Completed Worker round trip" }),
+        ).toBeVisible();
+        await run.click();
+        await expect(page.getByRole("dialog", { name: "Pick fixture" })).toBeVisible();
+        // Stop through the production host while its input request is outstanding.
+        await page.evaluate(async () => {
+          const runtimeUrl =
+            performance
+              .getEntriesByType("resource")
+              .find(
+                (entry) =>
+                  new URL(entry.name).pathname === "/src/application/extensions/runtime.ts",
+              )?.name || "/src/application/extensions/runtime.ts";
+          const { extensionHost } = await import(/* @vite-ignore */ runtimeUrl);
+          await extensionHost.setEnabled("fixture.workbench", false);
+        });
+        await expect(page.getByRole("dialog", { name: "Pick fixture" })).toHaveCount(0);
+        await expect(run).toHaveCount(0);
+        await expect(page.locator('[data-ui="pdf-page"]')).toHaveAttribute("data-rendered", "true");
+        await expect(page.locator("[data-extension-runtime]")).toHaveCount(0);
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+        await browser.close();
+      }
+    },
+  );
+}
+
+for (const language of ["zh", "en"] as const) {
+  test(
+    "public SDK bookmark example installs, navigates and retains saved state (" + language + ")",
+    async ({}, testInfo) => {
+      const temporary = await mkdtemp(join(tmpdir(), "cachalot-bookmarks-"));
+      const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const page = await context.newPage(),
+        labels = language === "en" ? en : zh;
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      try {
+        const archive = await packageExtension(
+          "examples/bookmarks",
+          join(temporary, "bookmarks.cachx"),
+        );
+        await page.addInitScript((language) => {
+          if (window.top === window) localStorage.setItem("cachalot:setting:uiLanguage", language);
+        }, language);
+        await page.goto("/");
+        await page.locator('input[type="file"][accept="application/pdf,.pdf"]').setInputFiles({
+          name: "bookmarks.pdf",
+          mimeType: "application/pdf",
+          buffer: Buffer.from(cacheFixturePdf(2)),
+        });
+        await expect(page.locator('[data-ui="pdf-page"][data-page="1"]')).toHaveAttribute(
+          "data-rendered",
+          "true",
+        );
+        await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+        await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+        await page.locator('[data-ui="extension-package-input"]').setInputFiles({
+          name: "bookmarks.cachx",
+          mimeType: "application/zip",
+          buffer: await readFile(archive),
+        });
+        await page.locator('[data-ui="extension-confirm-install"]').click();
+        await expect(page.locator('[data-extension-id="example.bookmarks"]')).toContainText(
+          labels.extensions.status.active,
+        );
+        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        const add = language === "en" ? "Add Reading Bookmark" : "添加阅读书签";
+        const name = language === "en" ? "Bookmark name" : "书签名称";
+        await page.locator('[data-ui="pdf-page"][data-page="1"]').click({ button: "right" });
+        await page.getByRole("menuitem", { name: add, exact: true }).click();
+        const input = page.getByRole("dialog", { name, exact: true });
+        await expect(input.getByRole("textbox")).toHaveValue(
+          language === "en" ? "Page 1" : "第 1 页",
+        );
+        await input.getByRole("textbox").fill("Methods bookmark");
+        await input.getByRole("button", { name: labels.workbench.submit, exact: true }).click();
+        const bookmark = page.getByRole("treeitem").filter({ hasText: "Methods bookmark" });
+        await expect(bookmark).toBeVisible();
+        // A view-title menu uses the view.id condition, independently of the reader toolbar.
+        await page
+          .locator('[data-ui="extension-dock"]')
+          .getByRole("button", { name: add, exact: true })
+          .click();
+        await expect(input).toBeVisible();
+        await input.getByRole("button", { name: labels.workbench.cancel, exact: true }).click();
+        await expect(page.getByRole("treeitem")).toHaveCount(1);
+        const jump = page.getByRole("textbox", { name: labels.reader.jumpToPage, exact: true });
+        await jump.fill("2");
+        await jump.press("Enter");
+        await expect(
+          page.locator('[data-ui="page-thumbnail"]').filter({ hasText: /^2$/ }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await bookmark.getByRole("button").click();
+        await expect(
+          page.locator('[data-ui="page-thumbnail"]').filter({ hasText: /^1$/ }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await page.reload();
+        await page.locator('[data-ui="document-card"]').click();
+        await page.getByTitle(language === "en" ? "Bookmarks" : "书签", { exact: true }).click();
+        await expect(page.locator('[data-ui="pdf-page"][data-page="1"]')).toHaveAttribute(
+          "data-rendered",
+          "true",
+        );
+        await expect(bookmark).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("bookmarks-" + language + ".png") });
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+        await browser.close();
+        await rm(temporary, { recursive: true, force: true });
+      }
+    },
+  );
+}

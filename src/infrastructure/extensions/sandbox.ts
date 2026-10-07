@@ -104,6 +104,12 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["configuration.get", context.workspace.getConfiguration().get],
         ["configuration.update", context.workspace.getConfiguration().update],
         ["commands.executeCommand", context.commands.executeCommand],
+        ["commands.setContext", context.commands.setContext],
+        ["window.showInformationMessage", context.window.showInformationMessage],
+        ["window.showWarningMessage", context.window.showWarningMessage],
+        ["window.showQuickPick", context.window.showQuickPick],
+        ["window.showInputBox", context.window.showInputBox],
+        ["window.withProgress", context.window.withProgress],
         ["window.showView", context.window.showView],
         [
           "window.showErrorMessage",
@@ -130,6 +136,8 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["activeDocument", context.reader.onDidChangeActiveDocument],
         ["selection", context.reader.onDidChangeSelection],
         ["model", context.lm.onDidChangeActiveModel],
+        ["readerState", context.reader.onDidChangeViewState],
+        ["configuration", context.workspace.onDidChangeConfiguration],
       ]);
       const fail = (error: Error) => {
         if (closed) return;
@@ -417,12 +425,17 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
             ? context.reader.activeDocumentId
             : null,
           selection: capabilities.includes("reader.interact") ? context.reader.selection : null,
+          viewState: capabilities.includes("documents.read") ? context.reader.viewState : null,
           model: capabilities.includes("lm") ? context.lm.activeModel : null,
         });
       // Keep read-only snapshot properties current even without a plugin event listener.
       for (const [name, source] of eventSources) {
-        if (name === "document") continue;
-        if (name === "activeDocument" && !capabilities.includes("documents.read")) continue;
+        if (name === "document" || name === "configuration") continue;
+        if (
+          (name === "activeDocument" || name === "readerState") &&
+          !capabilities.includes("documents.read")
+        )
+          continue;
         if (name === "selection" && !capabilities.includes("reader.interact")) continue;
         if (name === "model" && !capabilities.includes("lm")) continue;
         context.subscriptions.push(

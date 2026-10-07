@@ -1,5 +1,12 @@
 import type {
   Capability,
+  ContextValue,
+  ConfigurationChangeEvent,
+  ConfigurationValue,
+  ReaderViewState,
+  CommandContribution,
+  KeybindingContribution,
+  MenuLocation,
   Disposable,
   ExtensionContext,
   ExtensionManifest,
@@ -16,6 +23,9 @@ import type {
   WebviewViewProvider,
 } from "../../sdk";
 import { Emitter, cancellable, cancelled, disposable } from "./events";
+import { matchesContext, normalizeKeybinding, parseContext } from "../../domain/context-keys";
+import { decodeConfiguration, validateConfiguration } from "../../domain/extension-configuration";
+import { ExtensionInteractions, type HostInteraction } from "./interactions";
 import { validateManifest, extensionId } from "../../infrastructure/extensions/manifest";
 import {
   dependencyProblem,
@@ -95,6 +105,8 @@ export interface HostedStatusItem {
 }
 export interface HostSnapshot {
   revision: number;
+  context: Readonly<Record<string, ContextValue>>;
+  interactions: HostInteraction[];
   extensions: {
     id: string;
     manifest: ExtensionManifest;
@@ -137,12 +149,22 @@ export class ExtensionHost {
   >();
   private activeDocuments = new Emitter<string | null>();
   private models = new Emitter<ProviderValue>();
+  private readerStates = new Emitter<ReaderViewState | null>();
+  private configurationChanges = new Emitter<{ owner: string; event: ConfigurationChangeEvent }>();
+  readonly onDidChangeConfiguration = this.configurationChanges.event;
+  private contextValues = new Map<string, ContextValue>();
+  private userKeybindings: KeybindingContribution[] = [];
+  private _viewState: ReaderViewState | null = null;
+  private analysisDocument: string | null = null;
+  readonly interactions = new ExtensionInteractions(() => this.emit());
   private _activeDocumentId: string | null = null;
   private _selection: ReaderSelection | null = null;
   private selectionOwner?: string;
   private _model: ProviderValue = null;
   private snapshot: HostSnapshot = {
     revision: 0,
+    context: {},
+    interactions: [],
     extensions: [],
     tools: [],
     actions: [],
@@ -185,6 +207,17 @@ export class ExtensionHost {
       )
         throw new Error(`Invalid view container: ${view.id}`);
     }
+    for (const key of this.contextValues.keys())
+      if (key.startsWith("config." + id + ".")) this.contextValues.delete(key);
+    for (const declaration of manifest.contributes?.configuration ?? [])
+      if (
+        declaration.default === null ||
+        ["string", "number", "boolean"].includes(typeof declaration.default)
+      )
+        this.contextValues.set(
+          "config." + id + "." + declaration.key,
+          declaration.default as ContextValue,
+        );
     this.runtimes.set(id, { installation, status: "inactive", enabled: true });
     this.emit();
   }
@@ -226,6 +259,11 @@ export class ExtensionHost {
         runtime.enabled = enabled.get(id)!;
         runtime.status = runtime.enabled ? "inactive" : "disabled";
         runtime.requested = requested.has(id);
+        for (const declaration of input.manifest.contributes?.configuration ?? []) {
+          const value = await this.getConfigurationValue(id, declaration.key);
+          if (value === null || ["string", "number", "boolean"].includes(typeof value))
+            this.contextValues.set("config." + id + "." + declaration.key, value as ContextValue);
+        }
       }
       await this.reconcile(affected);
     });
@@ -278,6 +316,8 @@ export class ExtensionHost {
   private emit() {
     this.snapshot = {
       revision: this.snapshot.revision + 1,
+      context: this.getContext(),
+      interactions: this.interactions.snapshot(),
       extensions: [...this.runtimes].map(([id, runtime]) => ({
         id,
         manifest: runtime.installation.manifest,
@@ -295,6 +335,148 @@ export class ExtensionHost {
       decorations: [...this.decorations.values()],
     };
     this.changes.fire();
+  }
+  private getContext(extra: Record<string, ContextValue> = {}): Record<string, ContextValue> {
+    return {
+      ...Object.fromEntries(this.contextValues),
+      "reader.documentOpen": this._activeDocumentId !== null,
+      "reader.documentId": this._activeDocumentId,
+      "reader.hasSelection": this._selection !== null,
+      "reader.page": this._viewState?.page ?? 0,
+      "lm.available": this._model !== null,
+      "analysis.ready":
+        this.analysisDocument === this._activeDocumentId && this._activeDocumentId !== null,
+      ...extra,
+    };
+  }
+  matches(expression?: string, extra: Record<string, ContextValue> = {}) {
+    return matchesContext(expression, this.getContext(extra));
+  }
+  getCommands(): (CommandContribution & { owner: string; enabled: boolean })[] {
+    return [...this.runtimes]
+      .filter(
+        ([, runtime]) =>
+          runtime.enabled && runtime.status !== "blocked" && runtime.status !== "error",
+      )
+      .flatMap(([owner, runtime]) =>
+        (runtime.installation.manifest.contributes?.commands ?? []).map((command) => ({
+          ...command,
+          owner,
+          enabled: this.matches(command.enablement),
+        })),
+      );
+  }
+  getMenu(location: MenuLocation, extra: Record<string, ContextValue> = {}) {
+    const commands = this.getCommands();
+    return [...this.runtimes]
+      .filter(
+        ([, runtime]) =>
+          runtime.enabled && runtime.status !== "blocked" && runtime.status !== "error",
+      )
+      .flatMap(([, runtime]) =>
+        (runtime.installation.manifest.contributes?.menus ?? [])
+          .filter((menu) => menu.location === location && this.matches(menu.when, extra))
+          .map((menu) => ({
+            menu,
+            command: commands.find((command) => command.command === menu.command),
+          })),
+      )
+      .filter((item): item is typeof item & { command: NonNullable<typeof item.command> } =>
+        Boolean(item.command),
+      )
+      .sort((a, b) => (a.menu.group ?? "").localeCompare(b.menu.group ?? ""));
+  }
+  getKeybindings(): KeybindingContribution[] {
+    const overridden = new Set(this.userKeybindings.map((binding) => binding.command));
+    return [...this.runtimes]
+      .filter(([, runtime]) => runtime.enabled)
+      .flatMap(([, runtime]) =>
+        (runtime.installation.manifest.contributes?.keybindings ?? []).filter(
+          (binding) => !overridden.has(binding.command),
+        ),
+      )
+      .concat(this.userKeybindings);
+  }
+  resolveKeybinding(key: string, mac = false, inputFocus = false): string | undefined {
+    const normalized = normalizeKeybinding(key);
+    return this.getKeybindings()
+      .slice()
+      .reverse()
+      .find(
+        (binding) =>
+          (!inputFocus || binding.allowInInput === true) &&
+          normalizeKeybinding(mac ? (binding.mac ?? binding.key) : binding.key) === normalized &&
+          this.matches(binding.when, { inputFocus }) &&
+          this.getCommands().some(
+            (command) => command.command === binding.command && command.enabled,
+          ),
+      )?.command;
+  }
+  async setKeybinding(command: string, key: string | null) {
+    if (!this.getCommands().some((item) => item.command === command))
+      throw new Error("Unavailable command: " + command);
+    if (key !== null) normalizeKeybinding(key);
+    return this.enqueue("workbench:keybindings", async () => {
+      const bindings = this.userKeybindings.filter((item) => item.command !== command);
+      if (key !== null) bindings.push({ command, key });
+      await this.ports.setSetting("workbench:keybindings", JSON.stringify(bindings));
+      this.userKeybindings = bindings;
+      this.emit();
+    });
+  }
+  async getConfigurationValue(owner: string, key: string): Promise<ConfigurationValue> {
+    const declaration = this.require(owner).installation.manifest.contributes?.configuration?.find(
+      (item) => item.key === key,
+    );
+    if (!declaration) throw new Error("Undeclared setting: " + key);
+    return decodeConfiguration(
+      declaration,
+      await this.ports.getSetting("extensions:" + owner + ":config:" + key),
+    );
+  }
+  async updateConfigurationValue(owner: string, key: string, value: ConfigurationValue) {
+    const declaration = this.require(owner).installation.manifest.contributes?.configuration?.find(
+      (item) => item.key === key,
+    );
+    if (!declaration) throw new Error("Undeclared setting: " + key);
+    validateConfiguration(declaration, value);
+    value = structuredClone(value);
+    // Serialize writes per setting, including the built-in settings editor and plugin callers.
+    return this.enqueue("configuration:" + owner + ":" + key, async () => {
+      const previous = await this.getConfigurationValue(owner, key);
+      if (JSON.stringify(previous) === JSON.stringify(value)) return;
+      await this.ports.setSetting(
+        "extensions:" + owner + ":config:" + key,
+        declaration.type ? JSON.stringify(value) : (value as string),
+      );
+      if (value === null || ["string", "number", "boolean"].includes(typeof value))
+        this.contextValues.set("config." + owner + "." + key, value as ContextValue);
+      this.configurationChanges.fire({ owner, event: { key, value: structuredClone(value) } });
+      this.emit();
+    });
+  }
+  publishReaderState(state: ReaderViewState | null) {
+    if (state && state.documentId !== this._activeDocumentId) return;
+    if (
+      state &&
+      (!Number.isSafeInteger(state.page) ||
+        state.page < 1 ||
+        state.page > state.pageCount ||
+        !Number.isSafeInteger(state.pageCount) ||
+        state.pageCount < 1 ||
+        !Number.isFinite(state.zoom) ||
+        state.zoom <= 0 ||
+        !Number.isFinite(state.scrollTop) ||
+        state.scrollTop < 0 ||
+        !Number.isFinite(state.viewportHeight) ||
+        state.viewportHeight < 0)
+    )
+      throw new Error("Invalid reader state");
+    if (JSON.stringify(state) === JSON.stringify(this._viewState)) return;
+    const previousPage = this._viewState?.page;
+    this._viewState = state ? { ...state } : null;
+    this.readerStates.fire(this._viewState ? { ...this._viewState } : null);
+    if (previousPage !== state?.page) this.emit();
   }
   private initialize(): Promise<void> {
     return (this.initialized ||= (async () => {
@@ -318,6 +500,26 @@ export class ExtensionHost {
         }
         runtime.enabled = (await this.ports.getSetting(`extensions:${id}:enabled`)) !== "false";
         runtime.status = runtime.enabled ? "inactive" : "disabled";
+      }
+      for (const [id, runtime] of this.runtimes)
+        for (const declaration of runtime.installation.manifest.contributes?.configuration ?? []) {
+          const value = await this.getConfigurationValue(id, declaration.key);
+          if (value === null || ["string", "number", "boolean"].includes(typeof value))
+            this.contextValues.set("config." + id + "." + declaration.key, value as ContextValue);
+        }
+      try {
+        const saved = JSON.parse((await this.ports.getSetting("workbench:keybindings")) ?? "[]");
+        if (Array.isArray(saved) && saved.length <= 256)
+          this.userKeybindings = saved.filter((item: KeybindingContribution) => {
+            if (!item || typeof item.command !== "string" || typeof item.key !== "string")
+              return false;
+            normalizeKeybinding(item.key);
+            if (item.mac) normalizeKeybinding(item.mac);
+            if (item.when) parseContext(item.when);
+            return true;
+          });
+      } catch {
+        /* Ignore corrupt preferences; default bindings remain available. */
       }
       this.emit();
     })());
@@ -701,26 +903,58 @@ export class ExtensionHost {
         },
       },
       workspace: {
+        onDidChangeConfiguration(listener) {
+          active();
+          return track(
+            host.configurationChanges.event((change) => {
+              if (change.owner === id && !controller.signal.aborted) listener(change.event);
+            }),
+          );
+        },
         getConfiguration: () => ({
-          async get(key) {
+          async get<T = string>(key: string, fallback?: T): Promise<T> {
             active();
-            const declaration = manifest.contributes?.configuration?.find(
-              (item) => item.key === key,
-            );
-            if (!declaration) throw new Error(`Undeclared setting: ${key}`);
-            const value = await host.ports.getSetting(scopedKey("config", key));
+            if (
+              !manifest.contributes?.configuration?.some((item) => item.key === key) &&
+              fallback !== undefined
+            )
+              return fallback;
+            const value = await host.getConfigurationValue(id, key);
             active();
-            return value ?? declaration.default;
+            return value as T;
           },
           async update(key, value) {
             active();
-            if (!manifest.contributes?.configuration?.some((item) => item.key === key))
-              throw new Error(`Undeclared setting: ${key}`);
-            await host.ports.setSetting(scopedKey("config", key), value);
+            await host.updateConfigurationValue(id, key, value);
+            active();
           },
         }),
       },
       commands: {
+        async setContext(key, value) {
+          owned(key);
+          if (value !== null && !["string", "number", "boolean"].includes(typeof value))
+            throw new Error("Invalid context value");
+          if (typeof value === "number" && !Number.isFinite(value))
+            throw new Error("Invalid context number");
+          if (typeof value === "string" && value.length > 10000)
+            throw new Error("Context value too large");
+          if (!host.contextValues.has(key)) {
+            if (
+              [...host.contextValues.keys()].filter((value) => value.startsWith(id + ".")).length >=
+              256
+            )
+              throw new Error("Too many context keys");
+            track(
+              disposable(() => {
+                host.contextValues.delete(key);
+                host.emit();
+              }),
+            );
+          }
+          host.contextValues.set(key, value);
+          host.emit();
+        },
         registerCommand(command, run) {
           owned(command);
           if (
@@ -743,6 +977,35 @@ export class ExtensionHost {
         },
       },
       window: {
+        showInformationMessage(message) {
+          active();
+          host.interactions.notify(id, "information", message, controller.signal);
+        },
+        showWarningMessage(message) {
+          active();
+          host.interactions.notify(id, "warning", message, controller.signal);
+        },
+        showQuickPick(items, options, signal) {
+          active();
+          return host.interactions.pick(
+            id,
+            items,
+            options?.title ?? manifest.displayName,
+            signal ? AbortSignal.any([controller.signal, signal]) : controller.signal,
+          );
+        },
+        showInputBox(options, signal) {
+          active();
+          return host.interactions.input(
+            id,
+            options,
+            signal ? AbortSignal.any([controller.signal, signal]) : controller.signal,
+          );
+        },
+        withProgress(options, task) {
+          active();
+          return host.interactions.progress(id, options, task, controller.signal);
+        },
         registerViewProvider: (viewId, provider) => registerView(viewId, { provider }),
         registerTreeDataProvider: (viewId, tree) => registerView(viewId, { tree }),
         registerWebviewViewProvider: (viewId, webview) => registerView(viewId, { webview }),
@@ -837,6 +1100,11 @@ export class ExtensionHost {
         onDidChangeDocument: event(host.documentsChanged, "documents.read"),
       },
       reader: {
+        get viewState() {
+          active("documents.read");
+          return host._viewState ? { ...host._viewState } : null;
+        },
+        onDidChangeViewState: event(host.readerStates, "documents.read"),
         get activeDocumentId() {
           active("documents.read");
           return host._activeDocumentId;
@@ -958,14 +1226,21 @@ export class ExtensionHost {
     };
   }
   async executeCommand(command: string, ...args: unknown[]) {
+    await this.initialize();
+    const declaration = [...this.runtimes.values()]
+      .flatMap((runtime) => runtime.installation.manifest.contributes?.commands ?? [])
+      .find((item) => item.command === command);
+    if (declaration && !this.matches(declaration.enablement))
+      throw new Error("Command disabled by context: " + command);
     const registered = this.commands.get(command);
     if (registered) return registered.run(...args);
-    await this.initialize();
     const declared = [...this.runtimes].find(([, runtime]) =>
       runtime.installation.manifest.contributes?.commands?.some((item) => item.command === command),
     );
     if (declared && declared[1].enabled) await this.activate(declared[0]);
     const entry = this.commands.get(command);
+    if (declaration && !this.matches(declaration.enablement))
+      throw new Error("Command disabled by context: " + command);
     if (!entry) throw new Error(`Unavailable command: ${command}`);
     return entry.run(...args);
   }
@@ -982,10 +1257,13 @@ export class ExtensionHost {
     this._selection = selection;
     this.selectionOwner = owner;
     this.selections.fire(selection);
+    this.emit();
   }
   setActiveDocument(documentId: string | null) {
     if (documentId === this._activeDocumentId) return;
     this._activeDocumentId = documentId;
+    this.analysisDocument = null;
+    this.publishReaderState(null);
     this.publishSelection(null);
     for (const view of this.views.values())
       if (view.declaration.location === "modal") view.visible = false;
@@ -1004,12 +1282,15 @@ export class ExtensionHost {
         .catch((error) => this.ports.showError(String(error)));
   }
   publishDocument(documentId: string, semantics: import("../../sdk").DocumentSemantics) {
+    if (documentId === this._activeDocumentId) this.analysisDocument = documentId;
     this.documentsChanged.fire({ documentId, semantics });
+    this.emit();
   }
   setModel(model: ProviderValue) {
     if (JSON.stringify(model) === JSON.stringify(this._model)) return;
     this._model = model;
     this.models.fire(model);
+    this.emit();
   }
   showView(id: string, data?: unknown) {
     const view = this.views.get(id);

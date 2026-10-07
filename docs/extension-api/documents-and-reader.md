@@ -31,6 +31,22 @@ export async function activate(context: ExtensionContext) {
 
 此清单需 `documents.read`。不要只在 activate 读一次就认为所有页完整；监听 activeDocument 和 documents.onDidChangeDocument，按 documentId 和 revision 更新本地业务状态。
 
+## 当前阅读位置
+
+context.reader.viewState 返回当前文档的阅读状态副本；documents.read 控制读取及 onDidChangeViewState 订阅。字段为 documentId、page、pageCount、zoom、scrollTop、viewportHeight。页码从 1 开始，zoom 为缩放倍数，滚动和视口高度是阅读容器 CSS 像素。
+
+状态在 PDF 容器挂载后发布，未就绪及关闭/切换文档时可为 null；不能假定 activeDocument 事件同步包含位置。滚动、缩放、尺寸变化都会触发状态事件，插件按自己的需要去重或节流，避免每个滚动事件调用 LLM。
+
+```ts
+const state = context.reader.viewState;
+if (state) console.debug(state.documentId, state.page);
+context.reader.onDidChangeViewState((next) => {
+  if (next) console.debug(next.page, next.zoom);
+});
+```
+
+当前书签可保存 documentId 与 page，再通过 revealPage 导航。scrollTop 是当前布局下的值，不能直接作为跨设备稳定锚点；当前 API 不提供按任意滚动偏移恢复位置。公开示例见[bookmarks](../../examples/bookmarks/README.md)。
+
 ## 坐标与身份
 
 页码从 1 开始。`Box` 为显示页面归一化 `[left, top, right, bottom]`，不包含 CSS 像素、缩放或额外旋转；字符索引从 0 开始，仅在对应页和 factsKey 下有意义。

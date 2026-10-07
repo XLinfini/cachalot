@@ -41,6 +41,68 @@ export type Event<T> = (listener: (value: T) => void) => Disposable;
 export type Label = string | { zh: string; en: string };
 export type Capability = "documents.read" | "reader.interact" | "reader.decorate" | "ocr" | "lm";
 export type ViewLocation = "sidebar.left" | "sidebar.right" | "panel" | "settings" | "modal";
+export type { ContextValue } from "../domain/context-keys";
+export type {
+  ConfigurationValue,
+  ConfigurationDeclaration,
+} from "../domain/extension-configuration";
+import type { ContextValue } from "../domain/context-keys";
+import type {
+  ConfigurationValue,
+  ConfigurationDeclaration,
+} from "../domain/extension-configuration";
+
+export type MenuLocation = "reader.toolbar" | "reader.context" | "view.title" | "commandPalette";
+export interface CommandContribution {
+  command: string;
+  title: Label;
+  category?: Label;
+  enablement?: string;
+}
+export interface MenuContribution {
+  location: MenuLocation;
+  command: string;
+  when?: string;
+  group?: string;
+}
+export interface KeybindingContribution {
+  command: string;
+  key: string;
+  mac?: string;
+  when?: string;
+  allowInInput?: boolean;
+}
+export interface ConfigurationChangeEvent {
+  key: string;
+  value: ConfigurationValue;
+}
+export interface ReaderViewState {
+  documentId: string;
+  page: number;
+  pageCount: number;
+  zoom: number;
+  scrollTop: number;
+  viewportHeight: number;
+}
+export interface QuickPickItem {
+  id: string;
+  label: Label;
+  description?: Label;
+}
+export interface InputBoxOptions {
+  title: Label;
+  prompt?: Label;
+  value?: string;
+  password?: boolean;
+}
+export interface ProgressOptions {
+  title: Label;
+  cancellable?: boolean;
+}
+export interface Progress {
+  report(value: { message?: string; increment?: number }): void;
+}
+
 export interface ExtensionManifest {
   publisher: string;
   name: string;
@@ -57,15 +119,22 @@ export interface ExtensionManifest {
   activationEvents: ("onStartupFinished" | "onDocumentOpen" | `onCommand:${string}`)[];
   capabilities: Capability[];
   contributes?: {
-    commands?: { command: string; title: Label }[];
-    menus?: { location: "reader.toolbar"; command: string }[];
+    commands?: CommandContribution[];
+    menus?: MenuContribution[];
+    keybindings?: KeybindingContribution[];
     viewsContainers?: {
       id: string;
       title: Label;
       location: "sidebar.left" | "sidebar.right" | "panel";
     }[];
-    views?: { id: string; title: Label; location: ViewLocation; container?: string }[];
-    configuration?: { key: string; title: Label; description?: Label; default: string }[];
+    views?: {
+      id: string;
+      title: Label;
+      location: ViewLocation;
+      container?: string;
+      when?: string;
+    }[];
+    configuration?: ConfigurationDeclaration[];
   };
 }
 export interface ReaderDecoration {
@@ -162,9 +231,11 @@ export interface ExtensionContext {
     update(key: string, value: unknown): Promise<void>;
   };
   workspace: {
+    onDidChangeConfiguration: Event<ConfigurationChangeEvent>;
     getConfiguration(): {
-      get(key: string): Promise<string>;
-      update(key: string, value: string): Promise<void>;
+      /** The type parameter is a developer assertion; values are checked against the manifest. */
+      get<T = string>(key: string, fallback?: T): Promise<T>;
+      update(key: string, value: ConfigurationValue): Promise<void>;
     };
   };
   commands: {
@@ -173,6 +244,7 @@ export interface ExtensionContext {
       handler: (...args: unknown[]) => unknown | Promise<unknown>,
     ): Disposable;
     executeCommand(id: string, ...args: unknown[]): Promise<unknown>;
+    setContext(key: string, value: ContextValue): Promise<void>;
   };
   window: {
     registerViewProvider(id: string, provider: ViewProvider): Disposable;
@@ -181,6 +253,18 @@ export interface ExtensionContext {
     showView(id: string, data?: unknown): void;
     createStatusBarItem(id: string, alignment?: "left" | "right", priority?: number): StatusBarItem;
     showErrorMessage(message: string): void;
+    showInformationMessage(message: string): void;
+    showWarningMessage(message: string): void;
+    showQuickPick(
+      items: QuickPickItem[],
+      options?: { title?: Label },
+      signal?: AbortSignal,
+    ): Promise<QuickPickItem | undefined>;
+    showInputBox(options: InputBoxOptions, signal?: AbortSignal): Promise<string | undefined>;
+    withProgress<T>(
+      options: ProgressOptions,
+      task: (progress: Progress, signal: AbortSignal) => Promise<T>,
+    ): Promise<T>;
   };
   documents: {
     getPageFacts(documentId: string, page: number): Promise<PageFacts>;
@@ -192,6 +276,8 @@ export interface ExtensionContext {
   reader: {
     readonly activeDocumentId: string | null;
     readonly selection: ReaderSelection | null;
+    readonly viewState: ReaderViewState | null;
+    onDidChangeViewState: Event<ReaderViewState | null>;
     onDidChangeSelection: Event<ReaderSelection | null>;
     onDidChangeActiveDocument: Event<string | null>;
     registerInteractionTool(tool: InteractionTool): Disposable;

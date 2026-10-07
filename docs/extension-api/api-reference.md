@@ -1,6 +1,6 @@
 # 插件 API 参考
 
-[插件开发](../extensions.md) · 版本：0.1.0 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
+[插件开发](../extensions.md) · 版本：0.1.1 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
 
 本页列出公开接口，不列私有宿主方法。外部插件通过 `activate(context)` 的 context 使用能力；纯工具从 `cachalot` 导入，可信 React 工具另见[视图指南](views.md#内置-react-模块)。
 
@@ -48,16 +48,17 @@
 
 这些接口无额外能力名，作用于自己的插件命名空间或包。
 
-| 接口                                              | 参数与结果                                   |
-| ------------------------------------------------- | -------------------------------------------- |
-| `globalState.get<T>(key, fallback): Promise<T>`   | 读取 JSON；缺失或无法解析时使用 fallback     |
-| `globalState.update(key, value): Promise<void>`   | 保存 JSON 可序列化值；不要保存密钥或函数     |
-| `workspace.getConfiguration()`                    | 返回当前插件的配置读写对象                   |
-| `configuration.get(key): Promise<string>`         | key 必须在清单声明，返回保存值或 default     |
-| `configuration.update(key, value): Promise<void>` | 仅更新已声明 key 的字符串值                  |
-| `resources.read(path): Promise<Uint8Array>`       | 安全包内相对路径，返回副本；不存在或越界拒绝 |
+| 接口                                                        | 参数与结果                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `globalState.get<T>(key, fallback): Promise<T>`             | 读取 JSON；缺失或无法解析时使用 fallback                                  |
+| `globalState.update(key, value): Promise<void>`             | 保存 JSON 可序列化值；不要保存密钥或函数                                  |
+| `workspace.getConfiguration()`                              | 返回当前插件的配置读写对象                                                |
+| `configuration.get<T = string>(key, fallback?): Promise<T>` | 已声明 key 返回经 schema 校验的值或 default；未知 key 可显式提供 fallback |
+| `configuration.update(key, value): Promise<void>`           | 仅更新已声明 key 的 JSON 值，执行类型/enum/范围校验                       |
+| `workspace.onDidChangeConfiguration`                        | Event<{key, value}>，仅自己的已提交配置变化                               |
+| `resources.read(path): Promise<Uint8Array>`                 | 安全包内相对路径，返回副本；不存在或越界拒绝                              |
 
-当前没有 remove、配置变化事件、跨插件配置读写或任意文件系统。停用、重启和卸载保留状态/配置；安装代码在独立仓库。资源用法见[打包](packaging.md#资源读取)。
+当前没有 remove、跨插件配置读写或任意文件系统。旧的无 type 配置仍为字符串；类型与自动设置界面见[配置指南](configuration-and-ui.md)。停用、重启和卸载保留状态/配置；安装代码在独立仓库。资源用法见[打包](packaging.md#资源读取)。
 
 ## localization
 
@@ -77,24 +78,33 @@
 | `registerCommand(id, handler): Disposable`      | 命令须已声明，handler 接收 unknown[]，可异步返回结果 |
 | `executeCommand(id, ...args): Promise<unknown>` | 执行已注册命令，或按 onCommand 激活其声明者          |
 
+`setContext(key, value): Promise<void>` 发布本插件 ID 前缀的 string/number/boolean/null 条件键；停止时清理。executeCommand 同样检查命令 enablement，不只在界面禁用入口。条件与贡献点见[命令指南](commands-and-context.md)。
+
 命令名不是 shell 或 Tauri 名。引用其他插件命令并不等于可查询其 exports；公开服务仍要声明硬依赖。
 
 ## window
 
-| 方法                                                            | 参数与结果                                 |
-| --------------------------------------------------------------- | ------------------------------------------ |
-| `registerTreeDataProvider(id, provider): Disposable`            | 注册已声明视图的树数据                     |
-| `registerWebviewViewProvider(id, provider): Disposable`         | 注册已声明视图的 HTML 提供者               |
-| `registerViewProvider(id, provider): Disposable`                | 直接 mount HTMLElement，仅可信内置模块支持 |
-| `showView(id, data?): void`                                     | 展示本插件已注册视图并创建传入 data 的实例 |
-| `createStatusBarItem(id, alignment?, priority?): StatusBarItem` | 默认 left/0；ID 为本插件前缀               |
-| `showErrorMessage(message): void`                               | 交给宿主显示普通错误文本                   |
+| 方法                                                            | 参数与结果                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `registerTreeDataProvider(id, provider): Disposable`            | 注册已声明视图的树数据                                                 |
+| `registerWebviewViewProvider(id, provider): Disposable`         | 注册已声明视图的 HTML 提供者                                           |
+| `registerViewProvider(id, provider): Disposable`                | 直接 mount HTMLElement，仅可信内置模块支持                             |
+| `showView(id, data?): void`                                     | 展示本插件已注册视图并创建传入 data 的实例                             |
+| `createStatusBarItem(id, alignment?, priority?): StatusBarItem` | 默认 left/0；ID 为本插件前缀                                           |
+| `showInformationMessage(message): void`                         | 显示可关闭普通文本通知                                                 |
+| `showWarningMessage(message): void`                             | 显示可关闭警告通知                                                     |
+| `showQuickPick(items, options?, signal?)`                       | Promise<QuickPickItem 或 undefined>；options 可含 title                |
+| `showInputBox(options, signal?)`                                | Promise<string 或 undefined>；title、可选 prompt/value/password        |
+| `withProgress<T>(options, task): Promise<T>`                    | options 为 title 与可选 cancellable；task 接收 Progress 和 AbortSignal |
+| `showErrorMessage(message): void`                               | 交给宿主显示普通错误文本                                               |
 
 TreeDataProvider：`getChildren(parent?: TreeItem): TreeItem[] | Promise<TreeItem[]>`，可附 `onDidChangeTreeData: Event<void>`。TreeItem 字段为 id、label、可选 description、collapsible、command；command 包含命令 ID 和可选 arguments 数组。
 
 WebviewViewProvider：`resolveWebviewView(webview, view): void | Disposable`，同步返回可选清理。Webview 的 html 是字符串属性，postMessage 返回 void，onDidReceiveMessage 为 Event<unknown>。
 
 ViewHandle：data 为 unknown，signal 为该实例的 AbortSignal，close() 关闭视图。StatusBarItem：text、可选 tooltip 为 Label，command 为可选字符串，show/hide/dispose 返回 void。同侧较高 priority 靠前。
+
+Progress.report({message?, increment?}) 更新增量百分比。用户关闭选择/输入返回 undefined；调用取消或插件停止拒绝 AbortError。进度结束自动清理，task 应响应取消。示例与限额见[公共交互](configuration-and-ui.md)。
 
 位置、草稿、导航边界与完整示例见[视图指南](views.md)。
 
@@ -114,18 +124,22 @@ ViewHandle：data 为 unknown，signal 为该实例的 AbortSignal，close() 关
 
 ## reader
 
-| 成员                                            | 能力            | 结果与约束                       |
-| ----------------------------------------------- | --------------- | -------------------------------- |
-| `activeDocumentId`                              | documents.read  | 同步只读 string 或 null          |
-| `onDidChangeActiveDocument`                     | documents.read  | `Event<string \| null>`          |
-| `selection`                                     | reader.interact | 同步只读 ReaderSelection 或 null |
-| `onDidChangeSelection`                          | reader.interact | `Event<ReaderSelection \| null>` |
-| `registerInteractionTool(tool)`                 | reader.interact | Disposable，矩形工具             |
-| `registerSelectionAction(action)`               | reader.interact | Disposable，通用选区动作         |
-| `registerHoverProvider(provider)`               | reader.interact | Disposable，页面点的悬停响应     |
-| `setDecorations(documentId, page, decorations)` | reader.decorate | Disposable，指定页覆盖框注册     |
-| `setBackground(color)`                          | reader.decorate | Disposable，受支持颜色           |
-| `revealPage(documentId, page)`                  | reader.interact | void，导航请求                   |
+| 成员                                            | 能力            | 结果与约束                        |
+| ----------------------------------------------- | --------------- | --------------------------------- |
+| `activeDocumentId`                              | documents.read  | 同步只读 string 或 null           |
+| `onDidChangeActiveDocument`                     | documents.read  | `Event<string \| null>`           |
+| `viewState`                                     | documents.read  | ReaderViewState 或 null，返回副本 |
+| `onDidChangeViewState`                          | documents.read  | Event<ReaderViewState 或 null>    |
+| `selection`                                     | reader.interact | 同步只读 ReaderSelection 或 null  |
+| `onDidChangeSelection`                          | reader.interact | `Event<ReaderSelection \| null>`  |
+| `registerInteractionTool(tool)`                 | reader.interact | Disposable，矩形工具              |
+| `registerSelectionAction(action)`               | reader.interact | Disposable，通用选区动作          |
+| `registerHoverProvider(provider)`               | reader.interact | Disposable，页面点的悬停响应      |
+| `setDecorations(documentId, page, decorations)` | reader.decorate | Disposable，指定页覆盖框注册      |
+| `setBackground(color)`                          | reader.decorate | Disposable，受支持颜色            |
+| `revealPage(documentId, page)`                  | reader.interact | void，导航请求                    |
+
+ReaderViewState 包含 documentId、page、pageCount、zoom、scrollTop、viewportHeight；后两个为阅读滚动容器的 CSS 像素。未挂载、切换/关闭文档时可为 null，事件可随滚动频繁触发；不保证在 activeDocument 事件前已就绪。
 
 InteractionTool：id、title、可选 tooltip/icon、`mode: "rectangle"`；`preview(page, box)` 返回 ReaderDecoration[] 或 Promise；`select(page, gesture)` 返回 ReaderSelection/null 或 Promise。
 
