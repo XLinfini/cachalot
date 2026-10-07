@@ -60,13 +60,25 @@ export async function saveConfiguredProvider(input: ProviderInput): Promise<Prov
     input.addedModels === undefined
       ? await configuredModels({ ...input, hasKey: false })
       : normalizeModels(input.addedModels);
-  // Saving a manually entered default ID explicitly adds it to the user's list.
+  // Retain the legacy row's model field for native transports and the OCR editor.
+  // The chat default is stored independently as a global provider/model pair.
   const modelId = input.modelId.trim();
   if (modelId && !models.some((model) => model.id === modelId))
     models.push({
       id: modelId,
       ...(input.purpose === "ocr" ? { formulaOcr: "formula-chat" as const } : {}),
     });
+  const previous = (await platform.listProviders()).find((provider) => provider.id === input.id);
+  if (previous && previous.modelId !== modelId) {
+    // A provider-wide legacy image flag must never move to a different model.
+    const legacy = await platform.getSetting(`vision:${input.id}`);
+    const explicit = await platform.getSetting(visionKey(input.id, previous.modelId));
+    if (legacy !== null && legacy !== "") {
+      if (explicit === null || explicit === "")
+        await platform.setSetting(visionKey(input.id, previous.modelId), legacy);
+      await platform.setSetting(`vision:${input.id}`, "");
+    }
+  }
   const saved = await platform.saveProvider({ ...input, modelId });
   await platform.setSetting(`addedModels:${saved.id}`, JSON.stringify(models));
   const purpose = input.purpose || providerPurpose({ ...input, modelId, addedModels: models });

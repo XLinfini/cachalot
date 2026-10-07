@@ -21,6 +21,8 @@ export interface Provider {
   id: string;
   name: string;
   baseUrl: string;
+  /** Legacy stored model/OCR editor target; chat defaults use the global defaultModel setting.
+   * Resolved request providers carry the currently selected model here. */
   modelId: string;
   enabled: boolean;
   hasKey: boolean;

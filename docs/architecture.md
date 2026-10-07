@@ -192,9 +192,11 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 ## 模型选择与问答图片
 
-- `ModelPicker.tsx` 将提供商和模型组合成单一选择，位于发送键左侧、向上展开。选择保存在 `activeModel` 设置，包含 `providerId/modelId`；不会覆盖模型服务配置里的默认模型。`CompletionInput.modelId` 经浏览器和 Tauri 两个网络适配器传入请求。
-- 模型菜单直接展示应用配置 `Provider.addedModels`，不维护列表、不读取完整目录缓存、不发送 `/models` 请求。`services.providers.list/save` 使用统一的 `addedModels:<providerId>` 设置（桌面 SQLite / 浏览器 localStorage），作为已添加列表的唯一持久来源。服务商可选列表只在设置抽屉中临时显示，获取列表本身不会添加模型。支持从列表添加多个模型、移除、手动保存默认 ID；旧版仅将原默认 ID 视为已添加。移除当前聊天模型会清除该选择并使用剩余默认模型，历史消息保留。
-- 图像能力按 `vision:model:<providerId>:<编码后的modelId>` 保存。旧的 `vision:<providerId>` 只兼容配置中的默认模型。每次请求根据当前模型重新计算能力，禁止把同一提供商的所有模型视作图像模型。
+- `defaultModel` 保存唯一的全局默认值 `{ providerId, modelId }`，`DefaultModelSetting.tsx` 在模型服务页标题下展示“提供商/模型”下拉框，只列出启用服务商的已添加聊天模型。修改后自动保存并清除当前选择，使本体问答与插件宿主立即使用新默认值；修改服务商草稿或普通模型选择不会改变它。
+- `useChatModel.ts` 优先使用有效的 `activeModel`，否则使用全局默认值。首次迁移时读取旧 `activeProviderId` 和对应 `Provider.modelId`；已有 `defaultModel` 时不再读取服务商的旧默认字段。默认模型删除、停用或成为专用 OCR 时选用剩余第一个已启用聊天模型，无可用模型则保存 null。`Provider.modelId` 保留旧存储/原生传输与 OCR 编辑目标的兼容用途，不再代表服务商的聊天默认值。
+- `ModelPicker.tsx` 将提供商和模型组合成单一选择，位于发送键左侧、向上展开。选择保存在 `activeModel` 设置，包含 `providerId/modelId`；不会覆盖全局默认模型。`CompletionInput.modelId` 经浏览器和 Tauri 两个网络适配器传入请求。
+- 模型菜单直接展示应用配置 `Provider.addedModels`，不维护列表、不读取完整目录缓存、不发送 `/models` 请求。`services.providers.list/save` 使用统一的 `addedModels:<providerId>` 设置（桌面 SQLite / 浏览器 localStorage），作为已添加列表的唯一持久来源。服务商可选列表只在设置抽屉中临时显示，获取列表本身不会添加模型。支持从列表添加多个模型、移除、手动添加 ID 后保存；旧版仅将原默认 ID 视为已添加。移除当前聊天模型会清除该选择并使用全局默认模型，历史消息保留。
+- 图像能力按 `vision:model:<providerId>:<编码后的modelId>` 保存。旧的 `vision:<providerId>` 只兼容原配置中的模型；更改旧存储行的模型字段时先将能力迁移到原模型的键，避免能力转移到其他模型。每次请求根据当前模型重新计算能力，禁止把同一提供商的所有模型视作图像模型。
 - `ChatComposer.tsx` 复用 assistant-ui 附件机制。切换模型时保持附件适配器和草稿；含图片的草稿遇到文字模型时，禁用发送按钮并拦截回车提交。用户可移除图片或切回图像模型。
 - `ChatMessage.images` 保存原图、文件名和 MIME 类型。桌面 SQLite 的 `chat_messages.images` 存为 JSON；启动时幂等迁移旧数据库，旧消息默认为空数组。浏览器图片存于 `cachalot-chat-images/images` IndexedDB，localStorage 仅保存图片元数据，删除消息、会话和论文时同步清理。
 - 请求组装位于 `paper-assistant.ts`：图像模型接收 `image_url`；文字模型的历史上下文改用文字标记说明此前有图片，不发送图片载荷。原始会话记录不修改，切回图像模型可重新使用原图；当前问题携带不兼容图片时由服务层再次拒绝。

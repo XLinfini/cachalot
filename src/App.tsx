@@ -180,7 +180,8 @@ export default function App() {
             providers={model.providers}
             activeProviderId={model.activeProviderId}
             onProvidersChange={model.setProviders}
-            onActiveProviderChange={model.setProvider}
+            defaultModel={model.defaultModel}
+            onDefaultModelChange={model.chooseDefaultModel}
             onError={setNotice}
           />
           <AppNotice message={notice} onDismiss={() => setNotice("")} contained />

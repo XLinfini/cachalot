@@ -6,8 +6,15 @@ import {
   listConfiguredProviders,
   saveConfiguredProvider,
   listModels,
+  supportsImages,
 } from "../../src/application/model-catalog";
-import { addedModels, hasAddedModel } from "../../src/domain/provider-models";
+import {
+  addedModels,
+  hasAddedModel,
+  parseModelSelection,
+  isChatSelection,
+  resolveDefaultModel,
+} from "../../src/domain/provider-models";
 
 test("settings alone define added models; fetching a catalogue never adds or persists models", async () => {
   const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -71,12 +78,23 @@ test("settings alone define added models; fetching a catalogue never adds or per
       "Model edits must preserve credentials",
     );
 
+    await platform.setSetting(`vision:${input.id}`, "true");
     const manual = await saveConfiguredProvider({ ...saved, modelId: " manual " });
     assert.deepEqual(
       manual.addedModels?.map((model) => model.id),
       ["default", "vision", "manual"],
     );
     assert.equal(manual.modelId, "manual");
+    assert.equal(
+      await supportsImages(manual, "default"),
+      true,
+      "Preserve legacy capability on its original model",
+    );
+    assert.equal(
+      await supportsImages(manual, "manual"),
+      false,
+      "Never transfer the old image flag to another model",
+    );
     const removed = await saveConfiguredProvider({
       ...manual,
       modelId: "default",
@@ -93,4 +111,48 @@ test("settings alone define added models; fetching a catalogue never adds or per
     if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
   }
+});
+
+test("global defaults retain provider identity, migrate old defaults and exclude unavailable chat models", () => {
+  const first = {
+    id: "first",
+    name: "First",
+    baseUrl: "https://fixture.invalid",
+    enabled: true,
+    hasKey: false,
+    modelId: "old-default",
+    addedModels: [{ id: "shared" }, { id: "old-default" }],
+  };
+  const second = { ...first, id: "second", modelId: "shared", addedModels: [{ id: "shared" }] };
+  const disabled = { ...second, id: "disabled", enabled: false };
+  const ocr = { ...second, id: "ocr", purpose: "ocr" as const };
+  const empty = { ...first, id: "empty", addedModels: [] };
+  const providers = [first, second, disabled, ocr, empty];
+  assert.deepEqual(resolveDefaultModel(providers, null, "first"), {
+    providerId: "first",
+    modelId: "old-default",
+  });
+  assert.deepEqual(resolveDefaultModel(providers, null, null), {
+    providerId: "first",
+    modelId: "old-default",
+  });
+  const selected = { providerId: "second", modelId: "shared" };
+  assert.deepEqual(resolveDefaultModel(providers, selected), selected);
+  assert.equal(isChatSelection(providers, selected), true);
+  for (const providerId of ["disabled", "ocr", "empty", "missing"])
+    assert.equal(isChatSelection(providers, { providerId, modelId: "shared" }), false);
+  assert.deepEqual(resolveDefaultModel([disabled, ocr, empty, first], selected), {
+    providerId: "first",
+    modelId: "shared",
+  });
+  assert.equal(resolveDefaultModel([disabled, ocr, empty], selected), null);
+  assert.equal(parseModelSelection("broken"), null);
+  assert.equal(parseModelSelection('{"providerId":"first","modelId":42}'), null);
+  assert.deepEqual(parseModelSelection(JSON.stringify(selected)), selected);
+  const removed = { ...second, addedModels: [] };
+  assert.equal(
+    isChatSelection([first, removed], selected),
+    false,
+    "Same-named models on another provider are not the selected pair",
+  );
 });
