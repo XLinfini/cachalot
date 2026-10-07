@@ -71,6 +71,7 @@ test("Provider errors @paper", async () => {
                 },
               ]),
             );
+            localStorage.removeItem("cachalot:setting:defaultModel");
             localStorage.setItem("cachalot:setting:activeProviderId", "error-fixture");
             localStorage.setItem("cachalot:setting:uiLanguage", language);
           },

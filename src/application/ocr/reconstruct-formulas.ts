@@ -1,11 +1,12 @@
 import type { FormulaAsset, FormulaFragment, FormulaPreparationIssue } from "../../domain/analysis";
-import type { FormulaOcrProtocol, Provider } from "../../domain/records";
+import type { FormulaOcrProtocol, ModelSelection, Provider } from "../../domain/records";
 import type { OcrAdapter } from "../../domain/ocr-adapter";
 import { formulaRepository, type FormulaRecord } from "../../infrastructure/formula-repository";
 import { getOcrSelection, selectedOcrModel } from "./settings";
 import { recognizeFormulas } from "../../infrastructure/ocr/formula-ocr";
 import { ocrAdapters } from "../../infrastructure/ocr/registry";
 import { message } from "../../domain/messages";
+import { withEnabledModel } from "../model-catalog";
 import { cacheGeneration } from "../../infrastructure/cache-writes";
 import { TRANSCRIPTION_VERSION, formulaEvidence } from "../../domain/formula-evidence";
 import { preservesNativeCharacters, validLatex } from "./validate-latex";
@@ -15,6 +16,8 @@ import { preservesNativeCharacters, validLatex } from "./validate-latex";
 export interface FormulaReconstructionRequest {
   formulas: FormulaFragment[];
   signal?: AbortSignal;
+  /** Explicit enabled OCR model chosen by a plugin; otherwise use application OCR settings. */
+  model?: ModelSelection;
   /** Used only by existing installations without an explicit OCR selection. */
   fallback: { provider: Provider; supportsImages: boolean };
 }
@@ -52,7 +55,7 @@ export function createFormulaReconstructor(ports: FormulaReconstructionPorts) {
     let recognitionDisabled = false;
     let configurationError: string | null = null;
     try {
-      const selected = await ports.getSelection();
+      const selected = request.model || (await ports.getSelection());
       if (selected) {
         legacy = false;
         if (selected === "off") {
@@ -176,7 +179,12 @@ export const reconstructFormulas = createFormulaReconstructor({
   getSelection: getOcrSelection,
   resolveModel: selectedOcrModel,
   adapter: (protocol) => ocrAdapters.get(protocol),
-  recognize: recognizeFormulas,
+  recognize: (protocol, provider, inputs, signal) =>
+    withEnabledModel(
+      { providerId: provider.id, modelId: provider.modelId },
+      signal,
+      (current, guarded) => recognizeFormulas(protocol, current, inputs, guarded),
+    ),
   save: (record, generation) => formulaRepository.put(record, generation),
   generation: () => cacheGeneration("formulas"),
 });

@@ -294,6 +294,9 @@ export const zh = {
     defaultModel: "默认模型",
     defaultModelHint:
       "翻译与问答共用的默认模型。选择后立即生效并自动保存；阅读时可单独切换当前模型。",
+    defaultModelUnset: "未设置",
+    modelEnabled: "启用模型 {{model}}",
+    modelEnabledHint: "模型开关立即保存；禁用默认模型后默认值变为未设置。",
     noDefaultModel: "请先添加并启用语言模型",
     modelVision: "{{model}}：支持图像理解",
     modelPlaceholder: "例如 gpt-4.1",
@@ -456,6 +459,7 @@ export const zh = {
     categoryNameReserved: "这个名称已用于内置分类，请换一个名称。",
     categoryNameDuplicate: "已存在同名分类，请换一个名称。",
     categoryNotFound: "分类不存在，请重新选择。",
+    modelNotEnabled: "该模型未添加或未启用，请在模型设置中启用后重试。",
     providerNotFound: "找不到服务商",
     browserKeyReadFailed: "无法读取浏览器中保存的 API 密钥。请检查浏览器存储权限后重试。",
     browserKeySaveFailed: "无法保存 API 密钥。请检查浏览器存储权限后重试。",

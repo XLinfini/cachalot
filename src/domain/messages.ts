@@ -39,6 +39,7 @@ export const MESSAGE_CODES = [
   "categoryNameDuplicate",
   "categoryNotFound",
   "providerNotFound",
+  "modelNotEnabled",
   "browserKeyReadFailed",
   "browserKeySaveFailed",
   "invalidApiUrl",

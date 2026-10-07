@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, CircleHelp, Database, Layers3, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, CircleHelp, Layers3, Plus, Search, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { services } from "../application/services";
 import type { FormulaOcrProtocol, ModelInfo, Provider, ProviderInput } from "../domain/records";
-import { addedModels, ocrModels } from "../domain/provider-models";
+import { addedModels } from "../domain/provider-models";
 import { apiEndpoint } from "../domain/api-endpoint";
 import { message } from "../domain/messages";
 import { visionKey } from "../application/model-catalog";
@@ -40,7 +40,7 @@ export default function ProviderEditor({
   const visibleProviders = providers.filter((provider) =>
     purpose === "llm"
       ? provider.purpose !== "ocr"
-      : provider.purpose === "ocr" || ocrModels(provider).length > 0,
+      : provider.purpose === "ocr" || addedModels(provider).some((model) => !!model.formulaOcr),
   );
   const Element = embedded ? "section" : "main";
   const [modelsError, setModelsError] = useState("");
@@ -159,6 +159,45 @@ export default function ProviderEditor({
       )}
     </>
   );
+
+  const changeModelEnabled = async (model: ModelInfo, enabled: boolean) => {
+    if (!draft) return;
+    const providerId = draft.id;
+    const saved = providers.find((provider) => provider.id === providerId);
+    if (!saved || !addedModels(saved).some((item) => item.id === model.id)) {
+      setDraft({
+        ...draft,
+        addedModels: draftModels.map((item) =>
+          item.id === model.id ? { ...item, enabled } : item,
+        ),
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await services.providers.setModelEnabled(providerId, model.id, enabled);
+      onProvidersChange(
+        providers.map((provider) => (provider.id === providerId ? updated : provider)),
+      );
+      setDraft((current) =>
+        current?.id === providerId
+          ? {
+              ...current,
+              enabled: true,
+              addedModels: addedModels(current).map((item) =>
+                item.id === model.id
+                  ? { ...item, enabled }
+                  : { ...item, enabled: item.enabled ?? current.enabled },
+              ),
+            }
+          : current,
+      );
+    } catch (cause) {
+      onError(String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggleAddedModel = (model: ModelInfo) => {
     setDraft((current) => {
@@ -359,18 +398,6 @@ export default function ProviderEditor({
                         : t("settings.compatibleApi")}
                     </p>
                   </div>
-                  <label className="relative inline-flex cursor-pointer">
-                    <input
-                      className="peer sr-only"
-                      aria-label={t("settings.enableProvider")}
-                      type="checkbox"
-                      checked={draft.enabled}
-                      onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-                    />
-                    <span className="relative block h-5 w-[35px] rounded-[14px] bg-[#c8d4e1] peer-checked:bg-[#3679d2] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus peer-checked:[&>span]:translate-x-[15px]">
-                      <span className="absolute top-[3px] left-[3px] size-[14px] rounded-full bg-white transition-transform duration-150" />
-                    </span>
-                  </label>
                 </div>
                 <div className="px-[23px] py-[22px]">
                   <h3 className="mb-[5px] text-[12px]">{t("settings.connection")}</h3>
@@ -494,6 +521,7 @@ export default function ProviderEditor({
                   <div>
                     <h3>{t("settings.addedModels")}</h3>
                     <p>{t("settings.selectedModels", { count: shownModels.length })}</p>
+                    <p className="mt-1!">{t("settings.modelEnabledHint")}</p>
                   </div>
                   <button
                     ref={modelTriggerRef}
@@ -513,7 +541,20 @@ export default function ProviderEditor({
                       data-model-id={model.id}
                       className="flex items-center gap-2 rounded-[7px] border border-[#e7eef7] bg-[#f7fafd] p-[10px] text-[11px] text-[#7890aa]"
                     >
-                      <Database size={17} className="flex-none" />
+                      <label className="relative inline-flex flex-none cursor-pointer">
+                        <input
+                          className="peer sr-only"
+                          aria-label={t("settings.modelEnabled", { model: model.id })}
+                          type="checkbox"
+                          role="switch"
+                          checked={model.enabled ?? draft.enabled}
+                          disabled={busy}
+                          onChange={(event) => void changeModelEnabled(model, event.target.checked)}
+                        />
+                        <span className="relative block h-5 w-[35px] rounded-[14px] bg-[#c8d4e1] peer-checked:bg-[#3679d2] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus peer-disabled:opacity-50 peer-checked:[&>span]:translate-x-[15px]">
+                          <span className="absolute top-[3px] left-[3px] size-[14px] rounded-full bg-white transition-transform duration-150" />
+                        </span>
+                      </label>
                       <span className="min-w-0 flex-1 break-all">{model.id}</span>
                       {purpose === "ocr" && (
                         <select

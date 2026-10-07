@@ -7,6 +7,11 @@ import {
   saveConfiguredProvider,
   listModels,
   supportsImages,
+  listEnabledModels,
+  setModelEnabled,
+  resolveEnabledModel,
+  onDidChangeModels,
+  removeConfiguredProvider,
 } from "../../src/application/model-catalog";
 import {
   addedModels,
@@ -49,7 +54,7 @@ test("settings alone define added models; fetching a catalogue never adds or per
       JSON.stringify({ providerId: input.id, modelId: "unadded" }),
     );
     const [legacy] = await listConfiguredProviders();
-    assert.deepEqual(legacy.addedModels, [{ id: "default" }]);
+    assert.deepEqual(legacy.addedModels, [{ id: "default", enabled: true }]);
     assert.equal(hasAddedModel(legacy, "unadded"), false);
     assert.equal(fetches, 0, "Reading configured models must be offline");
 
@@ -60,7 +65,9 @@ test("settings alone define added models; fetching a catalogue never adds or per
       ["unadded", "vision"],
     );
     assert.deepEqual(storage, beforeFetch, "Provider catalogue must remain temporary");
-    assert.deepEqual((await listConfiguredProviders())[0].addedModels, [{ id: "default" }]);
+    assert.deepEqual((await listConfiguredProviders())[0].addedModels, [
+      { id: "default", enabled: true },
+    ]);
 
     const saved = await saveConfiguredProvider({
       ...input,
@@ -141,10 +148,7 @@ test("global defaults retain provider identity, migrate old defaults and exclude
   assert.equal(isChatSelection(providers, selected), true);
   for (const providerId of ["disabled", "ocr", "empty", "missing"])
     assert.equal(isChatSelection(providers, { providerId, modelId: "shared" }), false);
-  assert.deepEqual(resolveDefaultModel([disabled, ocr, empty, first], selected), {
-    providerId: "first",
-    modelId: "shared",
-  });
+  assert.equal(resolveDefaultModel([disabled, ocr, empty, first], selected), null);
   assert.equal(resolveDefaultModel([disabled, ocr, empty], selected), null);
   assert.equal(parseModelSelection("broken"), null);
   assert.equal(parseModelSelection('{"providerId":"first","modelId":42}'), null);
@@ -155,4 +159,59 @@ test("global defaults retain provider identity, migrate old defaults and exclude
     false,
     "Same-named models on another provider are not the selected pair",
   );
+});
+
+test("legacy provider switches migrate per model; toggles and removal publish a live enabled catalogue", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+  });
+  const fixture = {
+    id: "legacy-disabled",
+    name: "Legacy",
+    baseUrl: "https://fixture.invalid",
+    modelId: "shared",
+    enabled: false,
+    apiKey: "",
+  };
+  const updates: unknown[] = [];
+  const subscription = onDidChangeModels((models) => updates.push(models));
+  try {
+    await platform.saveProvider(fixture);
+    await platform.setSetting(
+      `addedModels:${fixture.id}`,
+      JSON.stringify([{ id: "shared" }, { id: "other" }]),
+    );
+    const [provider] = await listConfiguredProviders();
+    assert.equal(provider.enabled, true, "Provider rows no longer own the user switch");
+    assert.deepEqual(
+      provider.addedModels?.map((model) => model.enabled),
+      [false, false],
+    );
+    assert.deepEqual(await listEnabledModels(), []);
+    await assert.rejects(resolveEnabledModel({ providerId: fixture.id, modelId: "shared" }));
+    await setModelEnabled(fixture.id, "shared", true);
+    assert.deepEqual(
+      (await listEnabledModels()).map((model) => [model.providerId, model.modelId]),
+      [[fixture.id, "shared"]],
+    );
+    assert.equal(
+      (await resolveEnabledModel({ providerId: fixture.id, modelId: "shared" })).modelId,
+      "shared",
+    );
+    await assert.rejects(resolveEnabledModel({ providerId: fixture.id, modelId: "other" }));
+    await setModelEnabled(fixture.id, "shared", false);
+    assert.deepEqual(await listEnabledModels(), []);
+    await removeConfiguredProvider(fixture.id);
+    assert.deepEqual(updates, [[{ providerId: fixture.id, modelId: "shared" }], [], []]);
+  } finally {
+    subscription.dispose();
+    if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });

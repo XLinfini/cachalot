@@ -10,6 +10,7 @@ import {
   extensionArchive,
   eventPackage,
   workbenchPackage,
+  modelsPackage,
 } from "../fixtures/extension-packages";
 import { cacheFixture, cacheFixturePdf } from "../fixtures/cache";
 import { en, zh } from "../fixtures/locales";
@@ -58,6 +59,7 @@ for (const language of ["zh", "en"] as const) {
               },
             ]),
           );
+          localStorage.removeItem("cachalot:setting:defaultModel");
           localStorage.setItem("cachalot:setting:activeProviderId", "fixture-model");
         },
         { language },
@@ -471,7 +473,7 @@ for (const language of ["zh", "en"] as const) {
           .first()
           .click();
         await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText("Config=false");
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         const run = page.getByRole("button", {
           name: language === "en" ? "Plugin interaction" : "插件交互",
           exact: true,
@@ -485,7 +487,7 @@ for (const language of ["zh", "en"] as const) {
           .getByRole("button", { name: labels.workbench.save, exact: true })
           .first()
           .click();
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         await expect(run).toBeEnabled();
         await expect(page.locator('[data-ui="extension-statusbar"]')).toContainText(
           "page=1;zoom=1",
@@ -584,7 +586,7 @@ for (const language of ["zh", "en"] as const) {
         await expect(page.locator('[data-extension-id="example.bookmarks"]')).toContainText(
           labels.extensions.status.active,
         );
-        await page.getByRole("button", { name: labels.common.backLibrary, exact: true }).click();
+        await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
         const add = language === "en" ? "Add Reading Bookmark" : "添加阅读书签";
         const name = language === "en" ? "Bookmark name" : "书签名称";
         await page.locator('[data-ui="pdf-page"][data-page="1"]').click({ button: "right" });
@@ -632,4 +634,131 @@ for (const language of ["zh", "en"] as const) {
       }
     },
   );
+}
+
+for (const language of ["zh", "en"] as const) {
+  test(`installed Worker discovers newly enabled models and cannot call disabled models (${language})`, async () => {
+    test.setTimeout(60000);
+    const labels = language === "en" ? en : zh;
+    const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.addInitScript((language) => {
+        if (window.top !== window) return;
+        if (localStorage.getItem("models-seeded")) return;
+        localStorage.setItem("models-seeded", "true");
+        localStorage.setItem("cachalot:setting:uiLanguage", language);
+        localStorage.setItem(
+          "cachalot:providers",
+          JSON.stringify([
+            {
+              id: "a",
+              name: "Provider A",
+              baseUrl: location.origin + "/a/v1",
+              modelId: "shared",
+              enabled: true,
+              hasKey: false,
+            },
+            {
+              id: "b",
+              name: "Provider B",
+              baseUrl: location.origin + "/b/v1",
+              modelId: "shared",
+              enabled: true,
+              hasKey: false,
+            },
+          ]),
+        );
+        localStorage.setItem(
+          "cachalot:setting:addedModels:a",
+          JSON.stringify([{ id: "shared", enabled: true }]),
+        );
+        localStorage.setItem(
+          "cachalot:setting:addedModels:b",
+          JSON.stringify([{ id: "shared", enabled: false }]),
+        );
+        localStorage.setItem("cachalot:setting:defaultModel", "null");
+      }, language);
+      let requests = 0;
+      await page.route("**/chat/completions", (route) => {
+        requests++;
+        expect(new URL(route.request().url()).pathname).toBe("/b/v1/chat/completions");
+        expect(route.request().postDataJSON().model).toBe("shared");
+        return route.fulfill({
+          contentType: "text/event-stream",
+          body: 'data: {"choices":[{"delta":{"content":"B is enabled"}}]}\n\ndata: [DONE]\n\n',
+        });
+      });
+      await page.goto("/");
+      await page.locator('input[type="file"][accept="application/pdf,.pdf"]').setInputFiles({
+        name: "live-models.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from(cacheFixture.pdfBytes),
+      });
+      const pdf = page.locator('[data-ui="pdf-page"]');
+      await expect(pdf).toBeVisible();
+      await pdf.evaluate((element) => {
+        (element as HTMLElement).dataset.modelsIdentity = "preserved";
+      });
+      const open = () =>
+        page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      const close = () =>
+        page.getByRole("button", { name: labels.settings.close, exact: true }).click();
+      await open();
+      await page.getByRole("button", { name: labels.extensions.title, exact: true }).click();
+      await page.locator('[data-ui="extension-package-input"]').setInputFiles({
+        name: "models.cachx",
+        mimeType: "application/zip",
+        buffer: modelsPackage().buffer,
+      });
+      await page.locator('[data-ui="extension-confirm-install"]').click();
+      await expect(page.locator('[data-extension-id="fixture.models"]')).toContainText(
+        labels.extensions.status.active,
+      );
+      await close();
+      const frame = page
+        .locator('[data-ui="extension-dock"][data-location="sidebar.right"]')
+        .frameLocator("iframe");
+      await expect(frame.locator("#models")).toHaveText("a/shared");
+      await frame.getByRole("button", { name: "Use B", exact: true }).click();
+      await expect(frame.locator("#result")).toHaveText("Blocked");
+      expect(requests).toBe(0);
+      await open();
+      await page.getByRole("button", { name: /Provider B/ }).click();
+      const toggle = page.getByRole("switch", {
+        name: labels.settings.modelEnabled.replace("{{model}}", "shared"),
+        exact: true,
+      });
+      await toggle.press("Space");
+      await expect(toggle).toBeChecked();
+      const selector = page.getByRole("combobox", {
+        name: labels.settings.defaultModel,
+        exact: true,
+      });
+      await expect(selector).toHaveValue("");
+      await close();
+      // The same installed Worker receives a change event; there is no extension restart.
+      await expect(frame.locator("#models")).toHaveText("a/shared,b/shared");
+      await frame.getByRole("button", { name: "Use B", exact: true }).click();
+      await expect(frame.locator("#result")).toHaveText("B is enabled");
+      expect(requests).toBe(1);
+      await open();
+      await page.getByRole("button", { name: /Provider B/ }).click();
+      await toggle.press("Space");
+      await expect(toggle).not.toBeChecked();
+      await close();
+      await expect(frame.locator("#models")).toHaveText("a/shared");
+      await frame.getByRole("button", { name: "Use B", exact: true }).click();
+      await expect(frame.locator("#result")).toHaveText("Blocked");
+      expect(requests, "Guessing a disabled model ID never reaches the network").toBe(1);
+      await expect(pdf).toHaveAttribute("data-models-identity", "preserved");
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
 }

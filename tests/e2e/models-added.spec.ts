@@ -66,6 +66,7 @@ test("Added models and composer @paper", async () => {
                 },
               ]),
             );
+            localStorage.removeItem("cachalot:setting:defaultModel");
             localStorage.setItem("cachalot:setting:activeProviderId", "fixture");
             localStorage.setItem("cachalot:setting:uiLanguage", language);
             // Ignore legacy full-catalogue caches and stale chat choices.
@@ -251,6 +252,7 @@ for (const language of ["zh", "en"] as const) {
           JSON.stringify([{ id: "shared" }, { id: "image" }]),
         );
         localStorage.setItem("cachalot:setting:providerPurpose:ocr", "ocr");
+        localStorage.removeItem("cachalot:setting:defaultModel");
         localStorage.setItem("cachalot:setting:activeProviderId", "a");
         localStorage.setItem("cachalot:setting:vision:a", "true");
       }, language);
@@ -279,6 +281,7 @@ for (const language of ["zh", "en"] as const) {
       await open();
       await expect(selector).toHaveValue(aImage);
       expect(await selector.locator("option").allTextContents()).toEqual([
+        labels.settings.defaultModelUnset,
         "Provider A/shared",
         "Provider A/image",
         "Provider B/shared",
@@ -360,7 +363,7 @@ for (const language of ["zh", "en"] as const) {
     }
   });
 
-  test(`Global default model: removed and disabled models, then empty catalogue (${language})`, async () => {
+  test(`Global default model: model switches save immediately and invalid defaults stay unset (${language})`, async () => {
     test.setTimeout(60_000);
     const labels = language === "en" ? en : zh;
     const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
@@ -392,6 +395,13 @@ for (const language of ["zh", "en"] as const) {
           ]),
         );
         localStorage.setItem(
+          "cachalot:setting:addedModels:b",
+          JSON.stringify([
+            { id: "shared", enabled: true },
+            { id: "math", enabled: false, formulaOcr: "formula-chat" },
+          ]),
+        );
+        localStorage.setItem(
           "cachalot:setting:defaultModel",
           JSON.stringify({ providerId: "a", modelId: "shared" }),
         );
@@ -413,27 +423,53 @@ for (const language of ["zh", "en"] as const) {
         })
         .click();
       await page.getByRole("button", { name: labels.common.save, exact: true }).click();
-      await expect(selector).toHaveValue(JSON.stringify({ providerId: "b", modelId: "shared" }));
-      await expect
-        .poll(() => page.evaluate(() => localStorage.getItem("cachalot:setting:activeModel")))
-        .toBe("");
-      await page.getByRole("button", { name: /Provider B/ }).click();
-      await page
-        .getByRole("checkbox", { name: labels.settings.enableProvider, exact: true })
-        .press("Space");
-      await page.getByRole("button", { name: labels.common.save, exact: true }).click();
-      await expect(selector).toBeDisabled();
       await expect(selector).toHaveValue("");
-      await expect(selector).toContainText(labels.settings.noDefaultModel);
+      await expect(selector).toBeEnabled();
       await expect
         .poll(() => page.evaluate(() => localStorage.getItem("cachalot:setting:defaultModel")))
         .toBe("null");
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem("cachalot:setting:activeModel")))
+        .toBe("");
+      await selector.selectOption(JSON.stringify({ providerId: "b", modelId: "shared" }));
+      await page.getByRole("button", { name: /Provider B/ }).click();
+      const toggle = page.getByRole("switch", {
+        name: labels.settings.modelEnabled.replace("{{model}}", "shared"),
+        exact: true,
+      });
+      await expect(toggle).toBeChecked();
+      await toggle.press("Space");
+      await expect(toggle).not.toBeChecked();
+      await page.screenshot({ path: `test-results/default-model/${language}-model-switches.png` });
+      // No provider save is needed, and no other same-named model becomes the default.
+      await expect(selector).toHaveValue("");
+      await expect(selector).toBeDisabled();
+      await expect(selector).toContainText(labels.settings.defaultModelUnset);
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem("cachalot:setting:defaultModel")))
+        .toBe("null");
+      await toggle.press("Space");
+      await expect(toggle).toBeChecked();
+      await expect(selector).toBeEnabled();
+      await expect(selector).toHaveValue("");
       await page.reload();
       await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
-      await expect(selector).toBeDisabled();
+      await expect(selector).toBeEnabled();
+      await expect(selector).toHaveValue("");
       await expect(
         page.getByRole("checkbox", { name: labels.settings.enableProvider, exact: true }),
-      ).not.toBeChecked();
+      ).toHaveCount(0);
+      // Disabled OCR models in a mixed provider remain manageable and can be reenabled.
+      await page.getByRole("button", { name: labels.ocr.title, exact: true }).click();
+      const ocrEditor = page.locator('[data-ui="ocr-provider-editor"]');
+      await expect(ocrEditor.getByRole("button", { name: /Provider B/ })).toBeVisible();
+      const ocrToggle = ocrEditor.getByRole("switch", {
+        name: labels.settings.modelEnabled.replace("{{model}}", "math"),
+        exact: true,
+      });
+      await expect(ocrToggle).not.toBeChecked();
+      await ocrToggle.press("Space");
+      await expect(ocrToggle).toBeChecked();
     } finally {
       await context.close();
       await browser.close();

@@ -126,6 +126,7 @@ test("Layout and visual behavior @paper", async () => {
                 },
               ]),
             );
+            localStorage.removeItem("cachalot:setting:defaultModel");
             localStorage.setItem("cachalot:setting:activeProviderId", "fixture-provider");
             localStorage.setItem(
               "cachalot:setting:addedModels:fixture-provider",

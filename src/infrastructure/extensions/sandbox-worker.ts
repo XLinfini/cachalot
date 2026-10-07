@@ -312,6 +312,8 @@ export function sandboxWorker(module: ExtensionModule) {
       ocr: { reconstructFormulas: (...args: Any[]) => invoke("ocr.reconstructFormulas", ...args) },
       formulas: { exportPdf: (...args: Any[]) => invoke("formulas.exportPdf", ...args) },
       lm: {
+        getModels: () => invoke("lm.getModels"),
+        onDidChangeModels: event("models"),
         get activeModel() {
           if (!state.extension.manifest.capabilities.includes("lm"))
             throw new Error("Capability not declared: lm");

@@ -302,6 +302,9 @@ export const en = {
     defaultModel: "Default model",
     defaultModelHint:
       "The default for translation and chat. Changes apply immediately and save automatically; you can choose a different current model while reading.",
+    defaultModelUnset: "Not set",
+    modelEnabled: "Enable model {{model}}",
+    modelEnabledHint: "Model switches save immediately. Disabling the default leaves it unset.",
     noDefaultModel: "Add and enable a language model first",
     modelVision: "{{model}}: supports image input",
     modelPlaceholder: "e.g. gpt-4.1",
@@ -481,6 +484,8 @@ export const en = {
     categoryNameReserved: "This name belongs to a built-in category. Choose another name.",
     categoryNameDuplicate: "A category with this name already exists. Choose another name.",
     categoryNotFound: "Category not found. Choose another category.",
+    modelNotEnabled:
+      "This model has not been added or enabled. Enable it in model settings and try again.",
     providerNotFound: "Provider not found.",
     browserKeyReadFailed:
       "Could not read the saved API key. Check browser storage permissions and retry.",

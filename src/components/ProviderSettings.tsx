@@ -30,7 +30,7 @@ interface Props {
   activeProviderId: string | null;
   onProvidersChange: (providers: Provider[]) => void;
   defaultModel: ModelSelection | null;
-  onDefaultModelChange: (selection: ModelSelection) => Promise<void>;
+  onDefaultModelChange: (selection: ModelSelection | null) => Promise<void>;
   onError: (message: string) => void;
 }
 

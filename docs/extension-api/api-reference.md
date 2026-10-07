@@ -1,6 +1,6 @@
 # 插件 API 参考
 
-[插件开发](../extensions.md) · 版本：0.1.1 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
+[插件开发](../extensions.md) · 版本：0.1.2 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
 
 本页列出公开接口，不列私有宿主方法。外部插件通过 `activate(context)` 的 context 使用能力；纯工具从 `cachalot` 导入，可信 React 工具另见[视图指南](views.md#内置-react-模块)。
 
@@ -155,21 +155,25 @@ ReaderDecoration：id、Box、可选 kind、borderColor、可选 backgroundColor
 
 全部需要 `lm`。
 
-| 成员                                               | 参数与结果                         |
-| -------------------------------------------------- | ---------------------------------- |
-| `activeModel`                                      | 同步只读 Provider 或 null          |
-| `onDidChangeActiveModel`                           | `Event<Provider \| null>`          |
-| `supportsImages(model): Promise<boolean>`          | 查询宿主中该具体模型的显式图像能力 |
-| `complete(input, onDelta, signal?): Promise<void>` | 流式增量回调，完成不返回拼接字符串 |
+| 成员                                               | 参数与结果                             |
+| -------------------------------------------------- | -------------------------------------- |
+| `getModels(): Promise<AvailableModel[]>`           | 每次读取所有提供商最新的已启用模型目录 |
+| `onDidChangeModels`                                | `Event<void>`；收到后重新查询目录      |
+| `activeModel`                                      | 同步只读 Provider 或 null              |
+| `onDidChangeActiveModel`                           | `Event<Provider \| null>`              |
+| `supportsImages(model): Promise<boolean>`          | 查询宿主中该具体模型的显式图像能力     |
+| `complete(input, onDelta, signal?): Promise<void>` | 流式增量回调，完成不返回拼接字符串     |
 
-CompletionInput：providerId、可选 modelId、messages（role/content）、可选 temperature。请求需要使用已配置服务商；上下文由插件组装，凭据由宿主注入，见[模型指南](ai-and-formulas.md)。
+CompletionInput：providerId、可选 modelId、messages（role/content）、可选 temperature。请求必须指定已添加且已启用的模型；modelId 省略时仅兼容当前提供商的当前模型，不读取旧默认 ID。上下文由插件组装，凭据由宿主注入，见[模型指南](ai-and-formulas.md)。
+
+AvailableModel：providerId、providerName、modelId、kind（chat/ocr）、supportsImages、可选 formulaOcr。不得长期缓存目录；打开选择界面或开始操作时重新查询，在目录变化时刷新。未启用模型从目录移除，调用时宿主再次检查并拒绝，禁用/删除会撤销其运行请求。
 
 ## ocr 与 formulas
 
-| 方法                                         | 能力           | 参数与结果                                                                                              |
-| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------- |
-| `ocr.reconstructFormulas(formulas, options)` | ocr            | options 包含 fallback: Provider、supportsImages: boolean、可选 signal；返回 `Promise<{assets, issues}>` |
-| `formulas.exportPdf(formula)`                | documents.read | 返回 `Promise<Uint8Array>`，原 PDF 公式区域的字节                                                       |
+| 方法                                         | 能力           | 参数与结果                                                                                                                                 |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ocr.reconstructFormulas(formulas, options)` | ocr            | options 包含可选 fallback、supportsImages、model: ModelSelection、signal；显式 model 使用已启用 OCR 模型；返回 `Promise<{assets, issues}>` |
+| `formulas.exportPdf(formula)`                | documents.read | 返回 `Promise<Uint8Array>`，原 PDF 公式区域的字节                                                                                          |
 
 FormulaFragment 是当前来源公式投影，包含 documentId、page、Box、块与字符索引、原生文字、候选和 partial 等。FormulaAsset 附原图、像素宽高与 scale；问题 reason 为 request/invalid/characters/vision-unavailable。读取 fallback 模型与能力还需 lm。
 

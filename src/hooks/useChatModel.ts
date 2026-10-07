@@ -104,8 +104,8 @@ export function useChatModel(onError: (error: string) => void) {
       .catch((cause) => onError(String(cause)));
   };
 
-  const chooseDefaultModel = async (selected: ModelSelection) => {
-    if (!isChatSelection(providers, selected)) return;
+  const chooseDefaultModel = async (selected: ModelSelection | null) => {
+    if (selected && !isChatSelection(providers, selected)) return;
     await services.settings.set("defaultModel", JSON.stringify(selected));
     await services.settings.set("activeModel", "");
     setDefaultModel(selected);

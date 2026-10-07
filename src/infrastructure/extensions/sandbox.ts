@@ -126,6 +126,7 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["reader.revealPage", context.reader.revealPage],
         ["ocr.reconstructFormulas", context.ocr.reconstructFormulas],
         ["formulas.exportPdf", context.formulas.exportPdf],
+        ["lm.getModels", context.lm.getModels],
         ["lm.supportsImages", context.lm.supportsImages],
         ["lm.complete", context.lm.complete],
         ["resources.read", context.resources.read],
@@ -136,6 +137,7 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["activeDocument", context.reader.onDidChangeActiveDocument],
         ["selection", context.reader.onDidChangeSelection],
         ["model", context.lm.onDidChangeActiveModel],
+        ["models", context.lm.onDidChangeModels],
         ["readerState", context.reader.onDidChangeViewState],
         ["configuration", context.workspace.onDidChangeConfiguration],
       ]);
@@ -430,7 +432,7 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         });
       // Keep read-only snapshot properties current even without a plugin event listener.
       for (const [name, source] of eventSources) {
-        if (name === "document" || name === "configuration") continue;
+        if (name === "document" || name === "configuration" || name === "models") continue;
         if (
           (name === "activeDocument" || name === "readerState") &&
           !capabilities.includes("documents.read")

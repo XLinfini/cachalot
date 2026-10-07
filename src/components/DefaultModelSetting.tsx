@@ -12,14 +12,14 @@ export default function DefaultModelSetting({
 }: {
   providers: Provider[];
   selection: ModelSelection | null;
-  onChange: (selection: ModelSelection) => Promise<void>;
+  onChange: (selection: ModelSelection | null) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
-  const choices = providers
-    .filter((provider) => provider.enabled)
-    .flatMap((provider) => chatModels(provider).map((model) => ({ provider, model })));
+  const choices = providers.flatMap((provider) =>
+    chatModels(provider).map((model) => ({ provider, model })),
+  );
   return (
     <div
       data-ui="default-model-setting"
@@ -37,7 +37,6 @@ export default function DefaultModelSetting({
           aria-describedby="default-chat-model-hint"
           onChange={async (event) => {
             const value = parseModelSelection(event.target.value);
-            if (!value) return;
             setBusy(true);
             try {
               await onChange(value);
@@ -48,7 +47,7 @@ export default function DefaultModelSetting({
             }
           }}
         >
-          {!choices.length && <option value="">{t("settings.noDefaultModel")}</option>}
+          <option value="">{t("settings.defaultModelUnset")}</option>
           {choices.map(({ provider, model }) => (
             <option
               key={JSON.stringify([provider.id, model.id])}
@@ -59,7 +58,7 @@ export default function DefaultModelSetting({
           ))}
         </select>
         <p id="default-chat-model-hint" className="mt-2 mb-0 text-[11px] leading-5 text-muted">
-          {t("settings.defaultModelHint")}
+          {t(choices.length ? "settings.defaultModelHint" : "settings.noDefaultModel")}
         </p>
       </div>
     </div>

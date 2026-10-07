@@ -5,7 +5,10 @@ import type {
   ExtensionManifest,
   ExtensionModule,
   ReaderSelection,
+  Provider,
 } from "../../src/sdk";
+import { enabledModels, chatModels } from "../../src/domain/provider-models";
+import { Emitter } from "../../src/application/extensions/events";
 import { ExtensionHost, type HostPorts } from "../../src/application/extensions/host";
 import { extensionFixtureManifest, fixtureExtension } from "../fixtures/extensions";
 import { manifest as translatorManifest } from "../../src/extensions/selection-translation/manifest";
@@ -16,6 +19,21 @@ function harness(
   saved = new Map<string, string>(),
 ) {
   let context!: ExtensionContext;
+  const catalogue = new Map<string, Provider>([
+    [
+      "fixture",
+      {
+        id: "fixture",
+        name: "Fixture",
+        baseUrl: "https://fixture.invalid",
+        enabled: true,
+        hasKey: false,
+        modelId: "fixture-model",
+        addedModels: [{ id: "fixture-model", enabled: true }],
+      },
+    ],
+  ]);
+  const catalogueChanges = new Emitter<import("../../src/sdk").ModelSelection[]>();
   const counters = { ocr: 0, lm: 0, aborted: 0, modelDelta: 0 };
   let deliver: ((delta: string) => void) | undefined;
   const pending = (signal?: AbortSignal) =>
@@ -55,6 +73,32 @@ function harness(
     },
     formulas: { exportPdf: async () => new Uint8Array() },
     lm: {
+      getModels: async () =>
+        [...catalogue.values()].flatMap((provider) =>
+          enabledModels(provider).map((model) => ({
+            providerId: provider.id,
+            providerName: provider.name,
+            modelId: model.id,
+            kind: chatModels(provider).some((item) => item.id === model.id)
+              ? ("chat" as const)
+              : ("ocr" as const),
+            supportsImages: false,
+          })),
+        ),
+      onDidChangeModels: catalogueChanges.event,
+      resolveModel: async (selection, kind) => {
+        const provider = catalogue.get(selection.providerId);
+        const model =
+          provider && enabledModels(provider).find((model) => model.id === selection.modelId);
+        if (
+          !provider ||
+          !model ||
+          (kind === "chat" && !chatModels(provider).some((item) => item.id === model.id)) ||
+          (kind === "ocr" && !model.formulaOcr)
+        )
+          throw new Error("Model not enabled");
+        return { ...provider, modelId: model.id, addedModels: enabledModels(provider) };
+      },
       supportsImages: async () => false,
       complete: async (_, delta, signal) => {
         counters.lm++;
@@ -87,6 +131,8 @@ function harness(
     ports,
     saved,
     counters,
+    catalogue,
+    catalogueChanges,
     context: () => context,
     deliver: (delta: string) => deliver?.(delta),
   };
@@ -184,7 +230,11 @@ test("plugin disable and per-view cancellation abort OCR/LLM requests and suppre
     modelId: "fixture-model",
   };
   const lm = context().lm.complete(
-    { providerId: model.id, messages: [{ role: "user", content: "fixture" }] },
+    {
+      providerId: model.id,
+      modelId: model.modelId,
+      messages: [{ role: "user", content: "fixture" }],
+    },
     () => counters.modelDelta++,
   );
   const ocr = context().ocr.reconstructFormulas([], { fallback: model, supportsImages: true });
@@ -192,6 +242,7 @@ test("plugin disable and per-view cancellation abort OCR/LLM requests and suppre
     assert.rejects(lm, { name: "AbortError" }),
     assert.rejects(ocr, { name: "AbortError" }),
   ]);
+  await new Promise((resolve) => setImmediate(resolve));
   deliver("before");
   await host.setEnabled("cachalot.selection-translation", false);
   deliver("late");
@@ -201,7 +252,7 @@ test("plugin disable and per-view cancellation abort OCR/LLM requests and suppre
   await host.setEnabled("cachalot.selection-translation", true);
   const controller = new AbortController();
   const closed = context().lm.complete(
-    { providerId: model.id, messages: [] },
+    { providerId: model.id, modelId: model.modelId, messages: [] },
     () => counters.modelDelta++,
     controller.signal,
   );
@@ -754,5 +805,176 @@ test("direct command initialization loads persisted conditions before activation
   await host.updateConfigurationValue("fixture.lazy", "enabled", false);
   await assert.rejects(host.executeCommand("fixture.lazy.run"), /disabled/);
   assert.equal(runs, 1);
+  await host.dispose();
+});
+
+test("plugins query enabled models live, reject guessed disabled identities and revoke running requests", async () => {
+  const { host, ports, context, catalogue, catalogueChanges } = harness(
+    { activate() {} },
+    translatorManifest,
+  );
+  const a: Provider = {
+    id: "a",
+    name: "A",
+    baseUrl: "https://fixture.invalid",
+    enabled: true,
+    hasKey: false,
+    modelId: "shared",
+    addedModels: [
+      { id: "shared", enabled: true },
+      { id: "hidden", enabled: false },
+    ],
+  };
+  const b: Provider = { ...a, id: "b", name: "B", addedModels: [{ id: "shared", enabled: true }] };
+  catalogue.clear();
+  catalogue.set(a.id, a);
+  catalogue.set(b.id, b);
+  let dispatches = 0;
+  ports.lm.complete = async (input, onDelta) => {
+    dispatches++;
+    assert.equal(input.modelId, "shared");
+    onDelta(input.providerId);
+  };
+  await host.start();
+  host.setModel(a);
+  assert.deepEqual(
+    context().lm.activeModel?.addedModels?.map((model) => model.id),
+    ["shared"],
+  );
+  assert.throws(() => {
+    context().lm.activeModel!.modelId = "hidden";
+  }, TypeError);
+  let notifications = 0;
+  context().lm.onDidChangeModels(() => notifications++);
+  const before = await context().lm.getModels();
+  assert.deepEqual(
+    before.map((model) => [model.providerId, model.modelId]),
+    [
+      ["a", "shared"],
+      ["b", "shared"],
+    ],
+  );
+  before.pop();
+  assert.equal(
+    (await context().lm.getModels()).length,
+    2,
+    "Plugin snapshots cannot mutate the catalogue",
+  );
+  let text = "";
+  await context().lm.complete(
+    { providerId: "b", modelId: "shared", messages: [] },
+    (delta) => (text += delta),
+  );
+  assert.equal(
+    text,
+    "b",
+    "Other providers are available independently of the current/default model",
+  );
+  for (const modelId of ["hidden", "unknown"]) {
+    await assert.rejects(
+      context().lm.complete({ providerId: "a", modelId, messages: [] }, () => {}),
+      /not enabled/,
+    );
+    await assert.rejects(
+      context().lm.supportsImages({ ...a, modelId, enabled: true }),
+      /not enabled/,
+    );
+    await assert.rejects(
+      context().ocr.reconstructFormulas([], { fallback: { ...a, modelId }, supportsImages: true }),
+      /not enabled/,
+    );
+  }
+  assert.equal(dispatches, 1, "Forbidden models never reach transports");
+  a.addedModels![1].enabled = true;
+  const changed = () =>
+    catalogueChanges.fire(
+      [...catalogue.values()].flatMap((provider) =>
+        enabledModels(provider).map((model) => ({ providerId: provider.id, modelId: model.id })),
+      ),
+    );
+  changed();
+  assert.equal(notifications, 1);
+  assert.equal(
+    (await context().lm.getModels()).length,
+    3,
+    "An already active plugin immediately finds a newly enabled model",
+  );
+  let deliver!: (text: string) => void;
+  let transportSignal!: AbortSignal;
+  ports.lm.complete = async (_, delta, signal) => {
+    dispatches++;
+    deliver = delta;
+    transportSignal = signal!;
+    await new Promise<void>(() => {});
+  };
+  const pending = context().lm.complete(
+    { providerId: "b", modelId: "shared", messages: [] },
+    (delta) => (text += delta),
+  );
+  const rejection = assert.rejects(pending, { name: "AbortError" });
+  await new Promise((resolve) => setImmediate(resolve));
+  b.addedModels![0].enabled = false;
+  changed();
+  assert.equal(transportSignal.aborted, true);
+  deliver("late");
+  await rejection;
+  assert.equal(text, "b", "Revoked transports cannot deliver late results");
+  await assert.rejects(
+    context().lm.complete({ providerId: "b", modelId: "shared", messages: [] }, () => {}),
+    /not enabled/,
+  );
+  assert.equal(dispatches, 2);
+  catalogue.delete("a");
+  changed();
+  assert.equal(context().lm.activeModel, null);
+  assert.deepEqual(await context().lm.getModels(), []);
+  await host.dispose();
+});
+
+test("plugins can choose enabled OCR models without a default and cannot route OCR identities through chat", async () => {
+  const { host, ports, context, catalogue } = harness({ activate() {} }, translatorManifest);
+  catalogue.clear();
+  catalogue.set("math", {
+    id: "math",
+    name: "Math",
+    baseUrl: "https://fixture.invalid",
+    enabled: true,
+    hasKey: false,
+    purpose: "ocr",
+    modelId: "enabled",
+    addedModels: [
+      { id: "enabled", enabled: true, formulaOcr: "formula-chat" },
+      { id: "disabled", enabled: false, formulaOcr: "formula-chat" },
+    ],
+  });
+  let dispatches = 0;
+  ports.ocr.reconstructFormulas = async (_, options) => {
+    dispatches++;
+    assert.deepEqual(options.model, { providerId: "math", modelId: "enabled" });
+    assert.ok(options.fallback);
+    assert.equal(options.fallback.id, "math");
+    assert.equal(options.fallback.modelId, "enabled");
+    assert.equal(options.supportsImages, false, "Capabilities come from the host, not the caller");
+    return { assets: [], issues: [] };
+  };
+  await host.start();
+  assert.equal(context().lm.activeModel, null);
+  assert.deepEqual(
+    (await context().lm.getModels()).map((model) => [model.providerId, model.modelId, model.kind]),
+    [["math", "enabled", "ocr"]],
+  );
+  await context().ocr.reconstructFormulas([], {
+    model: { providerId: "math", modelId: "enabled" },
+    supportsImages: true,
+  });
+  await assert.rejects(
+    context().lm.complete({ providerId: "math", modelId: "enabled", messages: [] }, () => {}),
+    /not enabled/,
+  );
+  await assert.rejects(
+    context().ocr.reconstructFormulas([], { model: { providerId: "math", modelId: "disabled" } }),
+    /not enabled/,
+  );
+  assert.equal(dispatches, 1);
   await host.dispose();
 });

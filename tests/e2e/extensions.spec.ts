@@ -87,6 +87,7 @@ for (const language of ["zh", "en"] as const) {
             },
           ]),
         );
+        localStorage.removeItem("cachalot:setting:defaultModel");
         localStorage.setItem("cachalot:setting:activeProviderId", "fixture-model");
       }, language);
       await page.reload();

@@ -84,7 +84,7 @@ flowchart TD
 
 App 负责组合页面和导航，LibraryPage/AppSidebar/ReaderWorkspace 负责对应布局；useLibrary/useChatModel 保留状态在应用外壳的整个生命周期中，切换页面不重新加载它们。模型/文献状态通过 useWorkspaceExtensions 同步到宿主。
 
-模型服务标题与服务商卡片之间由 ProviderEditor 的 headerSlot 挂载 DefaultModelSetting；这一控件自动保存，服务商表单与逐模型图像能力仍通过“保存”提交。当前模型菜单不修改全局默认值；改变默认值会立即清除当前覆盖选择。不要重新将 Provider.modelId 用作聊天默认值。
+模型服务标题与服务商卡片之间由 ProviderEditor 的 headerSlot 挂载 DefaultModelSetting；默认值及已保存模型的逐模型滑块自动保存，服务商表单与逐模型图像能力仍通过“保存”提交。默认值禁用/删除后清空，不自动更换。提供商头部没有开关。当前模型菜单不修改全局默认值；改变默认值会立即清除当前覆盖选择。不要重新将 Provider.modelId 用作聊天默认值。
 
 设置使用 SettingsDialog 的亮色原生 dialog 浮窗，工作区保持可见和挂载，并设 inert 与 aria-hidden。替换实现时继续屏蔽底下交互及键盘焦点；不要把 workspace 从条件渲染树中删除。路由/布局重构可改变实现方式，但应保持 PDF 节点、分析会话和等待中的本体聊天。
 
