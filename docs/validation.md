@@ -46,6 +46,8 @@ Linux x86-64 开发机验证通过：TypeScript 类型检查、11 个单元模�
 
 `texlive:check` 和实际 `tauri build --debug --bundles deb` 通过，核对 Deb 中 `usr/lib/Cachalot/texlive` 的运行时、manifest、包修订及编译器源码，control 声明 bubblewrap、Perl、字体库和 Tauri 默认依赖。常规浏览器构建保持独立；既有大 bundle 与无效动态导入提示仍为警告。未验证桌面 WebKit UI 的真人操作、Windows/macOS、AppImage 安装环境或未知论文的全文翻译重排；全文翻译插件尚未预装。
 
+开发预览补充验证：排除原生 target/resources 与嵌套工作树监听后，隔离 Chromium 导入合成 PDF，在 target 和 resources 写入 HTML 产物，原文页的 DOM 引用保持相同，没有触发整页刷新；测试文件已清理。
+
 ## 结果的边界
 
 | 已有验证                          | 仍需单独验证                                   |

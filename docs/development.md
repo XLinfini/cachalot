@@ -46,6 +46,8 @@ CACHALOT_URL=http://127.0.0.1:1431 npm run test:e2e
 
 自行准备依赖；若本机通过链接共享 node_modules，尤其要隔离 Vite 缓存。模型与构建输出不从另一个工作树提交。最终集成到 main 与开发工作树的提交是不同操作。
 
+Vite 不监听 `.worktrees/`、测试输出、`src-tauri/target/` 和 `src-tauri/resources/`；准备运行时或构建桌面包生成的 HTML/资源不应刷新正在阅读的前端。修改真正的前端源码仍正常热更新。
+
 插件脚手架和本地 SDK 导出命令见[插件教程](extension-api/get-started.md)；生成输出属于独立插件项目，不提交回本体作为临时构建产物。
 
 ## 目录与依赖方向
