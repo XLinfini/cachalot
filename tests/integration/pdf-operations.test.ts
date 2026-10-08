@@ -4,10 +4,206 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { PdfiumDocument } from "../../src/infrastructure/analysis/pdfium";
 import { PAGE_FACTS_KEY } from "../../src/domain/model";
-import { cacheFixturePdf } from "../fixtures/cache";
+import { cacheFixturePdf, nativeGraphicsFixturePdf } from "../fixtures/cache";
 import type { SourceRef } from "../../src/domain/document-semantics";
-
+import { createPageFacts } from "../../src/domain/page-facts";
+import { validPageFacts } from "../../src/infrastructure/analysis/validation";
 const wasm = await readFile("node_modules/@embedpdf/pdfium/dist/pdfium.wasm");
+
+test("enhanced facts resolve native pages, nested drawings, font programs and filtered image streams after reopening", async () => {
+  const pdf = await engine(),
+    bytes = nativeGraphicsFixturePdf(),
+    id = createHash("sha256").update(bytes).digest("hex");
+  try {
+    pdf.open(bytes);
+    const facts = createPageFacts(id, pdf.extract(1, id));
+    assert.ok(validPageFacts(facts, id, 1));
+    assert.equal(facts.schemaVersion, 2);
+    assert.deepEqual(facts.graphics.mediaBox, [0, 0, 300, 400]);
+    assert.deepEqual(facts.graphics.cropBox, [10, 20, 290, 390]);
+    const outer = facts.graphics.objects.find((o) => o.kind === "form")!;
+    const inner = outer.children!.find((o) => o.kind === "form")!;
+    const text = inner.children!.find((o) => o.kind === "text")!;
+    const path = inner.children!.find((o) => o.kind === "path")!;
+    assert.deepEqual(text.path, [1, 0, 0]);
+    assert.ok(text.text!.value.includes("Nested formula"));
+    assert.deepEqual(inner.pageMatrix, [1.5, 0, 0, 1.5, 67.5, 99]);
+    assert.deepEqual(text.pageMatrix, [1.5, 0, 0, 1.5, 78, 157.5]);
+    assert.equal(path.shape!.stroke, true);
+    assert.deepEqual(path.dash, { phase: 1, lengths: [3, 2] });
+    assert.ok(inner.clip?.length, "the clip inside the outer Form applies to its child drawing");
+    assert.ok(facts.characters.filter((c) => !c.generated).every((c) => c.objectPath?.length));
+    const linked = facts.characters.find((c) => c.text === "N")!;
+    assert.deepEqual(linked.objectPath, text.path);
+    assert.ok(linked.matrix && linked.pdfOrigin);
+    assert.deepEqual(linked.pdfOrigin, [78, 157.5]);
+    const pixels = pdf.renderRgb(1, 360);
+    const reference = JSON.parse(JSON.stringify(facts.graphics.pageResource));
+    pdf.close();
+    pdf.open(bytes);
+    const page = await pdf.resolveResource(reference);
+    assert.equal(page.kind, "page-pdf");
+    pdf.open(page.bytes);
+    assert.deepEqual(
+      pdf.renderRgb(1, 360),
+      pixels,
+      "native source page round-trips with CropBox and all drawing resources",
+    );
+    pdf.open(bytes);
+    const object = await pdf.resolveResource(text.resource);
+    assert.equal(object.kind, "object-pdf");
+    pdf.open(object.bytes);
+    const isolated = pdf.extract(1);
+    assert.ok(
+      isolated.characters
+        .map((c) => c.text)
+        .join("")
+        .includes("Nested formula"),
+    );
+    assert.ok(
+      isolated.characters
+        .map((c) => c.text)
+        .join("")
+        .includes("Sibling"),
+    );
+    if (object.kind === "object-pdf") {
+      assert.equal(object.contentIsolation, "form-group");
+      assert.deepEqual(object.preservedObjectPath, [1]);
+    }
+    assert.equal(isolated.graphics!.objects.length, 1);
+    const child = isolated.graphics!.objects[0].children![0];
+    assert.equal(
+      child.children!.length,
+      2,
+      "native Form contents stay intact to preserve their transforms and states",
+    );
+    const copied = isolated.characters.find((c) => c.text === "N")!;
+    assert.deepEqual(copied.box, linked.box, "ancestor transformations survive pruning");
+    const groupPixels = pdf.renderRgb(1, 360);
+    for (let y = 180; y < 252; y++)
+      assert.deepEqual(
+        groupPixels.subarray((y * 360 + 36) * 3, (y * 360 + 252) * 3),
+        pixels.subarray((y * 360 + 36) * 3, (y * 360 + 252) * 3),
+        "Form clip and vector strokes render identically after export",
+      );
+    pdf.open(bytes);
+    const font = await pdf.resolveResource(text.text!.font.resource);
+    assert.equal(font.kind, "font-program");
+    assert.ok(font.bytes.length > 100);
+    if (font.kind === "font-program")
+      assert.equal(font.embedded, false, "substituted standard font is explicitly identified");
+    const image = facts.graphics.objects.find((o) => o.kind === "image")!.image!;
+    const resource = await pdf.resolveResource(image.resource);
+    assert.equal(resource.kind, "image-stream");
+    if (resource.kind === "image-stream") {
+      assert.equal(resource.width, 2);
+      assert.equal(resource.height, 1);
+      assert.deepEqual(resource.filters, ["ASCIIHexDecode"]);
+      assert.ok(new TextDecoder().decode(resource.bytes).includes("FF000000FF00>"));
+    }
+    const corrupt = structuredClone(facts);
+    corrupt.graphics.objects[0].resource.documentId = "0".repeat(64);
+    assert.equal(
+      validPageFacts(corrupt, id, 1),
+      false,
+      "cache locators must belong to their facts document",
+    );
+    corrupt.graphics.objects[0].resource.documentId = id;
+    corrupt.graphics.objects[0].matrix[0] = NaN;
+    assert.equal(validPageFacts(corrupt, id, 1), false);
+    await assert.rejects(
+      pdf.resolveResource({ ...text.resource, documentId: "0".repeat(64) }),
+      /source mismatch/,
+    );
+    await assert.rejects(pdf.resolveResource({ ...text.resource, factsKey: "old" }), /reference/);
+    await assert.rejects(
+      pdf.resolveResource({ ...text.resource, objectPath: [1, 99] }),
+      /path unavailable/,
+    );
+    await assert.rejects(
+      pdf.resolveResource({ ...text.resource, objectPath: [0, 0] }),
+      /path unavailable/,
+    );
+    await assert.rejects(
+      pdf.resolveResource({ ...text.resource, kind: "image-stream" }),
+      /image object/,
+    );
+    await assert.rejects(pdf.resolveResource({ ...text.resource, page: 2 }), /Invalid PDF page/);
+  } finally {
+    pdf.close();
+  }
+});
+
+test("top-level object resources isolate drawings without changing their page geometry", async () => {
+  const pdf = await engine();
+  try {
+    pdf.open(source);
+    const facts = createPageFacts(documentId, pdf.extract(1, documentId));
+    const first = facts.graphics.objects[0];
+    const resource = await pdf.resolveResource(first.resource);
+    assert.equal(resource.kind, "object-pdf");
+    if (resource.kind === "object-pdf") assert.equal(resource.contentIsolation, "object-drawing");
+    pdf.open(resource.bytes);
+    const exported = pdf.extract(1);
+    assert.equal(exported.objects.length, 1);
+    assert.equal(exported.characters.map((c) => c.text).join(""), "English prose");
+    assert.deepEqual(exported.characters[0].box, facts.characters[0].box);
+  } finally {
+    pdf.close();
+  }
+});
+
+test("native page references reconstruct rotated source pages without rasterizing drawings", async () => {
+  const pdf = await engine();
+  try {
+    for (const rotation of [90, 180, 270]) {
+      const bytes = nativeGraphicsFixturePdf(rotation),
+        id = createHash("sha256").update(bytes).digest("hex");
+      pdf.open(bytes);
+      const facts = createPageFacts(id, pdf.extract(1, id)),
+        pixels = pdf.renderRgb(1, 300);
+      assert.equal(facts.graphics.rotation, rotation);
+      const resource = await pdf.resolveResource(facts.graphics.pageResource!);
+      const reconstructed = await pdf.compose({
+        sources: [resource.bytes],
+        pages: [{ source: { source: 0, page: 1 } }],
+      });
+      pdf.open(reconstructed);
+      assert.deepEqual(pdf.renderRgb(1, 300), pixels);
+      assert.ok(pdf.extract(1).characters.some((c) => c.text === "N"));
+    }
+  } finally {
+    pdf.close();
+  }
+});
+
+test("repeated Form resources have distinct drawing paths and character ownership", async () => {
+  const pdf = await engine(),
+    bytes = nativeGraphicsFixturePdf(0, true),
+    id = createHash("sha256").update(bytes).digest("hex");
+  try {
+    pdf.open(bytes);
+    const facts = createPageFacts(id, pdf.extract(1, id));
+    const ns = facts.characters.filter((c) => c.text === "N");
+    assert.equal(ns.length, 2);
+    assert.deepEqual(
+      ns.map((c) => c.objectPath),
+      [
+        [1, 0, 0],
+        [3, 0, 0],
+      ],
+    );
+    for (const character of ns) {
+      const text = facts.graphics.objects[character.objectPath![0]].children![0].children![0];
+      assert.ok(text.text!.characterIndices.includes(character.index));
+      assert.equal(text.text!.characterIndices.length, "Nested formula".length);
+      assert.deepEqual(text.pageMatrix, character.matrix);
+    }
+  } finally {
+    pdf.close();
+  }
+});
+
 const content =
   "BT /F1 14 Tf 30 350 Td (English prose) Tj ET\nBT /F1 14 Tf 30 300 Td (x = 1) Tj ET\n1 0 0 rg 200 200 40 40 re f\n";
 const source = cacheFixturePdf(1, { content });

@@ -5,7 +5,13 @@ import type { FormulaRecord } from "../../src/infrastructure/formula-repository"
 // A small synthetic PDF supports storage and reader navigation without a real paper.
 export function cacheFixturePdf(
   pageCount = 1,
-  options: { content?: string; cropBox?: string; rotation?: number } = {},
+  options: {
+    content?: string;
+    cropBox?: string;
+    rotation?: number;
+    resources?: string;
+    extraObjects?: string[];
+  } = {},
 ): Uint8Array {
   const content = options.content ?? "BT /F1 14 Tf 30 350 Td (Cache fixture paper) Tj ET\n";
   const pageExtras = `${options.cropBox ? `/CropBox [${options.cropBox}]` : ""} ${options.rotation ? `/Rotate ${options.rotation}` : ""}`;
@@ -18,7 +24,9 @@ export function cacheFixturePdf(
     "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + pageCount + " >>",
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] " +
       pageExtras +
-      " /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+      " /Resources << /Font << /F1 5 0 R >> " +
+      (options.resources ?? "") +
+      " >> /Contents 4 0 R >>",
     "<< /Length " + content.length + " >>\nstream\n" + content + "endstream",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];
@@ -30,6 +38,7 @@ export function cacheFixturePdf(
       "<< /Length " + content.length + " >>\nstream\n" + content + "endstream",
     );
   }
+  objects.push(...(options.extraObjects ?? []));
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -52,6 +61,34 @@ export function cacheFixturePdf(
     xref +
     "\n%%EOF";
   return new TextEncoder().encode(pdf);
+}
+
+/** Nested Forms, clipping, dashed vector strokes and a filtered image. No user PDF. */
+export function nativeGraphicsFixturePdf(rotation = 0, repeatedForm = false): Uint8Array {
+  const stream = (dictionary: string, content: string) =>
+    `<< ${dictionary} /Length ${content.length} >>\nstream\n${content}endstream`;
+  return cacheFixturePdf(1, {
+    rotation,
+    cropBox: "10 20 290 390",
+    resources: "/XObject << /Im 6 0 R /Outer 7 0 R >>",
+    content:
+      "0 0 1 rg 210 220 30 30 re f\nq 1 0 0 1 50 70 cm /Outer Do Q\nq 30 0 0 20 170 110 cm /Im Do Q\n" +
+      (repeatedForm ? "q 1 0 0 1 100 200 cm /Outer Do Q\n" : ""),
+    extraObjects: [
+      stream(
+        "/Type /XObject /Subtype /Image /Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode",
+        "FF000000FF00>\n",
+      ),
+      stream(
+        "/Type /XObject /Subtype /Form /BBox [0 0 100 100] /Matrix [1.5 0 0 1.5 10 20] /Resources << /Font << /F1 5 0 R >> /XObject << /Inner 8 0 R >> >>",
+        "0 0 60 70 re W n\nq 1 0 0 1 5 6 cm /Inner Do Q\nBT /F1 10 Tf 3 65 Td (Sibling) Tj ET\n",
+      ),
+      stream(
+        "/Type /XObject /Subtype /Form /BBox [0 0 80 80] /Matrix [1 0 0 1 3 4] /Resources << /Font << /F1 5 0 R >> >>",
+        "BT /F1 12 Tf 4 35 Td (Nested formula) Tj ET\n1 0 0 RG 2 w [3 2] 1 d 0 25 m 50 25 l S\n",
+      ),
+    ],
+  });
 }
 
 // Historical payloads intentionally retain the old mixed shape for migration

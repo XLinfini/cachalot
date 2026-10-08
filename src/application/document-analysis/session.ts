@@ -199,10 +199,7 @@ export class DocumentAnalysisSession {
     if (!this.facts.has(page) && !this.factsJobs.has(page)) {
       const job = (async () => {
         const cached = await analysisRepository.getFacts(this.document.id, page);
-        const result =
-          cached ||
-          (await analysisRepository.getLegacyFacts(this.document.id, page)) ||
-          (await (await this.engine()).extract(page));
+        const result = cached || (await (await this.engine()).extract(page));
         this.active();
         if (result.documentId !== this.document.id || result.page !== page)
           throw new Error("Extraction source mismatch");

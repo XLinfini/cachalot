@@ -4,11 +4,15 @@ import type { Box, NativePage, PdfCharacter, PdfObject } from "../../domain/anal
 import type { PdfComposition, PdfPageInfo } from "../../domain/document-workbench";
 import { PAGE_FACTS_KEY } from "../../domain/model";
 import { validBox } from "../../domain/pdf-comparison";
+import type { PdfResource, PdfResourceRef } from "../../domain/pdf-resources";
+import { validPdfResourceRef } from "../../domain/pdf-resources";
+import { extractPdfGraphics } from "./pdfium-graphics";
 
 /** Owns all PDFium handles. Only use from one serialized worker queue. */
 export class PdfiumDocument {
   private handle = 0;
   private memory = 0;
+  private byteLength = 0;
 
   private constructor(private readonly api: WrappedPdfiumModule) {}
 
@@ -29,6 +33,7 @@ export class PdfiumDocument {
     this.memory = this.api.pdfium.wasmExports.malloc(bytes.length);
     if (!this.memory) throw new Error(message("pdfMemory"));
     this.heap.set(bytes, this.memory);
+    this.byteLength = bytes.length;
     // FPDF_LoadMemDocument borrows the buffer for the entire document lifetime.
     this.handle = this.api.FPDF_LoadMemDocument(this.memory, bytes.length, "");
     if (!this.handle) {
@@ -43,6 +48,7 @@ export class PdfiumDocument {
     if (this.memory) this.api.pdfium.wasmExports.free(this.memory);
     this.handle = 0;
     this.memory = 0;
+    this.byteLength = 0;
   }
   inspectPages(): PdfPageInfo[] {
     if (!this.handle) throw new Error(message("pdfNotOpen"));
@@ -283,6 +289,12 @@ export class PdfiumDocument {
 
   private withPage<T>(number: number, action: (page: number) => T): T {
     if (!this.handle) throw new Error(message("pdfNotOpen"));
+    if (
+      !Number.isSafeInteger(number) ||
+      number < 1 ||
+      number > this.api.FPDF_GetPageCount(this.handle)
+    )
+      throw new Error("Invalid PDF page");
     const page = this.api.FPDF_LoadPage(this.handle, number - 1);
     if (!page) throw new Error(message("pdfPage", { page: number }));
     try {
@@ -292,7 +304,7 @@ export class PdfiumDocument {
     }
   }
 
-  extract(number: number): NativePage {
+  extract(number: number, documentId = ""): NativePage {
     return this.withPage(number, (page) => {
       const api = this.api;
       const memory = api.pdfium.wasmExports.malloc(256);
@@ -330,6 +342,14 @@ export class PdfiumDocument {
             clamp(Math.max(...points.map((p) => p[1]))),
           ];
         };
+        const { graphics, objectPaths } = extractPdfGraphics(
+          api,
+          page,
+          textPage,
+          number,
+          documentId,
+          box,
+        );
         const characters: PdfCharacter[] = [];
         let unmapped = 0;
         for (let index = 0; index < api.FPDFText_CountChars(textPage); index++) {
@@ -374,6 +394,7 @@ export class PdfiumDocument {
                 api.pdfium.getValue(memory + 76, "float"),
               )
             : fontSize;
+          const generated = api.FPDFText_IsGenerated(textPage, index) === 1;
           characters.push({
             index,
             text: String.fromCodePoint(code),
@@ -384,7 +405,21 @@ export class PdfiumDocument {
             italic:
               (api.pdfium.getValue(memory + 224, "i32") & 64) !== 0 ||
               /italic|oblique/i.test(fontName),
-            generated: api.FPDFText_IsGenerated(textPage, index) === 1,
+            generated,
+            objectPath: generated
+              ? undefined
+              : objectPaths.get(api.FPDFText_GetTextObject(textPage, index)),
+            pdfOrigin: hasOrigin
+              ? [
+                  api.pdfium.getValue(memory + 40, "double"),
+                  api.pdfium.getValue(memory + 48, "double"),
+                ]
+              : undefined,
+            matrix: hasMatrix
+              ? ([0, 4, 8, 12, 16, 20].map((offset) =>
+                  api.pdfium.getValue(memory + 64 + offset, "float"),
+                ) as PdfCharacter["matrix"])
+              : undefined,
             box: hasBox
               ? box(
                   api.pdfium.getValue(memory, "double"),
@@ -424,6 +459,7 @@ export class PdfiumDocument {
           height: api.FPDF_GetPageHeight(page),
           characters,
           objects,
+          graphics,
           warnings: unmapped ? [message("unmappedCharacters", { count: unmapped })] : [],
         };
       } finally {
@@ -431,6 +467,178 @@ export class PdfiumDocument {
         api.pdfium.wasmExports.free(memory);
       }
     });
+  }
+
+  /** Resolve only against the exact source/extractor that issued the locator. */
+  async resolveResource(ref: PdfResourceRef): Promise<PdfResource> {
+    if (!this.handle || !validPdfResourceRef(ref))
+      throw new Error("Invalid PDF resource reference");
+    ref = structuredClone(ref);
+    const hash = [
+      ...new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          this.heap.slice(this.memory, this.memory + this.byteLength).buffer,
+        ),
+      ),
+    ]
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+    if (hash !== ref.documentId) throw new Error("PDF resource source mismatch");
+    return this.withPage(ref.page, (page) => {
+      const api = this.api;
+      let object = 0;
+      for (const [depth, index] of (ref.objectPath ?? []).entries()) {
+        const count = depth
+          ? api.FPDFFormObj_CountObjects(object)
+          : api.FPDFPage_CountObjects(page);
+        if (index >= count || (depth && api.FPDFPageObj_GetType(object) !== 5))
+          throw new Error("PDF resource object path unavailable");
+        object = depth
+          ? api.FPDFFormObj_GetObject(object, index)
+          : api.FPDFPage_GetObject(page, index);
+        if (!object) throw new Error("PDF resource object unavailable");
+      }
+      if (ref.kind === "page-pdf" || ref.kind === "object-pdf")
+        return {
+          ref,
+          kind: ref.kind,
+          mediaType: "application/pdf",
+          bytes: this.exportDrawing(ref.page, ref.objectPath),
+          width: api.FPDF_GetPageWidth(page),
+          height: api.FPDF_GetPageHeight(page),
+          contentIsolation:
+            ref.kind === "page-pdf"
+              ? "page"
+              : ref.objectPath!.length > 1
+                ? "form-group"
+                : "object-drawing",
+          ...(ref.objectPath ? { preservedObjectPath: [ref.objectPath[0]] } : {}),
+        };
+      const memory = api.pdfium.wasmExports.malloc(32);
+      if (!memory) throw new Error("PDF resource allocation failed");
+      const binary = (
+        length: number,
+        read: (buffer: number, length: number) => boolean | number,
+      ) => {
+        if (!Number.isSafeInteger(length) || length <= 0 || length > 128 * 1024 * 1024)
+          throw new Error("PDF resource unavailable or exceeds 128 MiB");
+        const buffer = api.pdfium.wasmExports.malloc(length);
+        if (!buffer) throw new Error("PDF resource allocation failed");
+        try {
+          if (!read(buffer, length)) throw new Error("PDF resource read failed");
+          return this.heap.slice(buffer, buffer + length);
+        } finally {
+          api.pdfium.wasmExports.free(buffer);
+        }
+      };
+      const string = (read: (buffer: number, length: number) => number) => {
+        const length = read(0, 0);
+        if (!length) return "";
+        return new TextDecoder().decode(binary(length, read).subarray(0, length - 1));
+      };
+      try {
+        if (ref.kind === "font-program") {
+          if (api.FPDFPageObj_GetType(object) !== 1)
+            throw new Error("PDF font resource requires a text object");
+          const font = api.FPDFTextObj_GetFont(object);
+          if (!api.FPDFFont_GetFontData(font, 0, 0, memory))
+            throw new Error("PDF font program unavailable");
+          const length = api.pdfium.getValue(memory, "i32") >>> 0;
+          const bytes = binary(length, (buffer, size) =>
+            api.FPDFFont_GetFontData(font, buffer, size, memory),
+          );
+          return {
+            ref,
+            kind: ref.kind,
+            mediaType: "application/octet-stream",
+            bytes,
+            embedded: !!api.FPDFFont_GetIsEmbedded(font),
+            name: string((b, n) => api.FPDFFont_GetBaseFontName(font, b, n)),
+          };
+        }
+        if (api.FPDFPageObj_GetType(object) !== 3)
+          throw new Error("PDF image resource requires an image object");
+        if (!api.FPDFImageObj_GetImageMetadata(object, page, memory))
+          throw new Error("PDF image metadata unavailable");
+        const u = (offset: number) => api.pdfium.getValue(memory + offset, "i32") >>> 0;
+        const width = u(0),
+          height = u(4),
+          bitsPerPixel = u(16),
+          colorSpace = u(20);
+        const filters = Array.from(
+          { length: Math.max(0, api.FPDFImageObj_GetImageFilterCount(object)) },
+          (_, i) => string((b, n) => api.FPDFImageObj_GetImageFilter(object, i, b, n)),
+        );
+        const length = api.FPDFImageObj_GetImageDataRaw(object, 0, 0);
+        return {
+          ref,
+          kind: ref.kind,
+          mediaType: "application/octet-stream",
+          bytes: binary(length, (b, n) => api.FPDFImageObj_GetImageDataRaw(object, b, n)),
+          width,
+          height,
+          bitsPerPixel,
+          colorSpace,
+          filters,
+        };
+      } finally {
+        api.pdfium.wasmExports.free(memory);
+      }
+    });
+  }
+
+  /** A self-contained page PDF; nested object exports retain the entire outer Form.
+   * PDFium re-applies /Matrix when regenerating modified Form streams. Keep
+   * those streams intact rather than silently shifting glyphs/clips or losing states.
+   * Other drawings are removed, but unused resource bytes may remain (not redaction). */
+  private exportDrawing(number: number, path?: number[]): Uint8Array {
+    const api = this.api,
+      target = api.FPDF_CreateNewDocument();
+    let page = 0,
+      writer = 0;
+    try {
+      if (!target || !api.FPDF_ImportPages(target, this.handle, String(number), 0))
+        throw new Error("PDF resource import failed");
+      page = api.FPDF_LoadPage(target, 0);
+      if (!page) throw new Error("PDF resource page unavailable");
+      if (path) {
+        const count = api.FPDFPage_CountObjects(page);
+        if (path[0] >= count) throw new Error("PDF resource import changed object path");
+        for (let i = count - 1; i >= 0; i--) {
+          if (i === path[0]) continue;
+          const object = api.FPDFPage_GetObject(page, i);
+          const removed = api.FPDFPage_RemoveObject(page, object);
+          if (!removed) throw new Error("PDF resource drawing removal failed");
+          api.FPDFPageObj_Destroy(object);
+        }
+        for (let i = api.FPDFPage_GetAnnotCount(page) - 1; i >= 0; i--)
+          if (!api.FPDFPage_RemoveAnnot(page, i))
+            throw new Error("PDF resource annotation removal failed");
+        if (!api.FPDFPage_GenerateContent(page))
+          throw new Error("PDF resource content generation failed");
+      }
+      api.FPDF_ClosePage(page);
+      page = 0;
+      writer = api.PDFiumExt_OpenFileWriter();
+      if (!writer || !api.FPDF_SaveAsCopy(target, writer, 0))
+        throw new Error("PDF resource write failed");
+      const length = api.PDFiumExt_GetFileWriterSize(writer);
+      if (length <= 0 || length > 256 * 1024 * 1024)
+        throw new Error("PDF resource exceeds 256 MiB");
+      const buffer = api.pdfium.wasmExports.malloc(length);
+      if (!buffer) throw new Error("PDF resource allocation failed");
+      try {
+        api.PDFiumExt_GetFileWriterData(writer, buffer, length);
+        return this.heap.slice(buffer, buffer + length);
+      } finally {
+        api.pdfium.wasmExports.free(buffer);
+      }
+    } finally {
+      if (page) api.FPDF_ClosePage(page);
+      if (writer) api.PDFiumExt_CloseFileWriter(writer);
+      if (target) api.FPDF_CloseDocument(target);
+    }
   }
 
   /** Import the original page resources and change only its visible boxes.

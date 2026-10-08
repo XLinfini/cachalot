@@ -19,19 +19,20 @@
 
 [插件开发入口](extensions.md)解释能力范围及与 VS Code 的异同。建议从[第一个插件](extension-api/get-started.md)开始。
 
-| 文档                                                    | 用途                                               |
-| ------------------------------------------------------- | -------------------------------------------------- |
-| [第一个插件](extension-api/get-started.md)              | 编写、打包、安装和更新一个可见的阅读工具           |
-| [清单参考](extension-api/manifest.md)                   | `package.json` 字段、贡献点、能力和激活事件        |
-| [生命周期与依赖](extension-api/lifecycle.md)            | 公开 API、激活次序、取消、状态、级联处理           |
-| [命令与上下文](extension-api/commands-and-context.md)   | 命令面板、菜单、快捷键、when 与 enablement         |
-| [配置与公共交互](extension-api/configuration-and-ui.md) | 类型配置、自动设置字段、变化事件、选择、输入和进度 |
-| [视图与工作台](extension-api/views.md)                  | 命令、树、Webview、侧栏、底栏、设置与状态项        |
-| [文档与阅读交互](extension-api/documents-and-reader.md) | 事实、语义、完整覆盖框、手势、选区和悬停           |
-| [模型与公式](extension-api/ai-and-formulas.md)          | 流式 LLM、独立 OCR、来源资源和请求取消             |
-| [API 参考](extension-api/api-reference.md)              | 当前公开接口的参数、返回值与能力要求               |
-| [打包、测试与分发](extension-api/packaging.md)          | 包格式、资源、限制、验证和本地分发                 |
-| [交互设计约定](extension-api/ux-guidelines.md)          | 选择合适的 UI、双语、阅读状态及失败反馈            |
+| 文档                                                    | 用途                                                |
+| ------------------------------------------------------- | --------------------------------------------------- |
+| [第一个插件](extension-api/get-started.md)              | 编写、打包、安装和更新一个可见的阅读工具            |
+| [清单参考](extension-api/manifest.md)                   | `package.json` 字段、贡献点、能力和激活事件         |
+| [生命周期与依赖](extension-api/lifecycle.md)            | 公开 API、激活次序、取消、状态、级联处理            |
+| [命令与上下文](extension-api/commands-and-context.md)   | 命令面板、菜单、快捷键、when 与 enablement          |
+| [配置与公共交互](extension-api/configuration-and-ui.md) | 类型配置、自动设置字段、变化事件、选择、输入和进度  |
+| [视图与工作台](extension-api/views.md)                  | 命令、树、Webview、侧栏、底栏、设置与状态项         |
+| [文档与阅读交互](extension-api/documents-and-reader.md) | 事实、语义、完整覆盖框、手势、选区和悬停            |
+| [原生绘制事实与资源](extension-api/pdf-resources.md)    | 绘制树、稳定来源引用、原生页/对象 PDF、字体与图片流 |
+| [模型与公式](extension-api/ai-and-formulas.md)          | 流式 LLM、独立 OCR、来源资源和请求取消              |
+| [API 参考](extension-api/api-reference.md)              | 当前公开接口的参数、返回值与能力要求                |
+| [打包、测试与分发](extension-api/packaging.md)          | 包格式、资源、限制、验证和本地分发                  |
+| [交互设计约定](extension-api/ux-guidelines.md)          | 选择合适的 UI、双语、阅读状态及失败反馈             |
 
 ## 本体开发与维护
 

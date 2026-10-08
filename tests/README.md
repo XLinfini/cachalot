@@ -56,6 +56,8 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 
 独立文档句柄继续在 `integration/document-analysis.test.ts` 验证全文 facts/layout 完成边界、快照副本、取消释放及重新打开复用缓存。PDF 写操作使用 `integration/pdf-operations.test.ts` 的真实 PDFium，验证输出副本清理文字、保留公式/路径、拒绝不完整及过期来源、原生裁切移动后的可见边界、CropBox 与旋转，以及含上标的二维分式在迁移后保持字形、分数线和渲染几何；小型输入复用 `fixtures/cache.ts`。二进制用户产物是独立存储边界，在 `integration/extension-artifacts.test.ts` 验证按插件隔离、事务替换、元数据列表、持久恢复与取消。
 
+同一 PDFium 模块增加 schema 2 的递归 Form、矩阵/字符归属、裁剪/虚线、字体程序和过滤图片流解析，以及序列化引用在重新打开来源后可解析、过期/跨文档/错类型/错路径拒绝、原生页资源重建的逐像素比对。嵌套对象明确保留外层 Form 并验证字形坐标，避免只验文字存在而漏掉重复 Matrix。资源句柄复制、单次取消、关闭取消和旧缓存重新提取放在 `integration/document-analysis.test.ts`；Tauri schema 2/1 分流在 `native-cache.test.ts` 和 Rust `analysis::tests`。安装后的 PDF workbench IIFE 更新到 API 0.1.4，实际经沙箱桥调用两种资源读取入口并用解析出的原生页合成。
+
 比较视图的能力、归属、句柄和停止清理放在现有 `integration/extensions.test.ts`，阅读线一对多映射规则放 `unit/page-layout.test.ts`。`e2e/extension-installation.spec.ts` 实际安装 API 0.1.3 IIFE 插件，经生产消息桥读来源、分析事实、按两条路线合成、保存、显示和下载；验证中英文、原文 DOM 保持、右侧被动渲染、键盘分隔条、独立/联动滚动、关闭原文后句柄有效及停用保留产物。合成 PDF 不依赖真实论文或收费 OCR/模型。
 
 应用层目录边界由 `unit/application-boundaries.test.ts` 检查，包括静态导入、目录公开入口和动态导入的间接依赖；文档分析不能依赖 OCR/插件，OCR 不能依赖插件，domain/infrastructure 不能反向依赖 application。插件只能依赖自己的包和公开 SDK；只有宿主组合入口能导入内置插件。纯选区、标题、位置标记仍在既有单元模块维护。`unit/analysis.test.ts` 区分完整段落/行间公式框选与文字模式精确选择；`e2e/reader-navigation.spec.ts` 独立验证实时蓝紫覆盖框、未命中时无翻译入口、反向拖动、缩放及中英文行为。OCR 流程编排由 `integration/formula-reconstruction.test.ts` 通过生产服务的副作用端口验证精确区域、独立模型、字符校验、模型/版本缓存隔离、失败停止与原图回退；共享 Unicode/公式夹具在 `fixtures/formulas.ts`。厂商协议继续在既有 OCR 适配器测试维护，不为目录迁移新建按任务命名的脚本。

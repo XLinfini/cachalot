@@ -1,6 +1,11 @@
 import type { DocumentRecord } from "../../domain/records";
 import type { DocumentHandle, DocumentSnapshot } from "../../domain/document-workbench";
 import { DocumentAnalysisSession } from "./session";
+import {
+  validPdfResourceRef,
+  type PdfResource,
+  type PdfResourceRef,
+} from "../../domain/pdf-resources";
 
 /** Explicit ownership for jobs; never borrows the current reader's disposable session. */
 export async function openDocumentHandle(
@@ -9,6 +14,11 @@ export async function openDocumentHandle(
     list(): Promise<DocumentRecord[]>;
     loadPdf(id: string): Promise<Uint8Array>;
     createSession?: (document: DocumentRecord, bytes: Uint8Array) => DocumentAnalysisSession;
+    resolveResource?: (
+      bytes: Uint8Array,
+      ref: PdfResourceRef,
+      signal?: AbortSignal,
+    ) => Promise<PdfResource>;
   },
   signal?: AbortSignal,
 ): Promise<DocumentHandle> {
@@ -48,6 +58,21 @@ export async function openDocumentHandle(
       check();
       signal?.throwIfAborted();
       return bytes.slice();
+    },
+    async readResource(ref, signal) {
+      check();
+      const combined = AbortSignal.any([lifetime.signal, ...(signal ? [signal] : [])]);
+      combined.throwIfAborted();
+      if (
+        !validPdfResourceRef(ref) ||
+        ref.documentId !== document.id ||
+        ref.page > document.pageCount
+      )
+        throw new Error("PDF resource source mismatch");
+      if (!ports.resolveResource) throw new Error("PDF resource resolver unavailable");
+      const result = await ports.resolveResource(bytes, structuredClone(ref), combined);
+      combined.throwIfAborted();
+      return structuredClone(result);
     },
     getPageFacts: (page) => read((session) => session.getPageFacts(page)),
     getLayoutObservations: (page) => read((session) => session.getLayoutObservations(page)),

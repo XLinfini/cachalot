@@ -1,10 +1,12 @@
 import wasmUrl from "@embedpdf/pdfium/pdfium.wasm?url";
 import type { Box } from "../../domain/analysis";
 import type { PdfComposition, PdfPageInfo, PdfRegion } from "../../domain/document-workbench";
+import type { PdfResource, PdfResourceRef } from "../../domain/pdf-resources";
 
 export type PdfOperation =
   | { kind: "inspect"; bytes: Uint8Array }
   | { kind: "region"; bytes: Uint8Array; page: number; box: Box }
+  | { kind: "resource"; bytes: Uint8Array; ref: PdfResourceRef }
   | { kind: "compose"; input: PdfComposition };
 // Serialized computation avoids multiplying WASM heaps for large books. A
 // cancellation kills only this operation's worker, never analysis or readers.
@@ -62,4 +64,6 @@ export const pdfOperations = {
     operation<PdfRegion>({ kind: "region", bytes, page, box }, signal),
   compose: (input: PdfComposition, signal?: AbortSignal) =>
     operation<Uint8Array>({ kind: "compose", input }, signal),
+  resolveResource: (bytes: Uint8Array, ref: PdfResourceRef, signal?: AbortSignal) =>
+    operation<PdfResource>({ kind: "resource", bytes, ref }, signal),
 };

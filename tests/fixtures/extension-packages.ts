@@ -222,7 +222,7 @@ export function pdfWorkbenchPackage() {
     ...extensionFixtureManifest,
     name: "pdf-workbench",
     displayName: "PDF workbench fixture",
-    engines: { cachalot: "^0.1.3" },
+    engines: { cachalot: "^0.1.4" },
     capabilities: ["documents.read", "documents.write", "reader.interact"],
     contributes: {
       commands: [
@@ -257,10 +257,15 @@ export function pdfWorkbenchPackage() {
         let progress = 0;
         const snapshot = await source.analyze({level:'facts',onProgress:()=>progress++});
         const bytes = await source.readPdf();
+        const first=snapshot.facts[0];
+        if(first.schemaVersion!==2 || first.graphics.preservation!=='native-page') throw new Error('Missing enhanced facts');
+        const nativePage=await source.readResource(first.graphics.pageResource);
+        const object=await ctx.pdf.resolveResource(bytes,first.graphics.objects[0].resource);
+        if(nativePage.kind!=='page-pdf' || object.kind!=='object-pdf' || !object.bytes.length) throw new Error('Unresolved native resources');
         const region = await ctx.pdf.exportRegion(bytes,1,[0,0,0.8,0.5]);
         if(region.contentIsolation !== 'visual-crop') throw new Error('Unexpected crop contract');
-        const generated = await ctx.pdf.compose({sources:[bytes],pages:snapshot.facts.map((facts,index)=>index===0
-          ? {source:{source:0,page:1}}
+        const generated = await ctx.pdf.compose({sources:[bytes,nativePage.bytes],pages:snapshot.facts.map((facts,index)=>index===0
+          ? {source:{source:1,page:1}}
           : {width:facts.width,height:facts.height,overlays:[{source:0,page:facts.page}]})});
         await ctx.artifacts.write({id:'derived',name:'derived.pdf',mediaType:'application/pdf',sourceDocumentId:source.document.id,bytes:generated});
         const persisted = await ctx.artifacts.read('derived');

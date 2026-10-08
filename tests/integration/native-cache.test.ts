@@ -15,7 +15,7 @@ test("desktop formula writes satisfy the shared SQLite envelope and cache comman
           calls.push(command);
           if (command === "save_page_analysis") {
             const content = JSON.parse(String(input.content));
-            assert.equal(content.schemaVersion, 1);
+            assert.equal(content.schemaVersion, content.kind === "page-facts" ? 2 : 1);
             assert.equal(content.page, input.page);
             assert.equal(content.documentId, input.documentId);
             assert.equal(content.cacheKey, input.cacheKey);

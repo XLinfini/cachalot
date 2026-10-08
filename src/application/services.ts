@@ -92,6 +92,10 @@ export const services = {
         {
           list: platform.listDocuments,
           loadPdf: platform.loadPdf,
+          resolveResource: async (...args) =>
+            (await import("../infrastructure/pdf/operations")).pdfOperations.resolveResource(
+              ...args,
+            ),
         },
         signal,
       ),

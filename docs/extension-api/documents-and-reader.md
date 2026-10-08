@@ -4,12 +4,12 @@
 
 ## 选择合适的输入
 
-| 数据                 | 用途                                       |
-| -------------------- | ------------------------------------------ |
-| `PageFacts`          | 来源字符、对象、字形与坐标；精确证据       |
-| `LayoutObservations` | 原始模型类别与检测框；核对预测             |
-| `DocumentSemantics`  | 段落、章节、公式归属、关系和全文阅读顺序   |
-| `SemanticPageView`   | 当前文档语义在单页上的临时投影；交互最常用 |
+| 数据                 | 用途                                             |
+| -------------------- | ------------------------------------------------ |
+| `PageFacts`          | 来源字符、字形、递归绘制树与可解析资源；精确证据 |
+| `LayoutObservations` | 原始模型类别与检测框；核对预测                   |
+| `DocumentSemantics`  | 段落、章节、公式归属、关系和全文阅读顺序         |
+| `SemanticPageView`   | 当前文档语义在单页上的临时投影；交互最常用       |
 
 通过 `context.documents` 取得这些数据，`documents.read` 控制主动读取。原有 get* 便捷调用绑定当前阅读器会话；API 0.1.3 的 openDocument(id) 可按已知文献库 ID 创建独立句柄，关闭或切换标签后仍能处理全文，不提供文献库扫描或任意文件 API。返回复制的数据，不写回权威语义；普通 DocumentSemantics 快照可能只覆盖部分页。长任务与全文完成判定见[PDF 任务指南](pdf-artifacts-and-comparison.md#独立于阅读器的文档句柄)。
 
@@ -30,6 +30,8 @@ export async function activate(context: ExtensionContext) {
 ```
 
 此清单需 `documents.read`。不要只在 activate 读一次就认为所有页完整；监听 activeDocument 和 documents.onDidChangeDocument，按 documentId 和 revision 更新本地业务状态。
+
+API 0.1.4 增加 schemaVersion 2 的 `PageFacts.graphics`、字符来源对象/原生矩阵，以及 `DocumentHandle.readResource` / `pdf.resolveResource`。资源包含原生页/对象 PDF、字体程序及图片流，正文与公式的解释继续使用 DocumentSemantics。坐标、嵌套 Form 保留范围、来源生命周期和重建示例见[原生绘制事实与资源](pdf-resources.md)。
 
 ## 当前阅读位置
 

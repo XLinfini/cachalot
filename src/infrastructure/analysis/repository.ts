@@ -1,11 +1,10 @@
-import { message, parseMessage } from "../../domain/messages";
+import { message } from "../../domain/messages";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { LayoutObservations, PageFacts } from "../../domain/analysis";
-import { LEGACY_ANALYSIS_KEYS, LAYOUT_OBSERVATIONS_KEY, PAGE_FACTS_KEY } from "../../domain/model";
-import { createPageFacts } from "../../domain/page-facts";
+import { LAYOUT_OBSERVATIONS_KEY, PAGE_FACTS_KEY } from "../../domain/model";
 import { openCacheStore } from "../cache-stores";
 import { cacheGeneration, writeCache } from "../cache-writes";
-import { validNativePage, validObservations, validPageFacts } from "./validation";
+import { validObservations, validPageFacts } from "./validation";
 
 const native = isTauri();
 async function transaction<T>(
@@ -53,35 +52,6 @@ export const analysisRepository = {
   async getFacts(documentId: string, page: number): Promise<PageFacts | null> {
     const result = await read(documentId, page, PAGE_FACTS_KEY);
     return validPageFacts(result, documentId, page) ? result : null;
-  },
-  async getLegacyFacts(documentId: string, page: number): Promise<PageFacts | null> {
-    for (const key of LEGACY_ANALYSIS_KEYS) {
-      const result = await read(documentId, page, key);
-      if (
-        validNativePage(result, page) &&
-        "schemaVersion" in result &&
-        result.schemaVersion === 1 &&
-        "documentId" in result &&
-        result.documentId === documentId &&
-        "cacheKey" in result &&
-        result.cacheKey === key
-      )
-        // These exact legacy PDFium versions emit only unmappedCharacters at
-        // extraction time. Layout/fallback warnings do not migrate into facts.
-        return createPageFacts(
-          documentId,
-          {
-            ...result,
-            warnings: result.warnings.filter(
-              (warning) => parseMessage(warning)?.code === "unmappedCharacters",
-            ),
-          },
-          "analyzedAt" in result && typeof result.analyzedAt === "number"
-            ? result.analyzedAt
-            : Date.now(),
-        );
-    }
-    return null;
   },
   putFacts(facts: PageFacts, generation = cacheGeneration("native")): Promise<void> {
     if (!validPageFacts(facts, facts.documentId, facts.page))

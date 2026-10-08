@@ -1,6 +1,6 @@
 # 插件 API 参考
 
-[插件开发](../extensions.md) · 版本：0.1.3 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
+[插件开发](../extensions.md) · 版本：0.1.4 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
 
 本页列出公开接口，不列私有宿主方法。外部插件通过 `activate(context)` 的 context 使用能力；纯工具从 `cachalot` 导入，可信 React 工具另见[视图指南](views.md#内置-react-模块)。
 
@@ -123,7 +123,9 @@ Progress.report({message?, increment?}) 更新增量百分比。用户关闭选�
 
 返回复制数据，不作为权威结构回写入口。不能仅由 complete=false 推导“没有任何可用页面”；应查看 coverage，见[文档分析](../document-analysis.md)。
 
-DocumentHandle：只读 document；readPdf(signal?)、getPageFacts(page)、getLayoutObservations(page)、getSemanticPage(page)、getDocumentSemantics()、analyze(options?)、close() 均为 Promise。analyze 的 options 为 level（facts/layout，默认 layout）、signal、onProgress；返回 `{document, level, semantics, facts}`。facts 确保所有页事实，但语义可部分覆盖；layout 确保全文结构覆盖，不完整会拒绝。onProgress 收到 `{phase, completed, total}`。
+DocumentHandle：只读 document；readPdf(signal?)、readResource(ref, signal?)（0.1.4，返回 Promise<PdfResource>）、getPageFacts(page)、getLayoutObservations(page)、getSemanticPage(page)、getDocumentSemantics()、analyze(options?)、close() 均为 Promise。analyze 的 options 为 level（facts/layout，默认 layout）、signal、onProgress；返回 `{document, level, semantics, facts}`。facts 确保所有页事实，但语义可部分覆盖；layout 确保全文结构覆盖，不完整会拒绝。onProgress 收到 `{phase, completed, total}`。
+
+PageFacts 使用 schemaVersion 2，新增 graphics（页框、旋转、递归绘制树、矩阵/路径/裁剪、字体/图片元数据与资源引用）。原有对象 id 与归一化显示坐标保留。readResource 只接受该句柄来源与当前 factsKey，单次读取取消不关闭句柄；详见[原生资源](pdf-resources.md)。
 
 句柄在关闭标签后仍有效；每次激活最多 8 个，close 可重复调用，停止插件自动释放。打开 signal 只用于打开过程；analyze 取消会关闭自己的句柄及分析资源，重新打开可复用缓存。见[PDF 任务指南](pdf-artifacts-and-comparison.md#独立于阅读器的文档句柄)。
 
@@ -143,11 +145,12 @@ Artifact 包含 id、name、mediaType、可选 sourceDocumentId、byteLength、c
 
 ## pdf
 
-| 方法                                      | 能力                             | 结果与约束                                                              |
-| ----------------------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
-| `inspect(bytes, signal?)`                 | documents.read                   | `Promise<PdfPageInfo[]>`，page/width/height；显示页尺寸为 PDF 点        |
-| `exportRegion(bytes, page, box, signal?)` | documents.read                   | `Promise<PdfRegion>`，bytes/width/height/contentIsolation；原生可见裁切 |
-| `compose(input, signal?)`                 | documents.read + documents.write | `Promise<Uint8Array>`，独立目标 PDF，来源不可变                         |
+| 方法                                      | 能力                             | 结果与约束                                                                                              |
+| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `inspect(bytes, signal?)`                 | documents.read                   | `Promise<PdfPageInfo[]>`，page/width/height；显示页尺寸为 PDF 点                                        |
+| `resolveResource(bytes, ref, signal?)`    | documents.read                   | API 0.1.4；`Promise<PdfResource>`，校验来源哈希、版本、对象路径与类型，按需读取原生 PDF / 字体 / 图片流 |
+| `exportRegion(bytes, page, box, signal?)` | documents.read                   | `Promise<PdfRegion>`，bytes/width/height/contentIsolation；原生可见裁切                                 |
+| `compose(input, signal?)`                 | documents.read + documents.write | `Promise<Uint8Array>`，独立目标 PDF，来源不可变                                                         |
 
 PdfComposition 为 sources 字节数组和 pages 页计划。每页可有 source `{source, page}`，或省略 source 提供 width/height；可有 removeText: SourceRef[] 与 overlays `{source, page, box?}[]`。source 索引从 0 起，页码从 1 起，box 为目标显示页归一化区域；没有 box 时铺满整页。
 
@@ -230,3 +233,5 @@ OCR 候选不改写语义树，PDF 裁剪不实现全文重排；细节见[公�
 | `FORMULA_PATTERN`                                         | 既有公式标记的匹配模式，不能单靠它证明翻译协议完整   |
 
 SDK 还重导出 PageFacts、LayoutObservations、ContentBlock、PdfCharacter、FormulaFragment/Asset/PreparationIssue、HeadingLevel、DocumentSemantics、SemanticPageView、SemanticNode、SourceRef、ContentSpan、SemanticFormula、ReaderSelection/Gesture、Provider、CompletionInput 和 DocumentRecord 等 DTO。API 0.1.3 增加 DocumentHandle/Snapshot/AnalysisProgress、Artifact/Input、PdfComposition/PageSource/Overlay/PageInfo/Region、ReaderAnchor、PdfAlignment/ComparisonOptions/ComparisonHandle。结构以源码为准，稳定性与来源版本见[数据契约](../document-analysis.md)。内部类型路径可用于理解实现，不是社区插件额外导入入口。
+
+API 0.1.4 重导出 PdfObject、PdfMatrix、PdfPathSegment、PdfDrawingObject、PdfPageGraphics、PdfResourceRef、PdfResource。资源 kind 为 page-pdf/object-pdf/font-program/image-stream；读取对象 PDF 必须检查 contentIsolation 与 preservedObjectPath，嵌套对象保留外层 Form。完整形状见公开 SDK 和[资源指南](pdf-resources.md)。

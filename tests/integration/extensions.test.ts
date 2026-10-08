@@ -159,6 +159,15 @@ test("document leases, artifacts, PDF operations and comparisons share public ow
   fixture.ports.documents.openDocument = async () => ({
     document: { id: "fixture", pageCount: 2 } as DocumentHandle["document"],
     readPdf: async () => new Uint8Array([1]),
+    readResource: async (ref) => ({
+      ref,
+      kind: "page-pdf",
+      mediaType: "application/pdf",
+      bytes: new Uint8Array([3]),
+      width: 300,
+      height: 400,
+      contentIsolation: "page",
+    }),
     getPageFacts: async () => {
       throw new Error("unused");
     },
@@ -184,6 +193,15 @@ test("document leases, artifacts, PDF operations and comparisons share public ow
     export: async () => undefined,
   };
   fixture.ports.pdf = {
+    resolveResource: async (_bytes, ref) => ({
+      ref,
+      kind: "page-pdf",
+      mediaType: "application/pdf",
+      bytes: new Uint8Array([3]),
+      width: 300,
+      height: 400,
+      contentIsolation: "page",
+    }),
     inspect: async () => [{ page: 1, width: 300, height: 400 }],
     exportRegion: async () => {
       throw new Error("unused");
@@ -194,6 +212,14 @@ test("document leases, artifacts, PDF operations and comparisons share public ow
   fixture.host.setActiveDocument("fixture");
   const ctx = fixture.context(),
     lease = await ctx.documents.openDocument("fixture");
+  const ref = { documentId: "fixture", factsKey: "fixture", page: 1, kind: "page-pdf" as const };
+  const resource = await lease.readResource(ref);
+  resource.bytes[0] = 99;
+  assert.deepEqual((await lease.readResource(ref)).bytes, new Uint8Array([3]));
+  assert.deepEqual(
+    (await ctx.pdf.resolveResource(new Uint8Array([1]), ref)).bytes,
+    new Uint8Array([3]),
+  );
   fixture.host.setActiveDocument(null);
   assert.deepEqual(
     await lease.readPdf(),

@@ -10,7 +10,10 @@ export type {
   FormulaPreparationIssue,
   HeadingLevel,
   PdfCharacter,
+  PdfObject,
 } from "../domain/analysis";
+export type * from "../domain/pdf-resources";
+import type { PdfResource, PdfResourceRef } from "../domain/pdf-resources";
 export type {
   DocumentSemantics,
   SemanticPageView,
@@ -308,6 +311,11 @@ export interface ExtensionContext {
   };
   /** Generic PDF operations execute in a separate computation worker. No translation policy. */
   pdf: {
+    resolveResource(
+      bytes: Uint8Array,
+      ref: PdfResourceRef,
+      signal?: AbortSignal,
+    ): Promise<PdfResource>;
     inspect(bytes: Uint8Array, signal?: AbortSignal): Promise<PdfPageInfo[]>;
     exportRegion(
       bytes: Uint8Array,

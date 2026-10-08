@@ -131,6 +131,7 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["artifacts.export", context.artifacts.export],
         ["pdf.inspect", context.pdf.inspect],
         ["pdf.exportRegion", context.pdf.exportRegion],
+        ["pdf.resolveResource", context.pdf.resolveResource],
         ["pdf.compose", context.pdf.compose],
         ["reader.openPdfComparison", context.reader.openPdfComparison],
         ["reader.getViewStates", context.reader.getViewStates],

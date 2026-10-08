@@ -139,6 +139,8 @@ ReaderWorkspace 可按通用比较注册项显示左右两个 PDF。左侧 PdfRe
 
 右侧 ArtifactPdfReader 是被动阅读区域，不调用 PageFacts/Heron/文档语义，不显示版面分析按钮，不提供框选翻译；它可以显示完全无关的 PDF，不继承左侧分析。右侧需要分析时，用户将产物作为新文献导入。保留 passive 单页渲染边界，不能仅隐藏按钮却在后台启动分析。
 
+来源 PageFacts 已升级 schema 2：`graphics` 的原生 PDF 坐标与显示 box 分开，嵌套 Form 使用对象路径；保留原有顶层 objects/id 供覆盖框与 SourceRef 使用。UI 不读取 WASM 句柄或把字体/图片大字节塞回事实。插件按需通过 readResource / pdf.resolveResource 获取资源；这些接口不触发右侧分析，具体范围见[资源契约](extension-api/pdf-resources.md)。
+
 有显式 alignment 默认联动，否则默认不联动。按页码和归一化阅读线 anchor 映射位置，不能直接复制 scrollTop；程序定位发布 cause=navigation，避免互相回滚。插件停止释放右侧视图和独立文档句柄，已经保存的产物保留。关闭原文标签也不取消插件持有的文档句柄。接口详见[PDF 指南](extension-api/pdf-artifacts-and-comparison.md)。
 
 具体选取与翻译规则属于 src/extensions/selection-translation，不搬进 PdfReader。插件能被停用，阅读器不能假设始终存在翻译按钮。

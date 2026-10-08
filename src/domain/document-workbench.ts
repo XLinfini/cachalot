@@ -1,6 +1,7 @@
 import type { Box, PageFacts, LayoutObservations } from "./analysis";
 import type { DocumentSemantics, SemanticPageView, SourceRef } from "./document-semantics";
 import type { DocumentRecord } from "./records";
+import type { PdfResourceRef, PdfResource } from "./pdf-resources";
 
 export interface DocumentAnalysisProgress {
   phase: "facts" | "layout";
@@ -17,6 +18,7 @@ export interface DocumentSnapshot {
 export interface DocumentHandle {
   readonly document: DocumentRecord;
   readPdf(signal?: AbortSignal): Promise<Uint8Array>;
+  readResource(ref: PdfResourceRef, signal?: AbortSignal): Promise<PdfResource>;
   getPageFacts(page: number): Promise<PageFacts>;
   getLayoutObservations(page: number): Promise<LayoutObservations | null>;
   getSemanticPage(page: number): Promise<SemanticPageView>;

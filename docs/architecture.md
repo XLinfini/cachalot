@@ -80,6 +80,8 @@ API 0.1.3 的 `documents.openDocument` 通过 `document-analysis/access.ts` 持�
 
 `infrastructure/pdf/operations.ts` 排队启动独立 PDFium Worker，提供 inspect、原生区域裁切和 compose；取消终止计算 Worker。compose 支持复制原页清理完整顶层文字对象后加译文层，也支持空白页组合外部排版与原生资源，输出独立 PDF。来源引用校验 hash、事实版本及完整对象覆盖，部分/嵌套对象拒绝。裁切保留原生资源和可见边界，不等同删除裁框外内容；复杂行内公式可由插件按基线作为排版资产插回，无需 OCR。
 
+API 0.1.4 的 PageFacts schema 2 由 `analysis/pdfium-graphics.ts` 提取物理绘制树、原生矩阵/页框、路径/裁剪及字体/图片元数据；原有顶层对象 ID 不改变。`domain/pdf-resources.ts` 定义 hash + factsKey + page + objectPath 定位器。PDF operations 的 resolveResource 或独立文档句柄 readResource 解析整页/对象 PDF、字体程序和图片流；大字节不进事实缓存。原生页资源保留无法结构化的 PDF 状态，嵌套对象保留外层 Form 并返回 form-group，避免 PDFium 重写 Form Matrix 导致失真。旧事实重新提取、语义输入键失效，Heron 观测契约保留。来源事实、目标布局与输出字节仍分开，通用 JSON 绘制编码器及 LaTeX 排版器尚未实现。[资源契约](extension-api/pdf-resources.md)列出读取范围与生命周期。
+
 `infrastructure/extensions/artifacts.ts` 在独立 IndexedDB 中按插件 ID 隔离二进制产物，元数据与字节原子替换；它是用户数据，停用、重启、卸载与清缓存保留。documents.write 控制产物及写 PDF 能力，不开放宿主路径。下载由运行适配器发起。
 
 `ReaderWorkspace` 保持原文 PdfReader 实例，按宿主比较注册项添加 `ArtifactPdfReader`。右侧只使用 PDF.js 和 passive 的单页渲染/文字层，不创建文档分析会话、不继承原文语义、不接入选区翻译；文件可完全无关。活动文献仍为左侧原文。多个区域发布带 viewId、anchor、cause 的状态，显式一对多区域映射驱动滚动联动，没有映射默认不联动；程序导航回声不再次传播。插件停止撤销比较但保留文件。公共契约见[PDF 任务与并列阅读](extension-api/pdf-artifacts-and-comparison.md)。

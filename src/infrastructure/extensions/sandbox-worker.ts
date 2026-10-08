@@ -289,7 +289,7 @@ export function sandboxWorker(module: ExtensionModule) {
         ]),
       ),
       pdf: Object.fromEntries(
-        ["inspect", "exportRegion", "compose"].map((name) => [
+        ["inspect", "exportRegion", "compose", "resolveResource"].map((name) => [
           name,
           (...args: Any[]) => invoke(`pdf.${name}`, ...args),
         ]),

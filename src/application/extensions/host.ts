@@ -1222,13 +1222,20 @@ export class ExtensionHost {
               }),
             );
             let closed = false;
-            const leaseCall = <T>(signal: AbortSignal | undefined, action: () => Promise<T>) => {
+            const leaseCall = <T>(
+              signal: AbortSignal | undefined,
+              action: (signal: AbortSignal) => Promise<T>,
+            ) => {
               if (closed) return Promise.reject(new DOMException("Document closed", "AbortError"));
-              return call("documents.read", signal, async () => structuredClone(await action()));
+              return call("documents.read", signal, async (combined) =>
+                structuredClone(await action(combined)),
+              );
             };
             const handle: DocumentHandle = {
               document: structuredClone(lease.document),
-              readPdf: (signal) => leaseCall(signal, () => lease.readPdf(signal)),
+              readPdf: (signal) => leaseCall(signal, (combined) => lease.readPdf(combined)),
+              readResource: (ref, signal) =>
+                leaseCall(signal, (combined) => lease.readResource(ref, combined)),
               getPageFacts: (page) => leaseCall(undefined, () => lease.getPageFacts(page)),
               getLayoutObservations: (page) =>
                 leaseCall(undefined, () => lease.getLayoutObservations(page)),
@@ -1305,6 +1312,11 @@ export class ExtensionHost {
           }),
       },
       pdf: {
+        resolveResource: (bytes, ref, signal) =>
+          call("documents.read", signal, (signal) => {
+            if (!host.ports.pdf) throw new Error("PDF operations unavailable");
+            return host.ports.pdf.resolveResource(bytes, structuredClone(ref), signal);
+          }),
         inspect: (bytes, signal) =>
           call("documents.read", signal, (signal) => {
             if (!host.ports.pdf) throw new Error("PDF operations unavailable");

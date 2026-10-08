@@ -6,7 +6,10 @@ import { dirname } from "node:path";
 import { PdfiumDocument } from "../src/infrastructure/analysis/pdfium";
 import { DoclingLayout } from "../src/infrastructure/analysis/docling";
 import { assemblePageSemantics } from "../src/application/document-analysis/page-semantics";
-import { buildDocumentSemantics, projectSemanticPage } from "../src/application/document-analysis/document-semantics";
+import {
+  buildDocumentSemantics,
+  projectSemanticPage,
+} from "../src/application/document-analysis/document-semantics";
 import { createPageFacts } from "../src/domain/page-facts";
 import { LAYOUT_OBSERVATIONS_KEY, LAYOUT_MODEL } from "../src/domain/model";
 import type { LayoutObservations, PageFacts } from "../src/domain/analysis";
@@ -33,7 +36,7 @@ try {
   const count = pdf.open(bytes);
   for (let number = 1; number <= count; number++) {
     const tick = performance.now();
-    const native = createPageFacts(documentId, pdf.extract(number));
+    const native = createPageFacts(documentId, pdf.extract(number, documentId));
     const detections = await layout.detect(pdf.renderRgb(number, LAYOUT_MODEL.inputSize));
     const observed: LayoutObservations = {
       schemaVersion: 1,

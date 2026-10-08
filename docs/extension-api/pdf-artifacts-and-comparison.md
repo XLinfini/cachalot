@@ -4,6 +4,8 @@
 
 这些接口从 API **0.1.3** 起提供。宿主负责来源读取、分析、PDF 资源操作、产物保存和阅读；翻译、目标排版、字体选择及任务恢复策略由插件实现。当前没有预装全文翻译插件。
 
+API **0.1.4** 增加[增强页面事实与可解析资源](pdf-resources.md)：原生绘制树、整页/对象 PDF、字体程序和图片流。需要这些接口时清单声明 `^0.1.4`。
+
 ## 声明能力
 
 ```json
@@ -42,7 +44,7 @@ export async function collectDocument(context: ExtensionContext, signal: AbortSi
 }
 ```
 
-句柄有 `document`、`readPdf`、`getPageFacts`、`getLayoutObservations`、`getSemanticPage`、`getDocumentSemantics`、`analyze` 和 `close`。返回的字节与结构都是副本，不允许通过它们改写权威事实或语义。
+句柄有 `document`、`readPdf`、`readResource`（0.1.4）、`getPageFacts`、`getLayoutObservations`、`getSemanticPage`、`getDocumentSemantics`、`analyze` 和 `close`。返回的字节与结构都是副本，不允许通过它们改写权威事实或语义。
 
 - `analyze({level: "facts"})` 确保所有页的原生事实，不要求版面语义完整；不能把这个快照当作完成的全文结构。
 - 默认 `level: "layout"` 确保所有页的事实及版面分析，返回完整覆盖的语义；失败或取消会拒绝，不伪装为完整结果。
@@ -130,7 +132,7 @@ const output = await context.pdf.compose(
 
 省略 source 时创建空白页，width/height 是 PDF 点；提供 source 时不能同时指定尺寸。叠加层按数组顺序绘制，box 是目标显示页归一化区域，省略则铺满整页；插件应提供合适的宽高比，宿主按区域映射，不自行推断排版。
 
-此路线可改变页数、段落位置及公式位置，文字排版 PDF 与裁出的图片、公式等来源资源由插件组合。PageFacts 仍是原文事实，不是完整字体、路径和绘制指令；插件建立自己的目标排版计划，不直接把事实里的英文字符串替换后假定所有资源已齐全。当前宿主不提供文字排版器，也不自动重建原文书签、链接或目录。
+此路线可改变页数、段落位置及公式位置，文字排版 PDF 与裁出的图片、公式等来源资源由插件组合。增强 PageFacts 提供物理绘制结构和可解析原生资源，可据此保真恢复来源页面；插件建立自己的目标排版计划。当前尚无修改后的绘制 JSON 到 PDF 的通用编码器，不能只替换 text 就完成中文排版；也不提供文字排版器或自动重建原文书签、链接与目录。资源读取与源页重建示例见[原生资源指南](pdf-resources.md)。
 
 两条路线可在同一次合成中逐页混用。每次最多 256 个来源、来源总计 256 MiB、10,000 个目标页；单页尺寸最多 20,000 PDF 点。应按任务规模管理中间资源。
 

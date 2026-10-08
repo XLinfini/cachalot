@@ -20,6 +20,7 @@ self.onmessage = async (event: MessageEvent<{ wasmUrl: string; operation: PdfOpe
         throw new Error("Invalid PDF bytes");
       const count = pdf.open(input.bytes);
       if (input.kind === "inspect") value = pdf.inspectPages();
+      else if (input.kind === "resource") value = await pdf.resolveResource(input.ref);
       else {
         if (
           !Number.isInteger(input.page) ||
