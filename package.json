@@ -7,6 +7,8 @@
     "dev": "vite",
     "models:prepare": "node scripts/prepare-model.ts",
     "models:check": "node scripts/prepare-model.ts --check",
+    "texlive:prepare": "node --import tsx scripts/prepare-texlive.ts",
+    "texlive:check": "node --import tsx scripts/prepare-texlive.ts --check",
     "prebuild": "npm run models:check",
     "build": "tsc --noEmit && vite build",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",

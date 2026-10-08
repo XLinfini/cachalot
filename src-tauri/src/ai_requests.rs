@@ -1,4 +1,4 @@
-//! Native cancellation shared by OCR and LLM requests. Registration precedes
+//! Native cancellation shared by OCR, LLM and typesetting requests. Registration precedes
 //! work so an early cancellation cannot be lost between IPC commands.
 use futures_util::future::{AbortHandle, AbortRegistration, Abortable};
 use std::{collections::HashMap, future::Future, sync::Mutex};

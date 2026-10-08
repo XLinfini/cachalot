@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Database,
   HardDrive,
+  FileText,
   Layers3,
   Languages,
   Search,
@@ -18,6 +19,7 @@ import OcrSettings from "./OcrSettings";
 import ProviderEditor from "./ProviderEditor";
 import DefaultModelSetting from "./DefaultModelSetting";
 import CacheSettings from "./CacheSettings";
+import TypesettingSettings from "./TypesettingSettings";
 import {
   ExtensionSettings,
   ExtensionView,
@@ -50,7 +52,10 @@ export default function ProviderSettings({
   const pluginViews = extensions.views.filter((view) => view.declaration.location === "settings");
   const pluginView = pluginViews.find((view) => view.declaration.id === section);
   useEffect(() => {
-    if (!["general", "providers", "ocr", "cache", "extensions"].includes(section) && !pluginView)
+    if (
+      !["general", "providers", "ocr", "cache", "typesetting", "extensions"].includes(section) &&
+      !pluginView
+    )
       setSection("extensions");
   }, [section, pluginView]);
 
@@ -93,6 +98,13 @@ export default function ProviderSettings({
       icon: Database,
       group: "app",
       keywords: [t("ocr.mode"), t("ocr.profile"), t("ocr.providersTitle")],
+    },
+    {
+      id: "typesetting",
+      title: t("typesetting.title"),
+      icon: FileText,
+      group: "app",
+      keywords: ["XeLaTeX", "TeX Live", t("typesetting.packagesTitle")],
     },
     {
       id: "cache",
@@ -250,6 +262,8 @@ export default function ProviderSettings({
           />
         ) : matches.length > 0 && section === "cache" ? (
           <CacheSettings />
+        ) : matches.length > 0 && section === "typesetting" ? (
+          <TypesettingSettings />
         ) : null}
         {pluginViews.map((view) => (
           <div

@@ -66,6 +66,7 @@ export const en = {
       },
       ocr: "Reconstruct formulas with OCR",
       lm: "Use configured language models",
+      typesetting: "Compile LaTeX into PDFs locally",
     },
     problems: {
       missing: "Missing dependency: {{ids}}",
@@ -333,6 +334,42 @@ export const en = {
     selectedModels_one: "{{count}} model added",
     selectedModels_other: "{{count}} models added",
     manualModelHint: "You can still enter a model ID manually.",
+  },
+  typesetting: {
+    title: "PDF typesetting",
+    eyebrow: "XeLaTeX · TeX Live",
+    description:
+      "Local typesetting for extensions that generate PDFs. The private runtime includes Chinese and mathematical fonts. Reading and chat remain available during compilation.",
+    loading: "Checking runtime…",
+    ready: "Runtime initialized",
+    pending: "Runtime will be initialized on first use",
+    reasons: {
+      "desktop-only": "XeLaTeX is available in the desktop application.",
+      "unsupported-platform": "The bundled runtime currently supports Linux x86-64.",
+      "bundle-missing":
+        "Runtime bundle is missing or incompatible. Prepare it before building the desktop application.",
+      "sandbox-missing": "Install bubblewrap to run isolated typesetting jobs.",
+      "engine-missing": "The external TeX Live directory or its xelatex format is missing.",
+    },
+    engine: "Runtime",
+    bundled: "Bundled TeX Live",
+    external: "External TeX Live",
+    binDirectory: "TeX Live executable directory",
+    save: "Save runtime",
+    initialize: "Initialize runtime",
+    externalHint:
+      "External mode requires a self-contained TeX Live tree with xelatex, xdvipdfmx, kpsewhich and tlmgr. Both modes compile in isolation.",
+    packagesTitle: "Packages and user files",
+    packageNames: "Package names",
+    install: "Install packages",
+    packagesHint:
+      "Install packages into the separate user tree from the frozen TeX Live 2025 repository. User packages and templates survive application updates. Packages that require system installation must be managed in an external TeX Live tree. Extensions cannot install packages.",
+    runtimeDirectory: "Bundled runtimes",
+    userTree: "User packages and fonts",
+    templatesDirectory: "User templates",
+    repository: "Package repository",
+    done: "Done",
+    cancelled: "Operation cancelled",
   },
   cache: {
     eyebrow: "Local storage",

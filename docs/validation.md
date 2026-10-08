@@ -38,6 +38,14 @@
 
 24 张设置截图保存在 `test-results/settings-window/`，缓存与插件截图留在既有输出目录；输出、依赖、权重与构建产物不提交。需要真实论文的布局用例自动跳过；未验证 iPad 真机、桌面 WebKit 或 Tauri 实际打包。
 
+### 2026-10-08：私有 XeLaTeX 与插件排版服务
+
+Linux x86-64 开发机验证通过：TypeScript 类型检查、11 个单元模块、17 个集成模块、17 项常规 Rust 测试；另外显式执行 2 项真实运行时测试（常规组中标记 ignored）。这些测试解压固定 TeX Live 2025 包，在实际 bubblewrap 中编译中文、数学字体、原生二维分式 PDF、用户宏包和模板；测量文件、多轮、缺包、文件隔离、禁用 shell escape、超时后恢复、外部 TeX 树和清理均通过。booktabs 从固定公开仓库安装到临时用户树，再用于真实编译；未修改系统 TeX 或用户数据。Poppler 渲染产物后人工核对中文和分式字形/分数线。
+
+隔离 Chromium 的 8 项界面回归通过：API 0.1.5 已安装 IIFE 经生产桥读取排版状态、浏览器拒绝编译，同时生成/保存/比较 PDF 并保留原文节点（中英文）；排版设置的桌面提示与搜索（中英文）；既有设置浮窗、草稿和键盘操作（中英文、两种横屏尺寸）。原生 IPC 模拟用于传输契约，不能代替上述真正的进程/编译测试。
+
+`texlive:check` 和实际 `tauri build --debug --bundles deb` 通过，核对 Deb 中 `usr/lib/Cachalot/texlive` 的运行时、manifest、包修订及编译器源码，control 声明 bubblewrap、Perl、字体库和 Tauri 默认依赖。常规浏览器构建保持独立；既有大 bundle 与无效动态导入提示仍为警告。未验证桌面 WebKit UI 的真人操作、Windows/macOS、AppImage 安装环境或未知论文的全文翻译重排；全文翻译插件尚未预装。
+
 ## 结果的边界
 
 | 已有验证                          | 仍需单独验证                                   |

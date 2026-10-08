@@ -11,6 +11,40 @@ import { fixtureTranslation } from "../fixtures/translation";
 import { loadReferencePaper } from "../support/reference-paper";
 import { seedPaper } from "../support/seed-paper";
 
+for (const language of ["zh", "en"] as const) {
+  test(`PDF typesetting settings explain desktop availability (${language})`, async () => {
+    const labels = language === "zh" ? zh : en;
+    const browser = await chromium.launch({ executablePath: process.env.CACHALOT_CHROMIUM });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+    try {
+      const page = await context.newPage();
+      await page.addInitScript(
+        (language) => localStorage.setItem("cachalot:setting:uiLanguage", language),
+        language,
+      );
+      await page.goto("/");
+      await page.getByRole("button", { name: labels.common.settings, exact: true }).click();
+      await page.getByRole("button", { name: labels.typesetting.title, exact: true }).click();
+      const settings = page.locator('[data-ui="typesetting-settings"]');
+      await expect(settings.getByRole("status")).toHaveText(
+        labels.typesetting.reasons["desktop-only"],
+      );
+      await expect(
+        settings.getByRole("button", { name: labels.typesetting.initialize }),
+      ).toHaveCount(0);
+      await page.locator('[data-ui="settings-search"]').fill("XeLaTeX");
+      await expect(settings).toBeVisible();
+      await page.getByRole("button", { name: labels.settings.close, exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: labels.common.settings, exact: true }),
+      ).toBeVisible();
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  });
+}
+
 test("Layout and visual behavior @paper", async () => {
   const paper = process.env.CACHALOT_PAPER;
   if (!paper) {

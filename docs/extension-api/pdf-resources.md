@@ -82,4 +82,4 @@ const rebuilt = await context.pdf.compose({ sources, pages }, signal);
 
 独立排版则从 DocumentSemantics 选择翻译内容，读取需要保留的原生资产，生成新的目标字体、坐标和排版 PDF，再 compose 到空白页面。**当前没有把修改后的 graphics JSON 直接编码成 PDF 的通用绘制指令写入器。**原始字符编码、blend mode、完整资源字典等仍由原生资源保留，不能把 PageFacts 的 text 替换为中文便直接提交为输出。译文和目标排版另存，后续可以在现有来源层上建设目标绘制表示与编码器。
 
-这版不新增 OCR、数学识别或 LaTeX 排版器，也不改变右侧产物 PDF 的被动阅读约定。
+API 0.1.4 的资源层不增加 OCR 或数学识别；API 0.1.5 的[独立 XeLaTeX 服务](typesetting.md)可消费原生资源附件。右侧产物 PDF 的被动阅读约定不变。

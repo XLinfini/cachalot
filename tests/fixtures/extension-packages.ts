@@ -222,8 +222,8 @@ export function pdfWorkbenchPackage() {
     ...extensionFixtureManifest,
     name: "pdf-workbench",
     displayName: "PDF workbench fixture",
-    engines: { cachalot: "^0.1.4" },
-    capabilities: ["documents.read", "documents.write", "reader.interact"],
+    engines: { cachalot: "^0.1.5" },
+    capabilities: ["documents.read", "documents.write", "reader.interact", "typesetting"],
     contributes: {
       commands: [
         {
@@ -252,6 +252,12 @@ export function pdfWorkbenchPackage() {
       let source, comparison;
       const status = ctx.window.createStatusBarItem('fixture.pdf-workbench.status'); status.text='PDF fixture ready'; status.show();
       ctx.commands.registerCommand('fixture.pdf-workbench.build', async () => {
+        const tex = await ctx.typesetting.getStatus();
+        if(tex.available || tex.reason !== 'desktop-only') throw new Error('Unexpected browser typesetting status');
+        let desktopOnly = false;
+        try { await ctx.typesetting.compile({source:'fixture', assets:[{name:'f.pdf',bytes:new Uint8Array([1])}]}); }
+        catch(error) { desktopOnly = error.message.includes('desktop application'); }
+        if(!desktopOnly) throw new Error('Browser attempted native typesetting');
         await comparison?.close(); await source?.close();
         source = await ctx.documents.openDocument(ctx.reader.activeDocumentId);
         let progress = 0;

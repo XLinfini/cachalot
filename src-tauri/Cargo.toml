@@ -24,3 +24,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 futures-util = "0.3"
 keyring = "3"
 regex = "1"
+tokio = { version = "1", features = ["process", "io-util", "time", "sync", "rt", "macros"] }
+tar = "0.4"
+flate2 = "1"
+libc = "0.2"

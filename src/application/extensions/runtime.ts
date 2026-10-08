@@ -104,6 +104,7 @@ export const extensionHost = new ExtensionHost(
       },
     },
     pdf: pdfOperations,
+    typesetting: services.typesetting,
     ocr: {
       reconstructFormulas: (formulas, options) =>
         reconstructFormulas({

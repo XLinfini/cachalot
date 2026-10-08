@@ -85,6 +85,7 @@ export interface HostPorts {
     export(owner: string, id: string, signal?: AbortSignal): Promise<void>;
   };
   pdf?: ExtensionContext["pdf"];
+  typesetting?: ExtensionContext["typesetting"];
   ocr: ExtensionContext["ocr"];
   formulas: ExtensionContext["formulas"];
   lm: Pick<ExtensionContext["lm"], "supportsImages" | "complete"> & {
@@ -1332,6 +1333,18 @@ export class ExtensionHost {
             active("documents.read");
             if (!host.ports.pdf) throw new Error("PDF operations unavailable");
             return host.ports.pdf.compose(input, signal);
+          }),
+      },
+      typesetting: {
+        getStatus: () =>
+          call("typesetting", undefined, async () => {
+            if (!host.ports.typesetting) throw new Error("Typesetting unavailable");
+            return structuredClone(await host.ports.typesetting.getStatus());
+          }),
+        compile: (input, signal) =>
+          call("typesetting", signal, async (signal) => {
+            if (!host.ports.typesetting) throw new Error("Typesetting unavailable");
+            return host.ports.typesetting.compile(structuredClone(input), signal);
           }),
       },
       reader: {

@@ -1,6 +1,6 @@
 # Cachalot 文档
 
-这份文档对应仓库当前的 Cachalot 0.1.0 与插件 API 0.1.1。先按要完成的任务选择入口，再查阅参考。教程说明如何做，参考说明字段和边界，架构说明为什么这样组织。
+这份文档对应仓库当前的 Cachalot 0.1.0 与插件 API 0.1.5。先按要完成的任务选择入口，再查阅参考。教程说明如何做，参考说明字段和边界，架构说明为什么这样组织。
 
 ## 用户指南
 
@@ -12,6 +12,7 @@
 | [论文问答](user-guide/chat.md)                   | 检索范围、模型切换、图片、历史会话和回答边界       |
 | [模型与公式 OCR](user-guide/models-and-ocr.md)   | API 地址、模型列表、图像能力、密钥和独立 OCR       |
 | [插件管理](user-guide/extensions.md)             | 本地安装、补齐依赖、更新、停用、卸载和重启         |
+| [PDF 排版与宏包](user-guide/typesetting.md)      | 私有 XeLaTeX、用户宏包与字体、外部运行时和取消     |
 | [数据与缓存](user-guide/data-and-cache.md)       | 存储位置、六类缓存、清除范围和数据恢复边界         |
 | [常见问题与排查](user-guide/troubleshooting.md)  | 按现象定位阅读、模型、公式、插件及构建问题         |
 
@@ -29,6 +30,7 @@
 | [视图与工作台](extension-api/views.md)                  | 命令、树、Webview、侧栏、底栏、设置与状态项         |
 | [文档与阅读交互](extension-api/documents-and-reader.md) | 事实、语义、完整覆盖框、手势、选区和悬停            |
 | [原生绘制事实与资源](extension-api/pdf-resources.md)    | 绘制树、稳定来源引用、原生页/对象 PDF、字体与图片流 |
+| [XeLaTeX 排版](extension-api/typesetting.md)            | 编译、PDF/字体附件、测量文件、权限和原生公式排版    |
 | [模型与公式](extension-api/ai-and-formulas.md)          | 流式 LLM、独立 OCR、来源资源和请求取消              |
 | [API 参考](extension-api/api-reference.md)              | 当前公开接口的参数、返回值与能力要求                |
 | [打包、测试与分发](extension-api/packaging.md)          | 包格式、资源、限制、验证和本地分发                  |

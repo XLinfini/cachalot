@@ -140,6 +140,72 @@ function harness(
     deliver: (delta: string) => deliver?.(delta),
   };
 }
+
+test("typesetting requires its own capability, copies input and cancels when the extension stops", async () => {
+  const denied = harness({ activate() {} });
+  denied.ports.typesetting = {
+    getStatus: async () => {
+      throw new Error("should not call");
+    },
+    compile: async () => {
+      throw new Error("should not call");
+    },
+  };
+  await denied.host.start();
+  await assert.rejects(
+    denied.context().typesetting.getStatus(),
+    /Capability not declared: typesetting/,
+  );
+  await denied.host.dispose();
+
+  const allowed = harness(
+    { activate() {} },
+    {
+      ...extensionFixtureManifest,
+      capabilities: [...extensionFixtureManifest.capabilities, "typesetting"],
+    },
+  );
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let aborted = false;
+  allowed.ports.typesetting = {
+    getStatus: async () => ({
+      available: true,
+      initialized: true,
+      mode: "bundled",
+      runtimeId: "fixture",
+      reason: null,
+    }),
+    compile: async (input, signal) => {
+      input.assets![0].bytes[0] = 99;
+      started();
+      return new Promise((_, reject) =>
+        signal?.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(new DOMException("Cancelled", "AbortError"));
+          },
+          { once: true },
+        ),
+      );
+    },
+  };
+  await allowed.host.start();
+  assert.equal((await allowed.context().typesetting.getStatus()).available, true);
+  const original = new Uint8Array([1]);
+  const pending = allowed
+    .context()
+    .typesetting.compile({ source: "fixture", assets: [{ name: "f.pdf", bytes: original }] });
+  const rejected = assert.rejects(pending, { name: "AbortError" });
+  await ready;
+  assert.equal(original[0], 1);
+  await allowed.host.dispose();
+  await rejected;
+  assert.equal(aborted, true);
+});
 const preview: ReaderSelection = {
   documentId: "fixture",
   page: 1,

@@ -133,6 +133,8 @@ export function sandboxModule(pkg: ExtensionPackage): ExtensionModule {
         ["pdf.exportRegion", context.pdf.exportRegion],
         ["pdf.resolveResource", context.pdf.resolveResource],
         ["pdf.compose", context.pdf.compose],
+        ["typesetting.getStatus", context.typesetting.getStatus],
+        ["typesetting.compile", context.typesetting.compile],
         ["reader.openPdfComparison", context.reader.openPdfComparison],
         ["reader.getViewStates", context.reader.getViewStates],
         ["reader.revealPage", context.reader.revealPage],

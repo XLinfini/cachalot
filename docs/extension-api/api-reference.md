@@ -1,6 +1,6 @@
 # 插件 API 参考
 
-[插件开发](../extensions.md) · 版本：0.1.4 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
+[插件开发](../extensions.md) · 版本：0.1.5 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
 
 本页列出公开接口，不列私有宿主方法。外部插件通过 `activate(context)` 的 context 使用能力；纯工具从 `cachalot` 导入，可信 React 工具另见[视图指南](views.md#内置-react-模块)。
 
@@ -12,7 +12,7 @@
 | `Event<T>`     | `(listener: (value: T) => void) => Disposable`                             |
 | `Label`        | 字符串或 `{zh: string, en: string}`                                        |
 | `Box`          | 显示页归一化 `[left, top, right, bottom]`                                  |
-| `Capability`   | documents.read、documents.write、reader.interact、reader.decorate、ocr、lm |
+| `Capability`   | documents.read、documents.write、reader.interact、reader.decorate、ocr、lm、typesetting |
 | `ViewLocation` | sidebar.left、sidebar.right、panel、settings、modal                        |
 | Promise        | 异步数据与完成信号；不能将返回 Promise 当作同步值                          |
 
@@ -154,7 +154,18 @@ Artifact 包含 id、name、mediaType、可选 sourceDocumentId、byteLength、c
 
 PdfComposition 为 sources 字节数组和 pages 页计划。每页可有 source `{source, page}`，或省略 source 提供 width/height；可有 removeText: SourceRef[] 与 overlays `{source, page, box?}[]`。source 索引从 0 起，页码从 1 起，box 为目标显示页归一化区域；没有 box 时铺满整页。
 
-移除文字核验内容身份与事实版本，只接受完整顶层文字对象；部分或嵌套对象拒绝，不能把绘制白色遮罩等同内容删除。exportRegion 的 contentIsolation 为 visual-crop，隐藏资源可能保留，不是脱敏操作。计算在独立 Worker 中排队，可取消；不提供文字排版器。两条生成路线、限制与行内公式迁移见[PDF 指南](pdf-artifacts-and-comparison.md)。
+移除文字核验内容身份与事实版本，只接受完整顶层文字对象；部分或嵌套对象拒绝，不能把绘制白色遮罩等同内容删除。exportRegion 的 contentIsolation 为 visual-crop，隐藏资源可能保留，不是脱敏操作。计算在独立 Worker 中排队，可取消。文字排版使用独立 typesetting 服务。两条生成路线、限制与行内公式迁移见[PDF 指南](pdf-artifacts-and-comparison.md)。
+
+## typesetting
+
+API 0.1.5；全部需要 `typesetting`，当前支持 Linux x86-64 桌面版。
+
+| 方法 | 结果 |
+| --- | --- |
+| `getStatus()` | `Promise<TypesettingStatus>`：available、initialized、mode、runtimeId、reason；无本机路径 |
+| `compile(input, signal?)` | `Promise<TypesettingResult>`：success、pdf（Uint8Array 或 null）、log、files（name/bytes） |
+
+TypesettingInput 为 source、可选 assets（name/Uint8Array bytes）、passes（1–3，默认 1）、timeoutMs（1000–300000，默认 120000）、returnFiles（平面名称）。源码最多 2 MiB，输入合计最多 64 MiB/256 附件；返回最多 64 个文件，PDF 和文件合计 64 MiB，日志 1 MiB。TeX 失败返回 success:false；取消、无运行时和输入错误拒绝。禁止路径、重复名称、输入输出重名及 document.* 保留名称。API 不提供宏包管理、命令参数、引擎配置或任意文件读取。详见[源码、原生公式、基线与隔离](typesetting.md)。
 
 ## reader
 

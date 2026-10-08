@@ -46,6 +46,7 @@
 | 设置外壳            | [SettingsDialog](../src/components/SettingsDialog.tsx)、[ProviderSettings](../src/components/ProviderSettings.tsx)                                                           | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
 | 服务商与密钥        | [ProviderEditor](../src/components/ProviderEditor.tsx)、[ApiKeyField](../src/components/ApiKeyField.tsx)                                                                     | 未保存草稿、临时模型目录、接口地址与真实密钥读取                  |
 | OCR 与缓存          | [OcrSettings](../src/components/OcrSettings.tsx)、[CacheSettings](../src/components/CacheSettings.tsx)                                                                       | 独立选择、连接检查、六类缓存、确认与统计错误                      |
+| PDF 排版            | [TypesettingSettings](../src/components/TypesettingSettings.tsx) | 私有/外部运行时、宏包安装、路径与日志；关闭页面取消自己的操作 |
 | 通用插件工作台      | [ExtensionWorkbench](../src/components/extensions/ExtensionWorkbench.tsx)、[ExtensionSettings](../src/components/extensions/ExtensionSettings.tsx)                           | 外部订阅、动态登记、树/Webview、视图实例、安装与依赖预览          |
 | 插件公共交互        | [WorkbenchServices](../src/components/extensions/WorkbenchServices.tsx)、[ExtensionConfiguration](../src/components/extensions/ExtensionConfiguration.tsx)                   | 命令面板/快捷键、右键菜单、输入/选择/进度及声明配置字段           |
 | 选区翻译插件 UI     | [TranslationPopup](../src/extensions/selection-translation/TranslationPopup.tsx)、[TranslationSettings](../src/extensions/selection-translation/TranslationSettings.tsx)     | 结果与提示词属于插件；经 SDK 挂载，不在 App 中直接导入            |
@@ -104,6 +105,7 @@ ProviderSettings 保留的是模型服务编辑器和已注册插件设置视图
 | OCR 选择与预设             | services.ocr 的 getSelection/select/adapters/presets/endpoint/createPreset/test            |
 | 偏好                       | services.settings.get/set                                                                  |
 | 缓存统计与分类清除         | services.cache.usage/clear                                                                 |
+| PDF 排版与本体运行时管理 | services.typesetting.getStatus/getSettings/configure/initialize/installPackages/compile；插件只开放 getStatus/compile |
 | 历史会话与消息             | services.conversations 的 create/list/rename/remove/messages/saveMessage/removeMessage     |
 | 本体问答                   | services.assistant.askPaper，增量回调和最终字符串                                          |
 | 共享分析                   | services.analysis.createSession，React 可复用 useDocumentAnalysis                          |

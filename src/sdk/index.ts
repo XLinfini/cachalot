@@ -14,6 +14,8 @@ export type {
 } from "../domain/analysis";
 export type * from "../domain/pdf-resources";
 import type { PdfResource, PdfResourceRef } from "../domain/pdf-resources";
+export type { TypesettingStatus, TypesettingInput, TypesettingResult } from "../domain/typesetting";
+import type { TypesettingStatus, TypesettingInput, TypesettingResult } from "../domain/typesetting";
 export type {
   DocumentSemantics,
   SemanticPageView,
@@ -62,7 +64,13 @@ export interface Disposable {
 export type Event<T> = (listener: (value: T) => void) => Disposable;
 export type Label = string | { zh: string; en: string };
 export type Capability =
-  "documents.read" | "documents.write" | "reader.interact" | "reader.decorate" | "ocr" | "lm";
+  | "documents.read"
+  | "documents.write"
+  | "reader.interact"
+  | "reader.decorate"
+  | "ocr"
+  | "lm"
+  | "typesetting";
 export type ViewLocation = "sidebar.left" | "sidebar.right" | "panel" | "settings" | "modal";
 export type { ContextValue } from "../domain/context-keys";
 export type {
@@ -324,6 +332,11 @@ export interface ExtensionContext {
       signal?: AbortSignal,
     ): Promise<PdfRegion>;
     compose(input: PdfComposition, signal?: AbortSignal): Promise<Uint8Array>;
+  };
+  /** Native XeLaTeX service. No package installation, executable or local-path access. */
+  typesetting: {
+    getStatus(): Promise<TypesettingStatus>;
+    compile(input: TypesettingInput, signal?: AbortSignal): Promise<TypesettingResult>;
   };
   reader: {
     openPdfComparison(options: PdfComparisonOptions): Promise<PdfComparisonHandle>;

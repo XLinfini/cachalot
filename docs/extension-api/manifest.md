@@ -4,7 +4,7 @@
 
 插件包根目录必须有 `package.json`。源目录的 `main` 可以指向 TS/JS；安装包的 `main` 必须是可解码的 UTF-8 `.js` IIFE 入口，导出全局 `cachalotExtension`。完整示例见[教程](get-started.md)。
 
-类型定义在 [ExtensionManifest](../../src/sdk/index.ts)，运行校验在 [manifest.ts](../../src/infrastructure/extensions/manifest.ts)。以下规则对应当前 API 0.1.4。
+类型定义在 [ExtensionManifest](../../src/sdk/index.ts)，运行校验在 [manifest.ts](../../src/infrastructure/extensions/manifest.ts)。以下规则对应当前 API 0.1.5。
 
 ## 身份、版本与入口
 
@@ -48,6 +48,7 @@
 | `reader.decorate` | 阅读背景和覆盖框                                                            |
 | `ocr`             | 指定公式的复建服务                                                          |
 | `lm`              | 所有已启用模型的实时目录与事件、当前模型、图像能力、流式调用                |
+| `typesetting`     | 本地 XeLaTeX 编译，PDF/图片/字体附件及测量文件；不授予宏包安装或本机路径 |
 
 工具/悬停的 `reader.interact` 回调会接收包含文字与语义的页面投影，它不是“只能看鼠标、不能看文档内容”的权限。选择最小能力，并在安装描述中说明内容使用目的。
 
@@ -80,7 +81,7 @@ enablement、when 使用同一声明式上下文语法，支持逻辑、等值�
 
 | 错误                                  | 修正                                        |
 | ------------------------------------- | ------------------------------------------- |
-| API 范围为 `*` 或排除 0.1.4           | 声明实际兼容范围；使用最新接口可写 `^0.1.4` |
+| API 范围为 `*` 或排除 0.1.5           | 声明实际兼容范围；使用最新接口可写 `^0.1.5` |
 | 注册未声明的命令/视图                 | 同步清单和注册，确认 ID 完全一致            |
 | 容器不存在或位置不同                  | 在同一清单声明容器，保持 location 一致      |
 | 用 npm 包名作为 extensionDependencies | 改成实际插件 ID；第三方库由构建器打入代码   |

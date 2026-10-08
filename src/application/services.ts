@@ -1,4 +1,5 @@
 import { platform } from "../infrastructure/platform";
+import { typesetting } from "../infrastructure/typesetting";
 import type { FormulaFragment } from "../domain/analysis";
 import { analysisRepository } from "../infrastructure/analysis/repository";
 import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
@@ -32,6 +33,7 @@ import {
  * and domain DTOs, never on Tauri commands, SQL, IndexedDB or model tensors.
  */
 export const services = {
+  typesetting,
   cache: cacheManagement,
   library: {
     list: platform.listDocuments,

@@ -294,6 +294,10 @@ export function sandboxWorker(module: ExtensionModule) {
           (...args: Any[]) => invoke(`pdf.${name}`, ...args),
         ]),
       ),
+      typesetting: {
+        getStatus: () => invoke("typesetting.getStatus"),
+        compile: (...args: Any[]) => invoke("typesetting.compile", ...args),
+      },
       reader: {
         openPdfComparison: (...args: Any[]) => invoke("reader.openPdfComparison", ...args),
         getViewStates: () => invoke("reader.getViewStates"),

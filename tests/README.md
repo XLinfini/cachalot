@@ -52,6 +52,18 @@ OCR 用例按边界组织：`integration/ocr.test.ts` 维护内置厂商的协�
 
 `integration/native-ocr.test.ts` 仅验证 Tauri 命令路由、请求信封和 TypeScript 厂商响应解析；鉴权注入、地址校验及脱敏由 Rust 共享契约测试验证，不用命令模拟代替原生实现。
 
+XeLaTeX 是独立原生边界：`integration/native-typesetting.test.ts` 验证附件/结果编解码、注册后调用/取消及浏览器拒绝；权限、输入副本和停用取消仍在 `integration/extensions.test.ts`。安装后的 PDF workbench API 0.1.5 IIFE 经生产桥查询排版状态并验证浏览器不能调用原生编译；PDF 比较阅读回归继续维护在同一模块。中英文桌面服务提示和设置搜索在 `e2e/visual-layout.spec.ts`，不调用真实用户环境。
+
+Rust `typesetting::tests` 默认覆盖文件名、输出/归档链接越界、日志限制、进程组取消和超时。真实编译与宏包安装显式执行，不在普通测试组下载资源或访问网络：
+
+```sh
+npm run texlive:prepare
+cargo test --manifest-path src-tauri/Cargo.toml typesetting::tests::bundled_xelatex -- --ignored --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml typesetting::tests::user_package -- --ignored --nocapture
+```
+
+真实编译用 `fixtures/typesetting.tex`、原生二维分式 PDF、独立临时用户树和模板，验证中文文本/数学字体、附件、尺寸返回、多轮、缺包、隔离、禁用 shell escape、超时后恢复及正常清理；输出在 `.test-cache/texlive-verification`，可用 Poppler 渲染核对。宏包安装用例访问固定上游仓库，将 booktabs 装入临时树再编译，不修改系统 TeX 或用户数据。它们需要 Linux x86-64、bubblewrap 和可用的用户命名空间；Tauri 调用模拟不代替这些实际测试。
+
 文档结构用例集中在 `unit/document-semantics.test.ts`（两层边界、全文标题证据、缺页、跨页来源投影、摘要及精确选区上下文）和 `integration/document-analysis.test.ts`（分阶段缓存、部分覆盖恢复、清除代次、关闭与重试、旧缓存迁移）。小型来源与检测输入共用 `fixtures/document-semantics.ts`；`support/analysis.ts` 通过生产构建器生成测试投影。真实论文缓存保存 `{ facts, observations, semantics }`，页面视图在读取时投影，不再保存混合页面分析。
 
 独立文档句柄继续在 `integration/document-analysis.test.ts` 验证全文 facts/layout 完成边界、快照副本、取消释放及重新打开复用缓存。PDF 写操作使用 `integration/pdf-operations.test.ts` 的真实 PDFium，验证输出副本清理文字、保留公式/路径、拒绝不完整及过期来源、原生裁切移动后的可见边界、CropBox 与旋转，以及含上标的二维分式在迁移后保持字形、分数线和渲染几何；小型输入复用 `fixtures/cache.ts`。二进制用户产物是独立存储边界，在 `integration/extension-artifacts.test.ts` 验证按插件隔离、事务替换、元数据列表、持久恢复与取消。
