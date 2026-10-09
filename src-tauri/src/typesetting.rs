@@ -1011,32 +1011,49 @@ mod tests {
         append_log(&mut log, &"中文".repeat(LOG_LIMIT));
         assert!(log.len() <= LOG_LIMIT);
     }
-    fn native_formula() -> Vec<u8> {
-        // A source PDF with independently positioned numerator, denominator and a vector bar.
-        let stream =
-            "BT /F1 10 Tf 4 17 Td (x+1) Tj ET 2 13 29 0.5 re f BT /F1 10 Tf 8 3 Td (y) Tj ET";
-        let objects = ["<< /Type /Catalog /Pages 2 0 R >>".into(), "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 34 30] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".into(),
-            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()), "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >>".into()];
-        let mut pdf = b"%PDF-1.4\n".to_vec();
-        let mut offsets = vec![0];
-        for (i, object) in objects.iter().enumerate() {
-            offsets.push(pdf.len());
-            pdf.extend(format!("{} 0 obj\n{object}\nendobj\n", i + 1).as_bytes());
+    fn formula_dimensions(result: &CompileResult, name: &str) -> [f64; 3] {
+        let file = result.files.iter().find(|file| file.name == name).unwrap();
+        let csv = String::from_utf8(STANDARD.decode(&file.data_base64).unwrap()).unwrap();
+        let fields: Vec<_> = csv.trim().split(',').collect();
+        assert_eq!(fields.len(), 4, "{csv}");
+        assert_eq!(fields[0], "formula-1");
+        std::array::from_fn(|i| fields[i + 1].strip_suffix("pt").unwrap().parse().unwrap())
+    }
+    fn rendered_gray_page(pdf: &Path, page: &str) -> Vec<u8> {
+        // Binary PGM has an ASCII header followed by one byte per pixel.
+        let output = std::process::Command::new("pdftoppm")
+            .args(["-gray", "-r", "288", "-f", page, "-l", page, "-singlefile"])
+            .arg(pdf)
+            .output()
+            .expect("real typesetting verification requires Poppler pdftoppm");
+        assert!(output.status.success(), "{:?}", output.stderr);
+        let mut cursor = 0;
+        let mut fields = Vec::new();
+        while fields.len() < 4 {
+            while output.stdout[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            if output.stdout[cursor] == b'#' {
+                while output.stdout[cursor] != b'\n' {
+                    cursor += 1;
+                }
+                continue;
+            }
+            let start = cursor;
+            while !output.stdout[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            fields.push(std::str::from_utf8(&output.stdout[start..cursor]).unwrap());
         }
-        let xref = pdf.len();
-        pdf.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
-        for offset in offsets.iter().skip(1) {
-            pdf.extend(format!("{offset:010} 00000 n \n").as_bytes());
-        }
-        pdf.extend(
-            format!(
-                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-                objects.len() + 1
-            )
-            .as_bytes(),
+        assert_eq!(fields[0], "P5");
+        assert_eq!(fields[3], "255");
+        assert_eq!(output.stdout[cursor], b'\n');
+        let pixels = output.stdout[cursor + 1..].to_vec();
+        assert_eq!(
+            pixels.len(),
+            fields[1].parse::<usize>().unwrap() * fields[2].parse::<usize>().unwrap()
         );
-        pdf
+        pixels
     }
     /// Explicit opt-in: downloads nothing, uses the actual prepared bundle and Linux sandbox.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -1063,25 +1080,61 @@ mod tests {
             "TemplateOK",
         )
         .unwrap();
+        let mut source_job = input(include_str!("../../tests/fixtures/typesetting-formula.tex"));
+        source_job.return_files.push("source-slots.csv".into());
+        let source = compile(&locations, source_job).await.unwrap();
+        assert!(source.success, "{}", source.log);
+        let dimensions = formula_dimensions(&source, "source-slots.csv");
+        assert!(dimensions.iter().all(|dimension| *dimension > 0.0));
+        let source_pdf = STANDARD.decode(source.pdf.unwrap()).unwrap();
         let mut job = input(include_str!("../../tests/fixtures/typesetting.tex"));
         job.assets.push(Asset {
             name: "formula.pdf".into(),
-            data_base64: STANDARD.encode(native_formula()),
+            data_base64: STANDARD.encode(&source_pdf),
+        });
+        job.assets.push(Asset {
+            name: "formula-metrics.tex".into(),
+            data_base64: STANDARD.encode(format!(
+                "\\newlength{{\\sourceformulawidth}}\\setlength{{\\sourceformulawidth}}{{{}pt}}\n\\newlength{{\\sourceformuladepth}}\\setlength{{\\sourceformuladepth}}{{{}pt}}",
+                dimensions[0], dimensions[2]
+            )),
         });
         job.return_files.push("slots.csv".into());
         job.passes = Some(2);
         let result = compile(&locations, job).await.unwrap();
         assert!(result.success, "{}", result.log);
-        assert!(result.files.iter().any(|file| file.name == "slots.csv"
-            && STANDARD
-                .decode(&file.data_base64)
-                .unwrap()
-                .starts_with(b"formula-1,")));
+        let migrated_dimensions = formula_dimensions(&result, "slots.csv");
+        for (original, migrated) in dimensions.iter().zip(migrated_dimensions) {
+            assert!(
+                (original - migrated).abs() < 0.02,
+                "formula geometry changed: {dimensions:?} -> {migrated_dimensions:?}"
+            );
+        }
         let destination =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.test-cache/texlive-verification");
         fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("source-formula.pdf"), source_pdf).unwrap();
         let pdf = destination.join("chinese-native-formula.pdf");
         fs::write(&pdf, STANDARD.decode(result.pdf.unwrap()).unwrap()).unwrap();
+        let reference = rendered_gray_page(&pdf, "2");
+        let migrated = rendered_gray_page(&pdf, "3");
+        assert_eq!(reference.len(), migrated.len());
+        // Normalize by ink, not the mostly blank page, so wrong scale/baseline
+        // cannot pass merely because both pages are white. PDF rounding and
+        // antialiasing may differ slightly when a native Form is placed.
+        let ink: u64 = reference.iter().map(|pixel| u64::from(255 - pixel)).sum();
+        let difference: u64 = reference
+            .iter()
+            .zip(migrated)
+            .map(|(a, b)| u64::from(a.abs_diff(b)))
+            .sum();
+        assert!(ink > 0);
+        let error = difference as f64 / ink as f64;
+        println!("native formula dimensions: {dimensions:?} -> {migrated_dimensions:?}; rendered ink error: {error:.6}");
+        assert!(
+            error < 0.03,
+            "native formula scale, baseline or drawing changed: ink error {error}"
+        );
         let text = std::process::Command::new("pdftotext")
             .args([pdf.to_str().unwrap(), "-"])
             .output()
@@ -1091,7 +1144,7 @@ mod tests {
             text.contains("中文排版")
                 && text.contains("UserPackageOK")
                 && text.contains("TemplateOK")
-                && text.contains("x+1"),
+                && text.contains("𝑥+1"),
             "{text}"
         );
         assert_eq!(

@@ -1,0 +1,20 @@
+% A well-typeset source PDF, cropped to its TeX box. Only this source creation
+% knows LaTeX: the migration job receives PDF bytes and geometric measurements.
+\documentclass[fontset=fandol,zihao=-4]{ctexart}
+\usepackage{unicode-math}
+\setmathfont{latinmodern-math.otf}
+\newsavebox{\sourceformula}
+\newwrite\measurements
+\newdimen\totalheight
+\begin{document}
+\sbox{\sourceformula}{$\frac{x+1}{y}$}
+\totalheight=\dimexpr\ht\sourceformula+\dp\sourceformula\relax
+\immediate\openout\measurements=source-slots.csv
+\immediate\write\measurements{formula-1,\the\wd\sourceformula,\the\ht\sourceformula,\the\dp\sourceformula}
+\immediate\closeout\measurements
+\hoffset=-1in
+\voffset=-1in
+\shipout\vbox{\offinterlineskip\hbox{%
+\special{papersize=\the\wd\sourceformula,\the\totalheight}%
+\usebox{\sourceformula}}}
+\end{document}

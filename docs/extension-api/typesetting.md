@@ -53,6 +53,11 @@ await context.artifacts.write({
 
 ```ts
 const formula = await context.pdf.exportRegion(sourcePdf, page, formulaBox, signal);
+// 以下几何量由插件从来源分析取得。Box 为 [left, top, right, bottom]，
+// 单位为 PDF bp，Y 向下；不是随意指定的公式宽度或下降量。
+const scale = targetFontSize / sourceFontSize;
+const widthBp = (formulaBox[2] - formulaBox[0]) * scale;
+const depthBp = (formulaBox[3] - sourceBaselineY) * scale;
 const result = await context.typesetting.compile({
   assets: [{ name: "formula-1.pdf", bytes: formula.bytes }],
   source: String.raw`\documentclass[fontset=fandol]{ctexart}
@@ -60,17 +65,20 @@ const result = await context.typesetting.compile({
 \newsavebox{\fboxone}
 \newwrite\measurements
 \begin{document}
-\sbox{\fboxone}{\includegraphics[width=22bp]{formula-1.pdf}}
+\sbox{\fboxone}{\raisebox{-${depthBp.toFixed(5)}bp}{%
+\includegraphics[width=${widthBp.toFixed(5)}bp]{formula-1.pdf}}}
 \immediate\openout\measurements=slots.csv
 \immediate\write\measurements{formula-1,\the\wd\fboxone,\the\ht\fboxone,\the\dp\fboxone}
 \immediate\closeout\measurements
-译文中的公式\raisebox{-5bp}{\usebox{\fboxone}}继续参与本行排版。
+译文中的公式\usebox{\fboxone}继续参与本行排版。
 \end{document}`,
   returnFiles: ["slots.csv"],
 }, signal);
 ```
 
-示例中的尺寸和 raisebox 是示例值，真实插件根据公式区域、有效字号和基线决定宽度与下降量。基线调整后的最终盒子也可以再测量。测量输出的 TeX `pt` 为 1/72.27 英寸，PDF `bp` 为 1/72 英寸，换算到 PDF 点时乘以 `72 / 72.27`。排版结果可以直接作为 pdf.compose 的叠加页，不需要 OCR 成 LaTeX，也无需再次逐公式贴回。
+示例先按来源与目标的有效字号计算缩放，再把裁切底边到原文基线的距离作为下降量，最后测量调整后的盒子。不要统一指定固定宽度和下移量；它们会使不同公式的字号与基线失真。PDF 图片本身没有 TeX 的高度/深度信息，`includegraphics` 默认将裁切底边放在基线上。来源公式的基线需要插件从周围文字的基线、字符矩阵等证据估计；不能简单把分式分母的字符基线当成整条公式的基线。该示例假设有效字号和基线已确定且数值有限；复杂旋转或不可靠证据仍需单独处理。宿主编译服务目前不会自动推断这些参数。
+
+测量输出的 TeX `pt` 为 1/72.27 英寸，PDF `bp` 为 1/72 英寸，换算到 PDF 点时乘以 `72 / 72.27`。排版结果可以直接作为 pdf.compose 的叠加页，不需要 OCR 成 LaTeX，也无需再次逐公式贴回。
 
 `exportRegion` 是可见裁切，隐藏的来源资源可能仍保留；需要核对原生对象导出的 contentIsolation，不能把裁切当脱敏。来源区域完整性、占位符校验、字符转义、目标尺寸、溢出处理、字体选择与阅读对齐由插件决定。宿主不会把用户译文字符串自动当成安全的 LaTeX 正文；插入模板前应转义 LaTeX 特殊字符。
 

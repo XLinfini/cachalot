@@ -62,7 +62,9 @@ cargo test --manifest-path src-tauri/Cargo.toml typesetting::tests::bundled_xela
 cargo test --manifest-path src-tauri/Cargo.toml typesetting::tests::user_package -- --ignored --nocapture
 ```
 
-真实编译用 `fixtures/typesetting.tex`、原生二维分式 PDF、独立临时用户树和模板，验证中文文本/数学字体、附件、尺寸返回、多轮、缺包、隔离、禁用 shell escape、超时后恢复及正常清理；输出在 `.test-cache/texlive-verification`，可用 Poppler 渲染核对。宏包安装用例访问固定上游仓库，将 booktabs 装入临时树再编译，不修改系统 TeX 或用户数据。它们需要 Linux x86-64、bubblewrap 和可用的用户命名空间；Tauri 调用模拟不代替这些实际测试。
+真实编译先用 `fixtures/typesetting-formula.tex` 生成规范的源分式 PDF 与宽/高/深度，再用 `fixtures/typesetting.tex` 将 PDF 原生插入中文正文。迁移阶段只接收 PDF 附件和几何数据，不识别或重建公式。调整后的盒子尺寸与来源比较，误差须小于 0.02pt；同一正文中直接 TeX 排版与原生 PDF 插入的两张对照页经 Poppler 288 DPI 渲染，用墨迹归一化的像素差检查字号、基线和绘制（上限 3%，避免空白页面掩盖错误）。固定夹具提供已知基线，不代表真实论文的基线推断已经实现。
+
+用例还使用独立临时用户树和模板，验证中文文本/数学字体、附件、尺寸返回、多轮、缺包、隔离、禁用 shell escape、超时后恢复及正常清理；来源和结果输出在 `.test-cache/texlive-verification`，可用 Poppler 渲染核对。宏包安装用例访问固定上游仓库，将 booktabs 装入临时树再编译，不修改系统 TeX 或用户数据。它们需要 Linux x86-64、bubblewrap、Poppler 和可用的用户命名空间；Tauri 调用模拟不代替这些实际测试。
 
 文档结构用例集中在 `unit/document-semantics.test.ts`（两层边界、全文标题证据、缺页、跨页来源投影、摘要及精确选区上下文）和 `integration/document-analysis.test.ts`（分阶段缓存、部分覆盖恢复、清除代次、关闭与重试、旧缓存迁移）。小型来源与检测输入共用 `fixtures/document-semantics.ts`；`support/analysis.ts` 通过生产构建器生成测试投影。真实论文缓存保存 `{ facts, observations, semantics }`，页面视图在读取时投影，不再保存混合页面分析。
 
