@@ -64,7 +64,7 @@ async function handle(request: WorkerRequest): Promise<void> {
         id: request.id,
         kind: "result",
         operation: "extract",
-        result: createPageFacts(documentId, pdf.extract(request.page)),
+        result: createPageFacts(documentId, pdf.extract(request.page, documentId)),
       });
       return;
     }

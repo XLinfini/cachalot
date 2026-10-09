@@ -44,6 +44,7 @@ interface OutlineItem {
 }
 
 interface ReaderProps {
+  comparisonMode?: boolean;
   document: DocumentRecord;
   page: number;
   onPageChange: (page: number) => void;
@@ -129,6 +130,7 @@ function Thumbnail({
 }
 
 export default function PdfReader({
+  comparisonMode = false,
   document,
   page,
   onPageChange,
@@ -167,6 +169,7 @@ export default function PdfReader({
   const initialPositionRestored = useRef(false);
   const zoomAnchor = useRef<ScrollAnchor | null>(null);
   const scrollFrame = useRef<number | null>(null);
+  const paneNavigation = useRef(false);
   const { semanticPage, semanticPages, progress, retry, getSemanticPage } = useDocumentAnalysis(
     document,
     bytes,
@@ -195,14 +198,44 @@ export default function PdfReader({
   const publishViewState = (number: number) => {
     if (!scrollRoot) return;
     extensionHost.publishReaderState({
+      viewId: `reader:${document.id}`,
       documentId: document.id,
       page: number,
       pageCount: document.pageCount,
       zoom,
       scrollTop: scrollRoot.scrollTop,
       viewportHeight: scrollRoot.clientHeight,
+      anchor: (() => {
+        const anchor = captureScrollAnchor(
+          positions,
+          scrollRoot.scrollTop,
+          scrollRoot.clientHeight,
+        );
+        return anchor?.page === number ? anchor : { page: number, fraction: 0 };
+      })(),
+      cause: paneNavigation.current ? "navigation" : "user",
     });
   };
+  useEffect(() => {
+    if (!scrollRoot || !positions.length) return;
+    const subscription = extensionHost.onRevealPane(({ viewId, anchor }) => {
+      if (viewId !== `reader:${document.id}`) return;
+      paneNavigation.current = true;
+      scrollRoot.scrollTo({ top: restoreScrollAnchor(positions, anchor, scrollRoot.clientHeight) });
+      navigationTarget.current = { page: anchor.page, top: scrollRoot.scrollTop };
+      reportPage(anchor.page);
+    });
+    return () => subscription.dispose();
+  }, [document.id, scrollRoot, positions]);
+  useEffect(() => {
+    if (!comparisonMode || !scrollRoot || !sizes.length) return;
+    const fit = () =>
+      setZoom(Math.max(0.2, Math.min(2, (scrollRoot.clientWidth - 70) / (sizes[0].width * 0.96))));
+    const observer = new ResizeObserver(fit);
+    observer.observe(scrollRoot);
+    fit();
+    return () => observer.disconnect();
+  }, [comparisonMode, scrollRoot, sizes]);
   useEffect(() => {
     publishViewState(page);
     if (!scrollRoot) return;
@@ -225,6 +258,7 @@ export default function PdfReader({
     onPageChange(number);
   };
   const jumpToPage = (number: number) => {
+    paneNavigation.current = false;
     const target = positions.find((position) => position.number === number);
     if (!target || !scrollRoot) return;
     clearSelection();
@@ -587,6 +621,15 @@ export default function PdfReader({
           ref={setScrollRoot}
           data-ui="pdf-scroll"
           onScroll={handleScroll}
+          onWheel={() => {
+            paneNavigation.current = false;
+          }}
+          onPointerDown={() => {
+            paneNavigation.current = false;
+          }}
+          onKeyDown={() => {
+            paneNavigation.current = false;
+          }}
           className="relative min-h-0 flex-1 overflow-auto [overflow-anchor:none]"
         >
           <div className="flex w-max min-w-full flex-col items-center gap-6 px-[35px] py-7">

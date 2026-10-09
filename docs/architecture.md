@@ -74,6 +74,22 @@
 
 PdfReader 将当前页、缩放、滚动与视口尺寸发布为 ReaderViewState。宿主通过 documents.read 控制公开读取与事件；滚动不触发整份工作台快照重建，页码变化则刷新上下文。WorkbenchServices 全局挂载命令面板、快捷键和公共交互；社区消息桥转发同一组接口。外部 bookmarks 示例用于验证公共 SDK，不使用内置 React 特权。
 
+### 插件 PDF 任务与独立阅读区域
+
+API 0.1.3 的 `documents.openDocument` 通过 `document-analysis/access.ts` 持有独立分析会话和来源字节，不借用阅读器的 session；后台任务在关闭标签后仍有效。来源身份与只读事实不改写，分阶段持久缓存继续复用。analyze 明确 facts/layout 完成边界，取消释放自己的分析资源；插件停止自动关闭句柄，不影响本体分析。
+
+`infrastructure/pdf/operations.ts` 排队启动独立 PDFium Worker，提供 inspect、原生区域裁切和 compose；取消终止计算 Worker。compose 支持复制原页清理完整顶层文字对象后加译文层，也支持空白页组合外部排版与原生资源，输出独立 PDF。来源引用校验 hash、事实版本及完整对象覆盖，部分/嵌套对象拒绝。裁切保留原生资源和可见边界，不等同删除裁框外内容；复杂行内公式可由插件按基线作为排版资产插回，无需 OCR。
+
+API 0.1.4 的 PageFacts schema 2 由 `analysis/pdfium-graphics.ts` 提取物理绘制树、原生矩阵/页框、路径/裁剪及字体/图片元数据；原有顶层对象 ID 不改变。`domain/pdf-resources.ts` 定义 hash + factsKey + page + objectPath 定位器。PDF operations 的 resolveResource 或独立文档句柄 readResource 解析整页/对象 PDF、字体程序和图片流；大字节不进事实缓存。原生页资源保留无法结构化的 PDF 状态，嵌套对象保留外层 Form 并返回 form-group，避免 PDFium 重写 Form Matrix 导致失真。旧事实重新提取、语义输入键失效，Heron 观测契约保留。来源事实、目标布局与输出字节仍分开，通用 JSON 绘制编码器尚未实现。[资源契约](extension-api/pdf-resources.md)列出读取范围与生命周期。
+
+API 0.1.5 的 `domain/typesetting.ts` 定义源码、附件、测量文件与结果。`services.typesetting` 组合平台传输，插件宿主以独立 typesetting 能力开放 getStatus/compile，并把激活及调用的取消信号传给原生层。`src-tauri/src/typesetting.rs` 负责私有 TeX Live 初始化、用户树、配置、tlmgr 和 XeLaTeX→XDV→xdvipdfmx 生命周期。运行时版本目录与用户宏包/字体/模板分开；数据路径、安装宏包和外部执行目录仅对本体设置开放。
+
+Linux x86-64 编译在 bubblewrap 文件/网络隔离中运行，挂载运行时与用户树只读、任务目录可写；取消会终止任务进程组。初始化在阻塞工作线程中验证 SHA-256、安全解压和链接，再原子提交目录；取消不会提前释放初始化锁。一个运行时队列避免 tlmgr 与编译同时修改资源。构建准备脚本固定安装器、包修订和引擎源码，Tauri 随包分发它们。Windows/macOS 尚无适配。原生服务不判断翻译范围、选择模型或决定重排；插件模板负责公式盒子、基线、页尺寸及溢出策略。见[排版接口](extension-api/typesetting.md)。
+
+`infrastructure/extensions/artifacts.ts` 在独立 IndexedDB 中按插件 ID 隔离二进制产物，元数据与字节原子替换；它是用户数据，停用、重启、卸载与清缓存保留。documents.write 控制产物及写 PDF 能力，不开放宿主路径。下载由运行适配器发起。
+
+`ReaderWorkspace` 保持原文 PdfReader 实例，按宿主比较注册项添加 `ArtifactPdfReader`。右侧只使用 PDF.js 和 passive 的单页渲染/文字层，不创建文档分析会话、不继承原文语义、不接入选区翻译；文件可完全无关。活动文献仍为左侧原文。多个区域发布带 viewId、anchor、cause 的状态，显式一对多区域映射驱动滚动联动，没有映射默认不联动；程序导航回声不再次传播。插件停止撤销比较但保留文件。公共契约见[PDF 任务与并列阅读](extension-api/pdf-artifacts-and-comparison.md)。
+
 ## 文献分类
 
 `services.categories.list/create/remove` 管理自建分类，`services.library.move(id, categoryId)` 修改归属，`null` 表示未分类。`DocumentRecord.categoryId` 是可选的兼容字段；旧文献自动归入未分类。每篇论文只归属一个普通分类，“我的收藏”按既有 `starred` 标记汇集论文，收藏和移动互不影响。“全部文献”不按分类或收藏过滤。
@@ -186,7 +202,7 @@ UI 只调用 `services.cache.usage/clear`，应用入口为 `application/cache-m
 
 统计的是已保存内容的 UTF-8 字节数，不包含主键、SQLite 页、索引、IndexedDB 结构化存储等额外开销；图像按实际保存的 Base64 字符串计数，而不是解码后的图片大小。旧混合缓存中的重复字符数据仍计入各自记录；新格式的观测与语义通过来源引用复用原生数据。清除释放逻辑内容，数据库可复用空闲空间，不承诺数据库文件立即缩小。所有旧解析/模型版本也在统计和清除范围内。
 
-原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好和密钥属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
+原始 PDF、文献元数据/分类/收藏/进度、聊天记录/上传图片、已添加模型、偏好、密钥和插件产物属于用户数据，不是缓存。Heron、PDFium、PDF.js 是共享应用资源；浏览器的 HTTP 下载缓存由浏览器管理，不能可靠分类型统计/清除。阅读器的页面 Promise、canvas 和 Worker 属于临时内存，关闭文档时释放。
 
 `cache-writes.ts` 按类别串行提交写入与清除。分析、预览和 OCR 在工作开始时捕获清除代次；清除先使旧代次失效，等待已开始的写事务，然后删除记录。旧后台任务稍后完成不会重新写回已清除类别，新工作仍可生成缓存。此协调作用于当前应用实例；另一个独立浏览器标签页使用论文时可能正常重建共享站点缓存。
 

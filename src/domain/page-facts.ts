@@ -8,7 +8,7 @@ export function createPageFacts(
   extractedAt = Date.now(),
 ): PageFacts {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "page-facts",
     documentId,
     cacheKey: PAGE_FACTS_KEY,
@@ -18,6 +18,16 @@ export function createPageFacts(
     characters: page.characters,
     objects: page.objects,
     warnings: page.warnings,
+    graphics: page.graphics ?? {
+      coordinateSpace: "pdf-user-space",
+      rotation: 0,
+      mediaBox: [0, 0, page.width, page.height],
+      cropBox: [0, 0, page.width, page.height],
+      preservation: "geometry-only",
+      truncated: false,
+      objects: [],
+      limitations: ["Synthetic geometry only; native PDF resources unavailable"],
+    },
     extractedAt,
   };
 }

@@ -1,8 +1,9 @@
 import { platform } from "../infrastructure/platform";
+import { typesetting } from "../infrastructure/typesetting";
 import type { FormulaFragment } from "../domain/analysis";
 import { analysisRepository } from "../infrastructure/analysis/repository";
 import { semanticsRepository } from "../infrastructure/analysis/semantics-repository";
-import { DocumentAnalysisSession } from "./document-analysis";
+import { DocumentAnalysisSession, openDocumentHandle } from "./document-analysis";
 import { askPaper } from "./paper-assistant";
 import { importPaper } from "./import-paper";
 import {
@@ -32,6 +33,7 @@ import {
  * and domain DTOs, never on Tauri commands, SQL, IndexedDB or model tensors.
  */
 export const services = {
+  typesetting,
   cache: cacheManagement,
   library: {
     list: platform.listDocuments,
@@ -86,6 +88,19 @@ export const services = {
     removeMessage: platform.deleteMessage,
   },
   analysis: {
+    openDocument: (id: string, signal?: AbortSignal) =>
+      openDocumentHandle(
+        id,
+        {
+          list: platform.listDocuments,
+          loadPdf: platform.loadPdf,
+          resolveResource: async (...args) =>
+            (await import("../infrastructure/pdf/operations")).pdfOperations.resolveResource(
+              ...args,
+            ),
+        },
+        signal,
+      ),
     createSession: (...args: ConstructorParameters<typeof DocumentAnalysisSession>) =>
       new DocumentAnalysisSession(...args),
   },

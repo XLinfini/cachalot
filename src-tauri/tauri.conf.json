@@ -6,16 +6,31 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run texlive:check && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "Cachalot", "width": 1440, "height": 900, "minWidth": 1000, "minHeight": 650 }],
+    "windows": [
+      { "title": "Cachalot", "width": 1440, "height": 900, "minWidth": 1000, "minHeight": 650 }
+    ],
     "security": { "csp": null }
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "resources/texlive/runtime.tar.gz": "texlive/runtime.tar.gz",
+      "resources/texlive/manifest.json": "texlive/manifest.json",
+      "resources/texlive/packages.txt": "texlive/packages.txt",
+      "resources/texlive/engine-source.tar.gz": "texlive/engine-source.tar.gz"
+    },
+    "linux": { "deb": { "depends": ["bubblewrap", "perl", "libfontconfig1", "libfreetype6"] } },
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico", "icons/icon.icns"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ]
   }
 }

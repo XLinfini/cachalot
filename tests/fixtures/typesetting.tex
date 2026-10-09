@@ -1,0 +1,31 @@
+\documentclass[fontset=fandol,zihao=-4]{ctexart}
+\usepackage[paperwidth=120mm,paperheight=85mm,margin=10mm]{geometry}
+\usepackage{graphicx,unicode-math,user-marker}
+\setmainfont{lmroman10-regular.otf}
+\setmathfont{latinmodern-math.otf}
+\pagestyle{empty}
+\newsavebox{\formulabox}
+\newwrite\slotfile
+\input{formula-metrics}
+\begin{document}
+% Preserve source scale; its depth locates the baseline within the cropped PDF.
+\sbox{\formulabox}{\raisebox{-\sourceformuladepth}{%
+\includegraphics[width=\sourceformulawidth]{formula.pdf}}}
+\immediate\openout\slotfile=slots.csv
+\immediate\write\slotfile{formula-1,\the\wd\formulabox,\the\ht\formulabox,\the\dp\formulabox}
+\immediate\closeout\slotfile
+\noindent 中文排版与原生公式验证。按基线插入：%
+\usebox{\formulabox}，原来的分数线和字形随 PDF 一起迁移。
+
+\noindent 数学字体：$E=mc^2$, $\int_0^1 x^2\,\mathrm{d}x=\frac13$。
+
+\noindent \usermarker
+\input{user-template}
+
+% Same position, text and fonts on both proof pages. Compare their actual
+% rendered pixels, rather than accepting a PDF solely because its text exists.
+\clearpage
+\noindent 基线对照：A$\frac{x+1}{y}$B。
+\clearpage
+\noindent 基线对照：A\usebox{\formulabox}B。
+\end{document}

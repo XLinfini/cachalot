@@ -10,7 +10,12 @@ export type {
   FormulaPreparationIssue,
   HeadingLevel,
   PdfCharacter,
+  PdfObject,
 } from "../domain/analysis";
+export type * from "../domain/pdf-resources";
+import type { PdfResource, PdfResourceRef } from "../domain/pdf-resources";
+export type { TypesettingStatus, TypesettingInput, TypesettingResult } from "../domain/typesetting";
+import type { TypesettingStatus, TypesettingInput, TypesettingResult } from "../domain/typesetting";
 export type {
   DocumentSemantics,
   SemanticPageView,
@@ -24,6 +29,19 @@ export type {
   AvailableModel,
 } from "../domain/records";
 export type { ReaderSelection, ReaderGesture } from "../domain/reader";
+export type { SourceRef, ContentSpan, SemanticFormula } from "../domain/document-semantics";
+export type * from "../domain/document-workbench";
+import type {
+  Artifact,
+  ArtifactInput,
+  DocumentHandle,
+  PdfComparisonHandle,
+  PdfComparisonOptions,
+  PdfComposition,
+  PdfPageInfo,
+  PdfRegion,
+  ReaderAnchor,
+} from "../domain/document-workbench";
 export { selectionPreview } from "../domain/reader";
 export { area, characterText, containsCenter, intersection, union } from "../domain/geometry";
 export { message } from "../domain/messages";
@@ -45,7 +63,14 @@ export interface Disposable {
 }
 export type Event<T> = (listener: (value: T) => void) => Disposable;
 export type Label = string | { zh: string; en: string };
-export type Capability = "documents.read" | "reader.interact" | "reader.decorate" | "ocr" | "lm";
+export type Capability =
+  | "documents.read"
+  | "documents.write"
+  | "reader.interact"
+  | "reader.decorate"
+  | "ocr"
+  | "lm"
+  | "typesetting";
 export type ViewLocation = "sidebar.left" | "sidebar.right" | "panel" | "settings" | "modal";
 export type { ContextValue } from "../domain/context-keys";
 export type {
@@ -83,12 +108,16 @@ export interface ConfigurationChangeEvent {
   value: ConfigurationValue;
 }
 export interface ReaderViewState {
+  /** Legacy main-reader events omit this; new pane events always identify their instance. */
+  viewId?: string;
   documentId: string;
   page: number;
   pageCount: number;
   zoom: number;
   scrollTop: number;
   viewportHeight: number;
+  anchor?: ReaderAnchor;
+  cause?: "user" | "navigation";
 }
 export interface QuickPickItem {
   id: string;
@@ -273,13 +302,46 @@ export interface ExtensionContext {
     ): Promise<T>;
   };
   documents: {
+    openDocument(documentId: string, signal?: AbortSignal): Promise<DocumentHandle>;
     getPageFacts(documentId: string, page: number): Promise<PageFacts>;
     getLayoutObservations(documentId: string, page: number): Promise<LayoutObservations | null>;
     getSemanticPage(documentId: string, page: number): Promise<SemanticPageView>;
     getDocumentSemantics(documentId: string): Promise<DocumentSemantics>;
     onDidChangeDocument: Event<{ documentId: string; semantics: DocumentSemantics }>;
   };
+  /** Binary user data, scoped to the calling extension. Survives extension restarts/cache clearing. */
+  artifacts: {
+    write(input: ArtifactInput, signal?: AbortSignal): Promise<Artifact>;
+    read(id: string, signal?: AbortSignal): Promise<Uint8Array>;
+    list(sourceDocumentId?: string): Promise<Artifact[]>;
+    delete(id: string): Promise<void>;
+    export(id: string): Promise<void>;
+  };
+  /** Generic PDF operations execute in a separate computation worker. No translation policy. */
+  pdf: {
+    resolveResource(
+      bytes: Uint8Array,
+      ref: PdfResourceRef,
+      signal?: AbortSignal,
+    ): Promise<PdfResource>;
+    inspect(bytes: Uint8Array, signal?: AbortSignal): Promise<PdfPageInfo[]>;
+    exportRegion(
+      bytes: Uint8Array,
+      page: number,
+      box: Box,
+      signal?: AbortSignal,
+    ): Promise<PdfRegion>;
+    compose(input: PdfComposition, signal?: AbortSignal): Promise<Uint8Array>;
+  };
+  /** Native XeLaTeX service. No package installation, executable or local-path access. */
+  typesetting: {
+    getStatus(): Promise<TypesettingStatus>;
+    compile(input: TypesettingInput, signal?: AbortSignal): Promise<TypesettingResult>;
+  };
   reader: {
+    openPdfComparison(options: PdfComparisonOptions): Promise<PdfComparisonHandle>;
+    getViewStates(): Promise<ReaderViewState[]>;
+    onDidChangePaneState: Event<ReaderViewState | null>;
     readonly activeDocumentId: string | null;
     readonly selection: ReaderSelection | null;
     readonly viewState: ReaderViewState | null;

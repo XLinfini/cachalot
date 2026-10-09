@@ -11,6 +11,7 @@
 ```sh
 npm ci
 npm run models:prepare
+npm run texlive:prepare  # Linux x86-64 桌面构建；浏览器预览可跳过
 npm run dev
 ```
 
@@ -26,6 +27,12 @@ npm run tauri build -- --debug --no-bundle
 
 build 首先离线校验固定权重，不应在安装后的用户操作中下载模型。构建产物在 dist 与 src-tauri/target，依赖、权重、数据库和测试输出不提交。
 
+桌面 beforeBuild 还执行 `texlive:check`，校验固定安装器、包修订锁、运行时和引擎源码 SHA-256，并拒绝不匹配的交叉编译目标。`texlive:prepare` 在 `.test-cache/texlive-build` 私有安装 TeX Live 2025 final，输出到 `src-tauri/resources/texlive`；有效缓存直接离线复用，`-- --force` 可重建。普通 `npm run build` 仍可只构建浏览器。当前只生成 Linux x86-64 glibc 包；Deb 声明 bubblewrap、Perl 和字体库依赖，AppImage 等需要运行系统自行提供。
+
+提交规格、包版本锁、准备脚本和资源说明；不提交安装器、TeX 树、运行时/源码压缩包、Cargo target 或测试 PDF。Tauri resources 将 manifest、runtime.tar.gz、packages.txt、engine-source.tar.gz 随安装包分发。运行时约 434 MiB，固定引擎源码约 153 MiB（压缩）；初始化另外占用约 813 MiB。这个版本保留宏包文档/源码/许可证与引擎构建源码，不把整个 TeX Live 当成一个单一许可包。源代码快照来自官方 branch2025 固定提交，升级时同时维护编译器、格式、依赖锁与源码归属。见[资源说明](../src-tauri/resources/texlive/README.md)和 [TeX Live 复制条件](https://tug.org/texlive/copying.html)。
+
+原生服务在 `src-tauri/src/typesetting.rs`，平台传输在 `infrastructure/typesetting.ts`，界面调用 services.typesetting，插件经能力检查与 Worker 桥调用 context.typesetting。`-no-shell-escape`、openin/out 限制是补充约束；Linux bubblewrap 才是文件/网络隔离边界。初始化用独立阻塞线程和原子暂存/重命名，编译与宏包安装共用可取消队列；子进程组随请求中止，设置不暴露给插件。
+
 ## 并行开发工作树
 
 多个对话或开发者应使用不同 Git worktree 与开发分支。工作树隔离文件、暂存区和 HEAD，仍共享仓库对象与分支引用；不要在同一 checkout 中相互切换分支。
@@ -38,6 +45,8 @@ CACHALOT_URL=http://127.0.0.1:1431 npm run test:e2e
 ```
 
 自行准备依赖；若本机通过链接共享 node_modules，尤其要隔离 Vite 缓存。模型与构建输出不从另一个工作树提交。最终集成到 main 与开发工作树的提交是不同操作。
+
+Vite 不监听 `.worktrees/`、测试输出、`src-tauri/target/` 和 `src-tauri/resources/`；准备运行时或构建桌面包生成的 HTML/资源不应刷新正在阅读的前端。修改真正的前端源码仍正常热更新。
 
 插件脚手架和本地 SDK 导出命令见[插件教程](extension-api/get-started.md)；生成输出属于独立插件项目，不提交回本体作为临时构建产物。
 

@@ -4,6 +4,7 @@
  * including its intrinsic rotation. They never contain CSS pixels or zoom.
  * Keep this module independent of React, Tauri and inference libraries.
  */
+import type { PdfMatrix, PdfPageGraphics } from "./pdf-resources";
 export type Box = [number, number, number, number];
 export type BlockKind =
   | "paragraph"
@@ -31,6 +32,10 @@ export interface PdfCharacter {
   emSize?: number;
   fontName?: string;
   italic?: boolean;
+  /** Physical source object and raw baseline/matrix; absent on generated separators. */
+  objectPath?: number[];
+  pdfOrigin?: [number, number];
+  matrix?: PdfMatrix;
 }
 
 export interface PdfObject {
@@ -47,16 +52,18 @@ export interface NativePage {
   characters: PdfCharacter[];
   objects: PdfObject[];
   warnings: string[];
+  graphics?: PdfPageGraphics;
 }
 
 /** Source facts only. documentId is the PDF content hash; cacheKey fixes the
  * extractor and coordinate contract. Semantic inference never rewrites these. */
 export interface PageFacts extends NativePage {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: "page-facts";
   documentId: string;
   cacheKey: string;
   extractedAt: number;
+  graphics: PdfPageGraphics;
 }
 
 export interface LayoutDetection {

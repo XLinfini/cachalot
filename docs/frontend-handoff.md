@@ -46,6 +46,7 @@
 | 设置外壳            | [SettingsDialog](../src/components/SettingsDialog.tsx)、[ProviderSettings](../src/components/ProviderSettings.tsx)                                                           | 实际承载通用、模型、OCR、缓存、插件及插件设置；名字不只代表模型页 |
 | 服务商与密钥        | [ProviderEditor](../src/components/ProviderEditor.tsx)、[ApiKeyField](../src/components/ApiKeyField.tsx)                                                                     | 未保存草稿、临时模型目录、接口地址与真实密钥读取                  |
 | OCR 与缓存          | [OcrSettings](../src/components/OcrSettings.tsx)、[CacheSettings](../src/components/CacheSettings.tsx)                                                                       | 独立选择、连接检查、六类缓存、确认与统计错误                      |
+| PDF 排版            | [TypesettingSettings](../src/components/TypesettingSettings.tsx) | 私有/外部运行时、宏包安装、路径与日志；关闭页面取消自己的操作 |
 | 通用插件工作台      | [ExtensionWorkbench](../src/components/extensions/ExtensionWorkbench.tsx)、[ExtensionSettings](../src/components/extensions/ExtensionSettings.tsx)                           | 外部订阅、动态登记、树/Webview、视图实例、安装与依赖预览          |
 | 插件公共交互        | [WorkbenchServices](../src/components/extensions/WorkbenchServices.tsx)、[ExtensionConfiguration](../src/components/extensions/ExtensionConfiguration.tsx)                   | 命令面板/快捷键、右键菜单、输入/选择/进度及声明配置字段           |
 | 选区翻译插件 UI     | [TranslationPopup](../src/extensions/selection-translation/TranslationPopup.tsx)、[TranslationSettings](../src/extensions/selection-translation/TranslationSettings.tsx)     | 结果与提示词属于插件；经 SDK 挂载，不在 App 中直接导入            |
@@ -104,6 +105,7 @@ ProviderSettings 保留的是模型服务编辑器和已注册插件设置视图
 | OCR 选择与预设             | services.ocr 的 getSelection/select/adapters/presets/endpoint/createPreset/test            |
 | 偏好                       | services.settings.get/set                                                                  |
 | 缓存统计与分类清除         | services.cache.usage/clear                                                                 |
+| PDF 排版与本体运行时管理 | services.typesetting.getStatus/getSettings/configure/initialize/installPackages/compile；插件只开放 getStatus/compile |
 | 历史会话与消息             | services.conversations 的 create/list/rename/remove/messages/saveMessage/removeMessage     |
 | 本体问答                   | services.assistant.askPaper，增量回调和最终字符串                                          |
 | 共享分析                   | services.analysis.createSession，React 可复用 useDocumentAnalysis                          |
@@ -118,7 +120,7 @@ ProviderSettings 保留的是模型服务编辑器和已注册插件设置视图
 - PageFacts/原始观测与 DocumentSemantics 不互相改写。UI 可以展示推断、部分覆盖与错误，不能在组件里维护另一份权威页面树。
 - Provider 是模型元数据与 hasKey，ProviderInput.apiKey 是实际替换草稿。遮罩、显示过的已存密钥、占位词均不能自动写成新密钥。
 
-异步回调检查所属文献、视图/请求代次与取消状态。可取消的插件请求用 signal；分析是共享本体任务，停用一个插件不取消全文分析。服务错误通过消息编码与 localizeMessage 呈现，第三方正文按脱敏普通文字保留，不能作为 HTML 渲染。
+异步回调检查所属文献、视图/请求代次与取消状态。可取消的插件请求用 signal；阅读器分析与插件 openDocument 句柄分别持有生命周期，停止插件只释放自己的分析任务，不取消本体分析。服务错误通过消息编码与 localizeMessage 呈现，第三方正文按脱敏普通文字保留，不能作为 HTML 渲染。
 
 ## PDF 与翻译交互的保留点
 
@@ -132,6 +134,16 @@ ProviderSettings 保留的是模型服务编辑器和已注册插件设置视图
 8. 用户未主动选模式时可跟随首个工具；用户已经选择文字模式后，延迟激活的插件不能抢回框选。
 9. 翻译保持原 PDF、复建原文、译文三栏；原文与译文共用公式候选。失败/部分公式保留来源图片，行内图片按基线与有效字号排布；标题保持 h1–h6 语义。
 10. preparing、translating、OCR 问题和失败可分别显示。流式预览不代表最终结构已校验；复制只在最终通过公式/标题协议校验后开放。重试先取消旧任务，关闭结果窗口取消其任务。
+
+### PDF 并列阅读
+
+ReaderWorkspace 可按通用比较注册项显示左右两个 PDF。左侧 PdfReader 与本体问答保持原实例；打开、调整或关闭右侧不能重建左侧，也不能把 activeDocumentId 改成产物。左右有独立滚动、缩放与文字层，中间分隔条支持拖动和方向键，工具栏支持联动开关及关闭。
+
+右侧 ArtifactPdfReader 是被动阅读区域，不调用 PageFacts/Heron/文档语义，不显示版面分析按钮，不提供框选翻译；它可以显示完全无关的 PDF，不继承左侧分析。右侧需要分析时，用户将产物作为新文献导入。保留 passive 单页渲染边界，不能仅隐藏按钮却在后台启动分析。
+
+来源 PageFacts 已升级 schema 2：`graphics` 的原生 PDF 坐标与显示 box 分开，嵌套 Form 使用对象路径；保留原有顶层 objects/id 供覆盖框与 SourceRef 使用。UI 不读取 WASM 句柄或把字体/图片大字节塞回事实。插件按需通过 readResource / pdf.resolveResource 获取资源；这些接口不触发右侧分析，具体范围见[资源契约](extension-api/pdf-resources.md)。
+
+有显式 alignment 默认联动，否则默认不联动。按页码和归一化阅读线 anchor 映射位置，不能直接复制 scrollTop；程序定位发布 cause=navigation，避免互相回滚。插件停止释放右侧视图和独立文档句柄，已经保存的产物保留。关闭原文标签也不取消插件持有的文档句柄。接口详见[PDF 指南](extension-api/pdf-artifacts-and-comparison.md)。
 
 具体选取与翻译规则属于 src/extensions/selection-translation，不搬进 PdfReader。插件能被停用，阅读器不能假设始终存在翻译按钮。
 

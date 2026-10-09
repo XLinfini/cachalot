@@ -26,13 +26,15 @@ flowchart TD
 
 ## 三类持久输入与解释
 
-| 对象               | 内容                                                       | 边界                                 |
-| ------------------ | ---------------------------------------------------------- | ------------------------------------ |
-| PageFacts          | 页面尺寸、字符、字形属性、绘图对象、坐标、警告、提取身份   | 不包含段落、阅读顺序、标题层级或 OCR |
-| LayoutObservations | 原始检测类别、Box、confidence、模型与观测身份              | 是预测，不是接受后的段落/图注归属    |
-| DocumentSemantics  | 节点、内容片段、章节、公式归属、关系、阅读顺序、来源和证据 | 不保存 LaTeX/OCR 候选或译文          |
+| 对象               | 内容                                                                            | 边界                                 |
+| ------------------ | ------------------------------------------------------------------------------- | ------------------------------------ |
+| PageFacts          | 页面尺寸、字符/字形、原生绘制树、矩阵/路径/裁剪/字体/图片元数据及可解析资源引用 | 不包含段落、阅读顺序、标题层级或 OCR |
+| LayoutObservations | 原始检测类别、Box、confidence、模型与观测身份                                   | 是预测，不是接受后的段落/图注归属    |
+| DocumentSemantics  | 节点、内容片段、章节、公式归属、关系、阅读顺序、来源和证据                      | 不保存 LaTeX/OCR 候选或译文          |
 
 PageFacts 与 LayoutObservations 都是 source/schema/cacheKey 有版本的数据。原始预测单独表示，语义构建器可以改变去重、归属或标题规则而复用兼容输入。
+
+API 0.1.4 的 PageFacts 使用 schemaVersion 2。`graphics` 提供递归 Form 树及原生页框；字符可以通过 objectPath 关联绘制对象。大资源按需解析：整页/对象 PDF、字体程序和图片原始流。原有 objects/id 和显示 Box 保留，原生矩阵/路径使用 PDF 用户空间，详见[原生事实与资源](extension-api/pdf-resources.md)。原生 PDF 保留公共 PDFium API 无法展开的状态，来源事实与目标排版仍分开。
 
 SemanticPageView 是临时页面投影，包含 facts、document、stage、blocks、formulas、readingOrder、plainText 和 warnings。它不作为另一个权威页面树持久化。`stage: native` 表示没有本页布局观测的回退投影；完整段落框选需要 layout 阶段。
 
@@ -97,7 +99,7 @@ SemanticEvidence 保存 rule、confidence 与可选 observationKey。confidence 
 | OCR 提示、候选规范化与校验         | 对应 OCR cachePrefix / 候选版本，不改原事实 |
 | 纯目录移动或 UI 样式               | 不因此改变分析身份                          |
 
-旧混合缓存只迁移已确认兼容的原生来源；不能从旧组装块反推“原始模型观测”。改变版本时同步校验、迁移与相应夹具，详见[测试维护](../tests/README.md)。
+facts2 缓存不迁移旧 facts1 或混合 PageAnalysis：它们缺少绘制结构与资源引用，需要从原 PDF 重新提取。DocumentSemantics 的输入键随之失效；原始 LayoutObservations 的检测/渲染契约未改变，可以复用。旧缓存可按原分类清除，不会被改名后伪装成新版。改变版本时同步校验、迁移与相应夹具，详见[测试维护](../tests/README.md)。
 
 ## 关键实现入口
 

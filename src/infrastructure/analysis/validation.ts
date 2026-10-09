@@ -1,5 +1,6 @@
 import type { LayoutObservations, NativePage, PageFacts } from "../../domain/analysis";
 import type { DocumentSemantics } from "../../domain/document-semantics";
+import { validPdfResourceRef } from "../../domain/pdf-resources";
 import {
   DOCUMENT_SEMANTICS_KEY,
   LAYOUT_OBSERVATIONS_KEY,
@@ -17,6 +18,136 @@ const box = (value: unknown): boolean => array(value) && value.length === 4 && v
 const strings = (value: unknown): value is string[] =>
   array(value) && value.every((item) => typeof item === "string");
 const indices = (value: unknown): value is number[] => array(value) && value.every(integer);
+const tuple = (value: unknown, length: number) =>
+  array(value) && value.length === length && value.every(finite);
+
+function validGraphics(value: unknown, documentId: string, page: number): boolean {
+  if (
+    !object(value) ||
+    value.coordinateSpace !== "pdf-user-space" ||
+    ![0, 90, 180, 270].includes(Number(value.rotation)) ||
+    !box(value.mediaBox) ||
+    !box(value.cropBox) ||
+    !strings(value.limitations) ||
+    typeof value.truncated !== "boolean" ||
+    !array(value.objects)
+  )
+    return false;
+  if (value.preservation === "geometry-only")
+    return value.pageResource === undefined && value.objects.length === 0;
+  const ref = (item: unknown, kind: string, path?: number[]) =>
+    validPdfResourceRef(item) &&
+    item.documentId === documentId &&
+    item.page === page &&
+    item.kind === kind &&
+    JSON.stringify(item.objectPath) === JSON.stringify(path);
+  if (value.preservation !== "native-page" || !ref(value.pageResource, "page-pdf")) return false;
+  let count = 0,
+    segments = 0;
+  const validSegments = (items: unknown) =>
+    array(items) &&
+    (segments += items.length) <= 250000 &&
+    items.every(
+      (item) =>
+        object(item) &&
+        ["move", "line", "bezier"].includes(String(item.kind)) &&
+        tuple(item.point, 2) &&
+        typeof item.close === "boolean",
+    );
+  const visit = (item: unknown, parent: number[]): boolean => {
+    if (
+      !object(item) ||
+      ++count > 50000 ||
+      parent.length >= 32 ||
+      !indices(item.path) ||
+      item.path.length !== parent.length + 1 ||
+      !parent.every((index, i) => (item.path as number[])[i] === index) ||
+      !ref(item.resource, "object-pdf", item.path) ||
+      !box(item.box) ||
+      !box(item.bounds) ||
+      !tuple(item.matrix, 6) ||
+      !tuple(item.pageMatrix, 6) ||
+      !["text", "path", "image", "shading", "form", "unknown"].includes(String(item.kind)) ||
+      typeof item.active !== "boolean" ||
+      typeof item.hasTransparency !== "boolean" ||
+      !finite(item.markedContentId)
+    )
+      return false;
+    if (
+      [item.fill, item.stroke].some(
+        (color) =>
+          color !== undefined &&
+          (!tuple(color, 4) || !(color as number[]).every((n) => n >= 0 && n <= 255)),
+      )
+    )
+      return false;
+    if ([item.strokeWidth, item.lineCap, item.lineJoin].some((n) => n !== undefined && !finite(n)))
+      return false;
+    if (
+      item.dash !== undefined &&
+      (!object(item.dash) ||
+        !finite(item.dash.phase) ||
+        !array(item.dash.lengths) ||
+        item.dash.lengths.length >= 1024 ||
+        !item.dash.lengths.every(finite))
+    )
+      return false;
+    if (
+      item.clip !== undefined &&
+      (!array(item.clip) || item.clip.length >= 10000 || !item.clip.every(validSegments))
+    )
+      return false;
+    if (
+      item.shape !== undefined &&
+      (item.kind !== "path" ||
+        !object(item.shape) ||
+        !validSegments(item.shape.segments) ||
+        !["none", "alternate", "winding"].includes(String(item.shape.fillRule)) ||
+        typeof item.shape.stroke !== "boolean")
+    )
+      return false;
+    if (item.text !== undefined) {
+      const text = item.text;
+      if (
+        item.kind !== "text" ||
+        !object(text) ||
+        typeof text.value !== "string" ||
+        !indices(text.characterIndices) ||
+        !finite(text.fontSize) ||
+        !finite(text.renderMode) ||
+        !object(text.font) ||
+        typeof text.font.name !== "string" ||
+        typeof text.font.family !== "string" ||
+        typeof text.font.embedded !== "boolean" ||
+        !finite(text.font.flags) ||
+        !finite(text.font.weight) ||
+        !ref(text.font.resource, "font-program", item.path)
+      )
+        return false;
+    }
+    if (item.image !== undefined) {
+      const image = item.image;
+      if (
+        item.kind !== "image" ||
+        !object(image) ||
+        !integer(image.width) ||
+        !integer(image.height) ||
+        !integer(image.bitsPerPixel) ||
+        !integer(image.colorSpace) ||
+        !strings(image.filters) ||
+        !ref(image.resource, "image-stream", item.path)
+      )
+        return false;
+    }
+    return (
+      item.children === undefined ||
+      (item.kind === "form" &&
+        array(item.children) &&
+        item.children.every((child) => visit(child, item.path as number[])))
+    );
+  };
+  return value.objects.every((item) => visit(item, []));
+}
 const blockKinds = new Set([
   "paragraph",
   "title",
@@ -55,7 +186,13 @@ export function validNativePage(value: unknown, page: number): value is NativePa
         (character.origin === undefined ||
           (array(character.origin) &&
             character.origin.length === 2 &&
-            character.origin.every(finite))),
+            character.origin.every(finite))) &&
+        (character.objectPath === undefined ||
+          (indices(character.objectPath) &&
+            character.objectPath.length > 0 &&
+            character.objectPath.length <= 32)) &&
+        (character.pdfOrigin === undefined || tuple(character.pdfOrigin, 2)) &&
+        (character.matrix === undefined || tuple(character.matrix, 6)),
     ) &&
     array(value.objects) &&
     value.objects.every(
@@ -74,14 +211,15 @@ export function validPageFacts(
 ): value is PageFacts {
   return (
     object(value) &&
-    value.schemaVersion === 1 &&
+    value.schemaVersion === 2 &&
     value.kind === "page-facts" &&
     value.documentId === documentId &&
     value.cacheKey === PAGE_FACTS_KEY &&
     finite(value.extractedAt) &&
     !("blocks" in value) &&
     !("formulas" in value) &&
-    validNativePage(value, page)
+    validNativePage(value, page) &&
+    validGraphics(value.graphics, documentId, page)
   );
 }
 export function validObservations(

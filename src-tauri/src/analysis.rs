@@ -18,11 +18,7 @@ pub fn get_page_analysis(
 pub fn save_page_analysis(
     state: State<'_, AppState>, document_id: String, page: i64, cache_key: String, content: String,
 ) -> Result<(), String> {
-    if page < 1 || content.len() > 20 * 1024 * 1024 { return Err("页面分析数据超出范围。".into()); }
-    let value: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    if value["schemaVersion"] != 1 || value["documentId"] != document_id || value["page"] != page || value["cacheKey"] != cache_key {
-        return Err("页面分析标识与缓存键不匹配。".into());
-    }
+    validate_page_analysis(&document_id, page, &cache_key, &content)?;
     // One committed SQLite statement per page. Previously completed pages survive
     // interruption; foreign-key cascade removes caches when a paper is deleted.
     state.db.lock().map_err(|e| e.to_string())?.execute(
@@ -30,6 +26,16 @@ pub fn save_page_analysis(
          ON CONFLICT(document_id,cache_key,page) DO UPDATE SET content=excluded.content",
         params![document_id, cache_key, page, content],
     ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn validate_page_analysis(document_id: &str, page: i64, cache_key: &str, content: &str) -> Result<(), String> {
+    if page < 1 || content.len() > 20 * 1024 * 1024 { return Err("页面分析数据超出范围。".into()); }
+    let value: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let version = if value["kind"] == "page-facts" { 2 } else { 1 };
+    if value["schemaVersion"] != version || value["documentId"] != document_id || value["page"] != page || value["cacheKey"] != cache_key {
+        return Err("页面分析标识与缓存键不匹配。".into());
+    }
     Ok(())
 }
 
@@ -67,6 +73,20 @@ pub fn save_document_semantics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_facts_use_v2_while_layout_and_formula_envelopes_keep_v1() {
+        let facts = r#"{"schemaVersion":2,"kind":"page-facts","documentId":"paper","page":1,"cacheKey":"facts2:native"}"#;
+        assert!(validate_page_analysis("paper", 1, "facts2:native", facts).is_ok());
+        assert!(validate_page_analysis("paper", 1, "facts2:native", &facts.replace("\"schemaVersion\":2", "\"schemaVersion\":1")).is_err());
+        assert!(validate_page_analysis("other", 1, "facts2:native", facts).is_err());
+        assert!(validate_page_analysis("paper", 2, "facts2:native", facts).is_err());
+        for kind in ["layout-observations", "formula-assets"] {
+            let content = format!(r#"{{"schemaVersion":1,"kind":"{kind}","documentId":"paper","page":1,"cacheKey":"key"}}"#);
+            assert!(validate_page_analysis("paper", 1, "key", &content).is_ok());
+            assert!(validate_page_analysis("paper", 1, "key", &content.replace("\"schemaVersion\":1", "\"schemaVersion\":2")).is_err());
+        }
+    }
 
     #[test]
     fn semantic_snapshots_validate_identity_replace_and_follow_document_deletion() {

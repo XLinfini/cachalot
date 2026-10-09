@@ -6,6 +6,11 @@ public/models/*.part
 test-results/
 .test-cache/
 src-tauri/gen/schemas/
+src-tauri/resources/texlive/runtime.tar.gz
+src-tauri/resources/texlive/manifest.json
+src-tauri/resources/texlive/packages.txt
+src-tauri/resources/texlive/engine-source.tar.gz
+src-tauri/resources/texlive/*.part
 
 # Local task worktrees and workspace.
 .worktrees/

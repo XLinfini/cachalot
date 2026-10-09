@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import "fake-indexeddb/auto";
 import { DocumentAnalysisSession } from "../../src/application/document-analysis/session";
+import { openDocumentHandle } from "../../src/application/document-analysis";
 import type { AnalysisSnapshot } from "../../src/domain/document-semantics";
 import type { AnalysisEngine } from "../../src/infrastructure/analysis/protocol";
 import type { DocumentRecord } from "../../src/domain/records";
@@ -9,10 +10,11 @@ import { analysisRepository } from "../../src/infrastructure/analysis/repository
 import { semanticsRepository } from "../../src/infrastructure/analysis/semantics-repository";
 import { cacheRepository } from "../../src/infrastructure/cache-management";
 import { CACHE_KINDS } from "../../src/domain/cache";
-import { LEGACY_ANALYSIS_KEYS } from "../../src/domain/model";
+import { LEGACY_ANALYSIS_KEYS, PAGE_FACTS_KEY } from "../../src/domain/model";
 import { message } from "../../src/domain/messages";
 import { openCacheStore } from "../../src/infrastructure/cache-stores";
 import { semanticFixture } from "../fixtures/document-semantics";
+import type { PdfResourceRef, PdfResource } from "../../src/domain/pdf-resources";
 
 const storage: Record<string, string> = Object.create(null);
 Object.defineProperty(globalThis, "localStorage", {
@@ -74,6 +76,146 @@ function deferred() {
 }
 beforeEach(async () => {
   for (const kind of CACHE_KINDS) await cacheRepository.clear(kind);
+});
+test("resource leases validate source identity, copy bytes, cancel reads and close independently", async () => {
+  const record = { ...document, id: "a".repeat(64) };
+  const ref: PdfResourceRef = {
+    documentId: record.id,
+    factsKey: PAGE_FACTS_KEY,
+    page: 1,
+    kind: "page-pdf",
+  };
+  let pending = false,
+    reads = 0;
+  const handle = await openDocumentHandle(record.id, {
+    list: async () => [record],
+    loadPdf: async () => new Uint8Array([1]),
+    createSession: (record, bytes) =>
+      new DocumentAnalysisSession(
+        record,
+        bytes,
+        () => undefined,
+        () => undefined,
+        () => engine([]),
+      ),
+    resolveResource: async (bytes, ref, signal) => {
+      reads++;
+      assert.deepEqual(bytes, new Uint8Array([1]));
+      if (pending)
+        await new Promise<void>((_, reject) =>
+          signal!.addEventListener(
+            "abort",
+            () => reject(new DOMException("Cancelled", "AbortError")),
+            { once: true },
+          ),
+        );
+      return {
+        ref,
+        kind: "page-pdf",
+        mediaType: "application/pdf",
+        bytes: new Uint8Array([2]),
+        width: 300,
+        height: 400,
+        contentIsolation: "page",
+      } satisfies PdfResource;
+    },
+  });
+  const resource = await handle.readResource(ref);
+  resource.bytes[0] = 99;
+  assert.deepEqual((await handle.readResource(ref)).bytes, new Uint8Array([2]));
+  await assert.rejects(
+    handle.readResource({ ...ref, documentId: "b".repeat(64) }),
+    /source mismatch/,
+  );
+  await assert.rejects(handle.readResource({ ...ref, factsKey: "old" }), /source mismatch/);
+  await assert.rejects(handle.readResource({ ...ref, page: 3 }), /source mismatch/);
+  assert.equal(reads, 2, "invalid references never reach the binary resolver");
+  pending = true;
+  const controller = new AbortController(),
+    request = handle.readResource(ref, controller.signal);
+  controller.abort();
+  await assert.rejects(request, { name: "AbortError" });
+  assert.deepEqual(
+    await handle.readPdf(),
+    new Uint8Array([1]),
+    "cancelling one resource read leaves the document lease usable",
+  );
+  const closing = handle.readResource(ref);
+  await handle.close();
+  await assert.rejects(closing, { name: "AbortError" });
+  await assert.rejects(handle.readResource(ref), { name: "AbortError" });
+});
+test("job document handles provide complete detached snapshots and remain independent of reader disposal", async () => {
+  const calls: string[] = [];
+  const bytes = new Uint8Array([1, 2, 3]);
+  const handle = await openDocumentHandle(document.id, {
+    list: async () => [document],
+    loadPdf: async () => bytes,
+    createSession: (record, input) =>
+      new DocumentAnalysisSession(
+        record,
+        input,
+        () => undefined,
+        () => undefined,
+        () => engine(calls),
+      ),
+  });
+  assert.equal((await handle.getDocumentSemantics()).coverage.complete, false);
+  const read = await handle.readPdf();
+  read[0] = 99;
+  assert.deepEqual(await handle.readPdf(), bytes);
+  const phases: string[] = [];
+  const snapshot = await handle.analyze({
+    onProgress: (item) => {
+      phases.push(`${item.phase}:${item.completed}`);
+    },
+  });
+  assert.equal(snapshot.semantics.coverage.complete, true);
+  assert.equal(snapshot.facts.length, 2);
+  assert.deepEqual(phases, ["facts:1", "facts:2", "layout:1", "layout:2"]);
+  snapshot.semantics.nodes.length = 0;
+  assert.ok((await handle.getDocumentSemantics()).nodes.length > 0);
+  await handle.close();
+  await handle.close();
+  assert.equal(calls.filter((call) => call === "dispose").length, 1, "closing is idempotent");
+  await assert.rejects(handle.getPageFacts(1), { name: "AbortError" });
+  await assert.rejects(
+    openDocumentHandle("missing", { list: async () => [], loadPdf: async () => bytes }),
+    /not found/,
+  );
+});
+test("cancelled full analysis closes its lease and resumes completed source stages in another handle", async () => {
+  const calls: string[] = [],
+    controller = new AbortController();
+  const ports = {
+    list: async () => [document],
+    loadPdf: async () => new Uint8Array(),
+    createSession: (record: DocumentRecord, input: Uint8Array) =>
+      new DocumentAnalysisSession(
+        record,
+        input,
+        () => undefined,
+        () => undefined,
+        () => engine(calls),
+      ),
+  };
+  const handle = await openDocumentHandle(document.id, ports);
+  await assert.rejects(
+    handle.analyze({
+      signal: controller.signal,
+      onProgress: (item) => {
+        if (item.phase === "facts" && item.completed === 1) controller.abort();
+      },
+    }),
+    { name: "AbortError" },
+  );
+  assert.ok(calls.includes("dispose"));
+  await assert.rejects(handle.readPdf(), { name: "AbortError" });
+  calls.length = 0;
+  const resumed = await openDocumentHandle(document.id, ports);
+  assert.equal((await resumed.analyze()).semantics.coverage.complete, true);
+  assert.ok(!calls.includes("extract:1"));
+  await resumed.close();
 });
 
 test("facts extraction is independent; cached partial snapshots restore without loading the worker", async () => {
@@ -218,7 +360,7 @@ test("disposing during inference prevents late callbacks and writes; model failu
   retry.dispose();
 });
 
-test("known legacy caches migrate only source facts; assembled blocks never masquerade as raw predictions", async () => {
+test("legacy geometry caches are re-extracted instead of claiming native resource coverage", async () => {
   const { db, store } = await openCacheStore("analysis");
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(store, "readwrite");
@@ -247,13 +389,14 @@ test("known legacy caches migrate only source facts; assembled blocks never masq
     () => engine(calls),
   );
   const facts = await session.getPageFacts(1);
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, ["open", "extract:1"]);
   assert.equal("blocks" in facts, false);
-  assert.equal(facts.extractedAt, 7);
-  assert.deepEqual(facts.warnings, [message("unmappedCharacters", { count: 1 })]);
+  assert.equal(facts.schemaVersion, 2);
+  assert.notEqual(facts.extractedAt, 7);
+  assert.deepEqual(facts.warnings, fixtures[0].facts.warnings);
   assert.equal(await analysisRepository.getObservations(document.id, 1), null);
   await session.getSemanticPage(1);
-  assert.deepEqual(calls, ["open", "detect:1"]);
+  assert.deepEqual(calls, ["open", "extract:1", "detect:1"]);
   session.dispose();
 });
 

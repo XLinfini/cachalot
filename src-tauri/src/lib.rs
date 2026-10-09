@@ -6,6 +6,7 @@ mod cache;
 mod db;
 mod provider_error;
 mod ocr_http;
+mod typesetting;
 
 use db::AppState;
 use std::sync::Mutex;
@@ -21,6 +22,7 @@ pub fn run() {
                 .build()?;
             app.manage(AppState { db: Mutex::new(db), http });
             app.manage(ai_requests::AiRequests::default());
+            app.manage(typesetting::TypesettingState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +63,12 @@ pub fn run() {
             ai_requests::register_ai_request,
             ai_requests::cancel_ai_request,
             ocr_http::ocr_http,
+            typesetting::typesetting_status,
+            typesetting::typesetting_settings,
+            typesetting::typesetting_configure,
+            typesetting::typesetting_initialize,
+            typesetting::typesetting_install_packages,
+            typesetting::typesetting_compile,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Cachalot");

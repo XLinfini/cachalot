@@ -1,20 +1,20 @@
 # 插件 API 参考
 
-[插件开发](../extensions.md) · 版本：0.1.2 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
+[插件开发](../extensions.md) · 版本：0.1.5 · 类型权威：[src/sdk/index.ts](../../src/sdk/index.ts)
 
 本页列出公开接口，不列私有宿主方法。外部插件通过 `activate(context)` 的 context 使用能力；纯工具从 `cachalot` 导入，可信 React 工具另见[视图指南](views.md#内置-react-模块)。
 
 ## 通用约定
 
-| 类型 / 约定    | 含义                                                      |
-| -------------- | --------------------------------------------------------- |
-| `Disposable`   | `dispose(): void`；SDK 注册自动跟踪，重复释放应无害       |
-| `Event<T>`     | `(listener: (value: T) => void) => Disposable`            |
-| `Label`        | 字符串或 `{zh: string, en: string}`                       |
-| `Box`          | 显示页归一化 `[left, top, right, bottom]`                 |
-| `Capability`   | documents.read、reader.interact、reader.decorate、ocr、lm |
-| `ViewLocation` | sidebar.left、sidebar.right、panel、settings、modal       |
-| Promise        | 异步数据与完成信号；不能将返回 Promise 当作同步值         |
+| 类型 / 约定    | 含义                                                                       |
+| -------------- | -------------------------------------------------------------------------- |
+| `Disposable`   | `dispose(): void`；SDK 注册自动跟踪，重复释放应无害                        |
+| `Event<T>`     | `(listener: (value: T) => void) => Disposable`                             |
+| `Label`        | 字符串或 `{zh: string, en: string}`                                        |
+| `Box`          | 显示页归一化 `[left, top, right, bottom]`                                  |
+| `Capability`   | documents.read、documents.write、reader.interact、reader.decorate、ocr、lm、typesetting |
+| `ViewLocation` | sidebar.left、sidebar.right、panel、settings、modal                        |
+| Promise        | 异步数据与完成信号；不能将返回 Promise 当作同步值                          |
 
 社区调用经过消息桥，注册资源句柄可同步返回，但宿主登记确认是异步的，登记错误会使激活或当前作用域失败。所有跨 Worker 公开服务方法按异步方式设计。回调自行处理预期失败，避免留下未处理的 Promise rejection。
 
@@ -110,10 +110,11 @@ Progress.report({message?, increment?}) 更新增量百分比。用户关闭选�
 
 ## documents
 
-全部需要 `documents.read`，仅连接当前打开文档的分析会话。页码从 1 开始。
+全部需要 `documents.read`，页码从 1 开始。原有 get* 便捷方法连接当前阅读器会话；openDocument 创建独立的文献句柄，适用于跨页与后台任务。
 
 | 方法 / 事件                               | 结果与含义                                                                                                                   |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `openDocument(documentId, signal?)`       | `Promise<DocumentHandle>`，打开文献库中的已知 ID；不依赖阅读器是否打开                                                       |
 | `getPageFacts(documentId, page)`          | `Promise<PageFacts>`，原生事实                                                                                               |
 | `getLayoutObservations(documentId, page)` | `Promise<LayoutObservations \| null>`，按需确保该页分析后读取原始预测；分析失败可拒绝，类型允许 null。不是被动的完成状态查询 |
 | `getSemanticPage(documentId, page)`       | `Promise<SemanticPageView>`，按需页面投影                                                                                    |
@@ -122,24 +123,75 @@ Progress.report({message?, increment?}) 更新增量百分比。用户关闭选�
 
 返回复制数据，不作为权威结构回写入口。不能仅由 complete=false 推导“没有任何可用页面”；应查看 coverage，见[文档分析](../document-analysis.md)。
 
+DocumentHandle：只读 document；readPdf(signal?)、readResource(ref, signal?)（0.1.4，返回 Promise<PdfResource>）、getPageFacts(page)、getLayoutObservations(page)、getSemanticPage(page)、getDocumentSemantics()、analyze(options?)、close() 均为 Promise。analyze 的 options 为 level（facts/layout，默认 layout）、signal、onProgress；返回 `{document, level, semantics, facts}`。facts 确保所有页事实，但语义可部分覆盖；layout 确保全文结构覆盖，不完整会拒绝。onProgress 收到 `{phase, completed, total}`。
+
+PageFacts 使用 schemaVersion 2，新增 graphics（页框、旋转、递归绘制树、矩阵/路径/裁剪、字体/图片元数据与资源引用）。原有对象 id 与归一化显示坐标保留。readResource 只接受该句柄来源与当前 factsKey，单次读取取消不关闭句柄；详见[原生资源](pdf-resources.md)。
+
+句柄在关闭标签后仍有效；每次激活最多 8 个，close 可重复调用，停止插件自动释放。打开 signal 只用于打开过程；analyze 取消会关闭自己的句柄及分析资源，重新打开可复用缓存。见[PDF 任务指南](pdf-artifacts-and-comparison.md#独立于阅读器的文档句柄)。
+
+## artifacts
+
+全部需要 `documents.write`，限定本插件的二进制用户数据；与论文缓存分开保存。
+
+| 方法                      | 结果与含义                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `write(input, signal?)`   | `Promise<Artifact>`；input 为 id/name/mediaType/bytes，可选 sourceDocumentId；同 ID 原子替换 |
+| `read(id, signal?)`       | `Promise<Uint8Array>`，字节副本                                                              |
+| `list(sourceDocumentId?)` | `Promise<Artifact[]>`，只读元数据，可按来源过滤                                              |
+| `delete(id)`              | `Promise<void>`；关闭正在使用该产物的比较视图                                                |
+| `export(id)`              | `Promise<void>`；本体触发浏览器/Webview 下载                                                 |
+
+Artifact 包含 id、name、mediaType、可选 sourceDocumentId、byteLength、createdAt/updatedAt（毫秒）。单份最多 256 MiB；停用、重启、卸载及清除分析缓存不会删除。完整命名、存储及更新语义见[产物指南](pdf-artifacts-and-comparison.md#保存二进制产物)。
+
+## pdf
+
+| 方法                                      | 能力                             | 结果与约束                                                                                              |
+| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `inspect(bytes, signal?)`                 | documents.read                   | `Promise<PdfPageInfo[]>`，page/width/height；显示页尺寸为 PDF 点                                        |
+| `resolveResource(bytes, ref, signal?)`    | documents.read                   | API 0.1.4；`Promise<PdfResource>`，校验来源哈希、版本、对象路径与类型，按需读取原生 PDF / 字体 / 图片流 |
+| `exportRegion(bytes, page, box, signal?)` | documents.read                   | `Promise<PdfRegion>`，bytes/width/height/contentIsolation；原生可见裁切                                 |
+| `compose(input, signal?)`                 | documents.read + documents.write | `Promise<Uint8Array>`，独立目标 PDF，来源不可变                                                         |
+
+PdfComposition 为 sources 字节数组和 pages 页计划。每页可有 source `{source, page}`，或省略 source 提供 width/height；可有 removeText: SourceRef[] 与 overlays `{source, page, box?}[]`。source 索引从 0 起，页码从 1 起，box 为目标显示页归一化区域；没有 box 时铺满整页。
+
+移除文字核验内容身份与事实版本，只接受完整顶层文字对象；部分或嵌套对象拒绝，不能把绘制白色遮罩等同内容删除。exportRegion 的 contentIsolation 为 visual-crop，隐藏资源可能保留，不是脱敏操作。计算在独立 Worker 中排队，可取消。文字排版使用独立 typesetting 服务。两条生成路线、限制与行内公式迁移见[PDF 指南](pdf-artifacts-and-comparison.md)。
+
+## typesetting
+
+API 0.1.5；全部需要 `typesetting`，当前支持 Linux x86-64 桌面版。
+
+| 方法 | 结果 |
+| --- | --- |
+| `getStatus()` | `Promise<TypesettingStatus>`：available、initialized、mode、runtimeId、reason；无本机路径 |
+| `compile(input, signal?)` | `Promise<TypesettingResult>`：success、pdf（Uint8Array 或 null）、log、files（name/bytes） |
+
+TypesettingInput 为 source、可选 assets（name/Uint8Array bytes）、passes（1–3，默认 1）、timeoutMs（1000–300000，默认 120000）、returnFiles（平面名称）。源码最多 2 MiB，输入合计最多 64 MiB/256 附件；返回最多 64 个文件，PDF 和文件合计 64 MiB，日志 1 MiB。TeX 失败返回 success:false；取消、无运行时和输入错误拒绝。禁止路径、重复名称、输入输出重名及 document.* 保留名称。API 不提供宏包管理、命令参数、引擎配置或任意文件读取。详见[源码、原生公式、基线与隔离](typesetting.md)。
+
 ## reader
 
-| 成员                                            | 能力            | 结果与约束                        |
-| ----------------------------------------------- | --------------- | --------------------------------- |
-| `activeDocumentId`                              | documents.read  | 同步只读 string 或 null           |
-| `onDidChangeActiveDocument`                     | documents.read  | `Event<string \| null>`           |
-| `viewState`                                     | documents.read  | ReaderViewState 或 null，返回副本 |
-| `onDidChangeViewState`                          | documents.read  | Event<ReaderViewState 或 null>    |
-| `selection`                                     | reader.interact | 同步只读 ReaderSelection 或 null  |
-| `onDidChangeSelection`                          | reader.interact | `Event<ReaderSelection \| null>`  |
-| `registerInteractionTool(tool)`                 | reader.interact | Disposable，矩形工具              |
-| `registerSelectionAction(action)`               | reader.interact | Disposable，通用选区动作          |
-| `registerHoverProvider(provider)`               | reader.interact | Disposable，页面点的悬停响应      |
-| `setDecorations(documentId, page, decorations)` | reader.decorate | Disposable，指定页覆盖框注册      |
-| `setBackground(color)`                          | reader.decorate | Disposable，受支持颜色            |
-| `revealPage(documentId, page)`                  | reader.interact | void，导航请求                    |
+| 成员                                            | 能力                                               | 结果与约束                                                        |
+| ----------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
+| `openPdfComparison(options)`                    | documents.read + documents.write + reader.interact | `Promise<PdfComparisonHandle>`；左侧来源，右侧自己的任意 PDF 产物 |
+| `getViewStates()`                               | documents.read                                     | `Promise<ReaderViewState[]>`，所有已挂载阅读区域                  |
+| `onDidChangePaneState`                          | documents.read                                     | Event<ReaderViewState 或 null>，null 时重新获取当前集合           |
+| `activeDocumentId`                              | documents.read                                     | 同步只读 string 或 null                                           |
+| `onDidChangeActiveDocument`                     | documents.read                                     | `Event<string \| null>`                                           |
+| `viewState`                                     | documents.read                                     | ReaderViewState 或 null，返回副本                                 |
+| `onDidChangeViewState`                          | documents.read                                     | Event<ReaderViewState 或 null>                                    |
+| `selection`                                     | reader.interact                                    | 同步只读 ReaderSelection 或 null                                  |
+| `onDidChangeSelection`                          | reader.interact                                    | `Event<ReaderSelection \| null>`                                  |
+| `registerInteractionTool(tool)`                 | reader.interact                                    | Disposable，矩形工具                                              |
+| `registerSelectionAction(action)`               | reader.interact                                    | Disposable，通用选区动作                                          |
+| `registerHoverProvider(provider)`               | reader.interact                                    | Disposable，页面点的悬停响应                                      |
+| `setDecorations(documentId, page, decorations)` | reader.decorate                                    | Disposable，指定页覆盖框注册                                      |
+| `setBackground(color)`                          | reader.decorate                                    | Disposable，受支持颜色                                            |
+| `revealPage(documentId, page)`                  | reader.interact                                    | void，导航请求                                                    |
 
-ReaderViewState 包含 documentId、page、pageCount、zoom、scrollTop、viewportHeight；后两个为阅读滚动容器的 CSS 像素。未挂载、切换/关闭文档时可为 null，事件可随滚动频繁触发；不保证在 activeDocument 事件前已就绪。
+ReaderViewState 包含 documentId、page、pageCount、zoom、scrollTop、viewportHeight；后两个为阅读滚动容器的 CSS 像素。新增可选 viewId、anchor `{page, fraction}`、cause（user/navigation）。未挂载、切换/关闭文档时可为 null，事件可随滚动频繁触发；不保证在 activeDocument 事件前已就绪。旧 viewState/onDidChangeViewState 只表示原文，比较视图不改变 activeDocumentId。
+
+PdfComparisonOptions：id（插件前缀）、documentId、artifactId、title，可选 alignment: PdfAlignment[] 和 synchronized。有非空显式 alignment 时默认联动，否则默认不联动。PdfAlignment 为 id、original `{page, box}`、derived `{page, box}[]`，支持一对多。返回句柄有 id、update({alignment?, synchronized?})、reveal(side, anchor)、close()，均异步。
+
+右侧只渲染自身页面和文字层，不进行分析、不继承原文结构、不提供选区翻译；产物可以完全无关。插件停止释放视图和句柄，但不删除产物。使用与生命周期见[并列阅读指南](pdf-artifacts-and-comparison.md#通用并列-pdf-阅读)。
 
 InteractionTool：id、title、可选 tooltip/icon、`mode: "rectangle"`；`preview(page, box)` 返回 ReaderDecoration[] 或 Promise；`select(page, gesture)` 返回 ReaderSelection/null 或 Promise。
 
@@ -191,4 +243,6 @@ OCR 候选不改写语义树，PDF 裁剪不实现全文重排；细节见[公�
 | `message(code, values?)`                                  | 语言无关本体消息编码，不是任意错误传输               |
 | `FORMULA_PATTERN`                                         | 既有公式标记的匹配模式，不能单靠它证明翻译协议完整   |
 
-SDK 还重导出 PageFacts、LayoutObservations、ContentBlock、PdfCharacter、FormulaFragment/Asset/PreparationIssue、HeadingLevel、DocumentSemantics、SemanticPageView、SemanticNode、ReaderSelection/Gesture、Provider、CompletionInput 和 DocumentRecord 等 DTO。结构以源码为准，稳定性与来源版本见[数据契约](../document-analysis.md)。内部类型路径可用于理解实现，不是社区插件额外导入入口。
+SDK 还重导出 PageFacts、LayoutObservations、ContentBlock、PdfCharacter、FormulaFragment/Asset/PreparationIssue、HeadingLevel、DocumentSemantics、SemanticPageView、SemanticNode、SourceRef、ContentSpan、SemanticFormula、ReaderSelection/Gesture、Provider、CompletionInput 和 DocumentRecord 等 DTO。API 0.1.3 增加 DocumentHandle/Snapshot/AnalysisProgress、Artifact/Input、PdfComposition/PageSource/Overlay/PageInfo/Region、ReaderAnchor、PdfAlignment/ComparisonOptions/ComparisonHandle。结构以源码为准，稳定性与来源版本见[数据契约](../document-analysis.md)。内部类型路径可用于理解实现，不是社区插件额外导入入口。
+
+API 0.1.4 重导出 PdfObject、PdfMatrix、PdfPathSegment、PdfDrawingObject、PdfPageGraphics、PdfResourceRef、PdfResource。资源 kind 为 page-pdf/object-pdf/font-program/image-stream；读取对象 PDF 必须检查 contentIsolation 与 preservedObjectPath，嵌套对象保留外层 Form。完整形状见公开 SDK 和[资源指南](pdf-resources.md)。

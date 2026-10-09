@@ -16,6 +16,14 @@ export default defineConfig({
     host: "127.0.0.1",
     // Playwright exports HTML in its traces; watching those files would reload
     // the application while a browser test is still using it.
-    watch: { ignored: ["**/test-results/**", "**/.test-cache/**"] },
+    watch: {
+      ignored: [
+        "**/test-results/**",
+        "**/.test-cache/**",
+        "**/src-tauri/target/**",
+        "**/src-tauri/resources/**",
+        "**/.worktrees/**",
+      ],
+    },
   },
 });
