@@ -29,5 +29,8 @@ cachalot.local.code-workspace
 *.sqlite3
 .DS_Store
 
+# Machine-local Fontconfig cache produced by native rendering tools.
+/var/cache/fontconfig/
+
 # Locally packaged extensions are build artifacts.
 *.cachx
